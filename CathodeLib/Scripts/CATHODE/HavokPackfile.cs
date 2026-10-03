@@ -3084,10 +3084,11 @@ namespace CATHODE
         internal bool CacheRangeBoundaries
         {
             get => _cacheRangeBoundaries;
-            set { _cacheRangeBoundaries = value; _cachedRangeBoundaries = null; }
+            set { _cacheRangeBoundaries = value; _cachedRangeBoundaries = null; _cachedGraphIndex = null; }
         }
         private bool _cacheRangeBoundaries;
         private List<uint> _cachedRangeBoundaries;
+        private GraphIndex _cachedGraphIndex;
 
         /* The first boundary after an offset, or the payload's end if none comes before it: what a scan of the sorted
            list for the smallest boundary above the offset found, by binary search - a port scanned the whole list once
@@ -3140,9 +3141,8 @@ namespace CATHODE
             objectOffsets = new HashSet<uint>();
             extraRanges = new List<(uint Start, uint End)>();
 
-            var objectsByOffset = new Dictionary<uint, PackfileObject>();
-            for (int i = 0; i < source.Objects.Count; i++)
-                objectsByOffset[source.Objects[i].DataOffset] = source.Objects[i];
+            GraphIndex index = GraphIndexOf(source);
+            Dictionary<uint, PackfileObject> objectsByOffset = index.ObjectsByOffset;
 
             List<uint> sorted = ObjectRangeBoundaries(source);
             uint ObjectEnd(uint off) => NextBoundary(sorted, off, (uint)source.DataPayload.Length);
@@ -3155,14 +3155,8 @@ namespace CATHODE
                 queue.Enqueue(root);
 
             // Seed compound instance shapes even if root offset lookup failed somehow.
-            for (int c = 0; c < source.StaticCompoundShapes.Count; c++)
-            {
-                if (source.StaticCompoundShapes[c].DataOffset != root)
-                    continue;
-                if (objectsByOffset.ContainsKey(root))
-                    queue.Enqueue(root);
-                break;
-            }
+            if (index.CompoundsAt(root).Count != 0 && objectsByOffset.ContainsKey(root))
+                queue.Enqueue(root);
 
             while (queue.Count > 0)
             {
@@ -3172,20 +3166,15 @@ namespace CATHODE
 
                 uint end = ObjectEnd(off);
 
-                for (int g = 0; g < source.GlobalFixups.Count; g++)
+                foreach (GlobalFixup gf in index.GlobalsIn(off, end))
                 {
-                    GlobalFixup gf = source.GlobalFixups[g];
-                    if (gf.Src >= off && gf.Src < end && objectsByOffset.ContainsKey(gf.Dst))
+                    if (objectsByOffset.ContainsKey(gf.Dst))
                         queue.Enqueue(gf.Dst);
                 }
 
-                for (int l = 0; l < source.LocalFixups.Count; l++)
+                foreach (LocalFixup lf in index.LocalsIn(off, end))
                 {
-                    LocalFixup lf = source.LocalFixups[l];
-                    if (lf.Src < off || lf.Src >= end)
-                        continue;
-
-                    int bytes = InferArrayByteLength(source, lf.Src, lf.Dst);
+                    int bytes = InferArrayByteLength(source, index, lf.Src, lf.Dst);
                     if (bytes > 0)
                         extraRanges.Add((lf.Dst, Clamp(lf.Dst, lf.Dst + (uint)bytes)));
 
@@ -3203,22 +3192,18 @@ namespace CATHODE
                     else if (slotCount == 0)
                         arrEnd = lf.Dst;
                     else
-                        arrEnd = lf.Dst + (uint)Math.Min(256, RoomBeforeNextObject(source, lf.Dst));
+                        arrEnd = lf.Dst + (uint)Math.Min(256, index.RoomBeforeNextObject(lf.Dst));
                     arrEnd = Clamp(lf.Dst, arrEnd);
-                    for (int g = 0; g < source.GlobalFixups.Count; g++)
+                    foreach (GlobalFixup gf in index.GlobalsIn(lf.Dst, arrEnd))
                     {
-                        GlobalFixup gf = source.GlobalFixups[g];
-                        if (gf.Src >= lf.Dst && gf.Src < arrEnd && objectsByOffset.ContainsKey(gf.Dst))
+                        if (objectsByOffset.ContainsKey(gf.Dst))
                             queue.Enqueue(gf.Dst);
                     }
                 }
 
                 // Typed compound shapes
-                for (int c = 0; c < source.StaticCompoundShapes.Count; c++)
+                foreach (StaticCompoundShape compound in index.CompoundsAt(off))
                 {
-                    StaticCompoundShape compound = source.StaticCompoundShapes[c];
-                    if (compound.DataOffset != off)
-                        continue;
                     for (int n = 0; n < compound.Instances.Count; n++)
                     {
                         uint shape = compound.Instances[n].ShapeDataOffset;
@@ -3247,12 +3232,9 @@ namespace CATHODE
                 {
                     uint start = snapshot[i].Start;
                     uint end = snapshot[i].End;
-                    for (int l = 0; l < source.LocalFixups.Count; l++)
+                    foreach (LocalFixup lf in index.LocalsIn(start, end))
                     {
-                        LocalFixup lf = source.LocalFixups[l];
-                        if (lf.Src < start || lf.Src >= end)
-                            continue;
-                        int bytes = InferArrayByteLength(source, lf.Src, lf.Dst);
+                        int bytes = InferArrayByteLength(source, index, lf.Src, lf.Dst);
                         if (bytes <= 0)
                         {
                             // C-string or raw blob: copy until NUL or next object.
@@ -3270,11 +3252,9 @@ namespace CATHODE
                             expanded = true;
                         }
 
-                        for (int g = 0; g < source.GlobalFixups.Count; g++)
+                        foreach (GlobalFixup gf in index.GlobalsIn(lf.Dst, newEnd))
                         {
-                            GlobalFixup gf = source.GlobalFixups[g];
-                            if (gf.Src >= lf.Dst && gf.Src < newEnd && objectsByOffset.ContainsKey(gf.Dst)
-                                && objectOffsets.Add(gf.Dst))
+                            if (objectsByOffset.ContainsKey(gf.Dst) && objectOffsets.Add(gf.Dst))
                             {
                                 queue.Enqueue(gf.Dst);
                                 expanded = true;
@@ -3289,22 +3269,17 @@ namespace CATHODE
                     if (!objectsByOffset.ContainsKey(off))
                         continue;
                     uint oEnd = ObjectEnd(off);
-                    for (int g = 0; g < source.GlobalFixups.Count; g++)
+                    foreach (GlobalFixup gf in index.GlobalsIn(off, oEnd))
                     {
-                        GlobalFixup gf = source.GlobalFixups[g];
-                        if (gf.Src >= off && gf.Src < oEnd && objectsByOffset.ContainsKey(gf.Dst)
-                            && objectOffsets.Add(gf.Dst))
+                        if (objectsByOffset.ContainsKey(gf.Dst) && objectOffsets.Add(gf.Dst))
                         {
                             queue.Enqueue(gf.Dst);
                             expanded = true;
                         }
                     }
-                    for (int l = 0; l < source.LocalFixups.Count; l++)
+                    foreach (LocalFixup lf in index.LocalsIn(off, oEnd))
                     {
-                        LocalFixup lf = source.LocalFixups[l];
-                        if (lf.Src < off || lf.Src >= oEnd)
-                            continue;
-                        int bytes = InferArrayByteLength(source, lf.Src, lf.Dst);
+                        int bytes = InferArrayByteLength(source, index, lf.Src, lf.Dst);
                         if (bytes > 0)
                         {
                             extraRanges.Add((lf.Dst, Clamp(lf.Dst, lf.Dst + (uint)bytes)));
@@ -3316,6 +3291,169 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// A source packfile's objects, fixups and compounds, sorted and keyed for <see cref="CollectReachable"/>.
+        /// </summary>
+        /// <remarks>
+        /// The walk asks, for every object it reaches and every array in one, which fixups start inside a range, where
+        /// the next object starts and whether a field is a compound's instance array - and answered each by a scan of
+        /// the whole file, so a walk cost the reachable objects times everything in the source. A package's scratch
+        /// level holds every compound it carries: importing the 436 in one (into BSP_TORRENS) spent 40 s in the walk
+        /// alone. Fixups are visited in source-offset order rather than list order, which changes the order the walk
+        /// finds things in but not what it finds - the copy is laid out from the sets, sorted.
+        /// </remarks>
+        sealed class GraphIndex
+        {
+            public readonly Dictionary<uint, PackfileObject> ObjectsByOffset = new Dictionary<uint, PackfileObject>();
+
+            private readonly HavokPackfile _source;
+            private readonly uint[] _objectStarts;
+            private readonly GlobalFixup[] _globals;
+            private readonly uint[] _globalSrcs;
+            private readonly LocalFixup[] _locals;
+            private readonly uint[] _localSrcs;
+            //The array length guess reads the global fixups in list order; sorted, that is the same reading only when the list already was
+            private readonly bool _globalsInListOrder = true;
+            private readonly Dictionary<uint, List<StaticCompoundShape>> _compoundsAt = new Dictionary<uint, List<StaticCompoundShape>>();
+            private readonly HashSet<uint> _instanceArrayFields = new HashSet<uint>();
+            private static readonly List<StaticCompoundShape> NoCompounds = new List<StaticCompoundShape>();
+
+            public GraphIndex(HavokPackfile source)
+            {
+                _source = source;
+                for (int i = 0; i < source.Objects.Count; i++)
+                    ObjectsByOffset[source.Objects[i].DataOffset] = source.Objects[i];
+                _objectStarts = source.Objects.Select(o => o.DataOffset).Distinct().OrderBy(o => o).ToArray();
+
+                //OrderBy is stable: fixups at one offset keep their list order
+                _globals = source.GlobalFixups.OrderBy(o => o.Src).ToArray();
+                _globalSrcs = _globals.Select(o => o.Src).ToArray();
+                for (int g = 1; g < source.GlobalFixups.Count && _globalsInListOrder; g++)
+                    _globalsInListOrder = source.GlobalFixups[g].Src >= source.GlobalFixups[g - 1].Src;
+                _locals = source.LocalFixups.OrderBy(o => o.Src).ToArray();
+                _localSrcs = _locals.Select(o => o.Src).ToArray();
+
+                uint instancesArrayOffset = source.Header.PointerSize == 8 ? 0x38u : 0x20u;
+                for (int c = 0; c < source.StaticCompoundShapes.Count; c++)
+                {
+                    StaticCompoundShape compound = source.StaticCompoundShapes[c];
+                    if (!_compoundsAt.TryGetValue(compound.DataOffset, out List<StaticCompoundShape> at))
+                        _compoundsAt[compound.DataOffset] = at = new List<StaticCompoundShape>();
+                    at.Add(compound);
+                    _instanceArrayFields.Add(compound.DataOffset + instancesArrayOffset);
+                }
+            }
+
+            /// <summary>The global fixups whose source lies in [start, end).</summary>
+            public IEnumerable<GlobalFixup> GlobalsIn(uint start, uint end)
+            {
+                for (int i = FirstAtOrAfter(_globalSrcs, start); i < _globals.Length && _globalSrcs[i] < end; i++)
+                    yield return _globals[i];
+            }
+
+            /// <summary>The local fixups whose source lies in [start, end).</summary>
+            public IEnumerable<LocalFixup> LocalsIn(uint start, uint end)
+            {
+                for (int i = FirstAtOrAfter(_localSrcs, start); i < _locals.Length && _localSrcs[i] < end; i++)
+                    yield return _locals[i];
+            }
+
+            /// <summary>The compounds that start at this offset, in list order.</summary>
+            public List<StaticCompoundShape> CompoundsAt(uint offset)
+            {
+                return _compoundsAt.TryGetValue(offset, out List<StaticCompoundShape> at) ? at : NoCompounds;
+            }
+
+            /// <summary>Whether this is the instances array field of a compound.</summary>
+            public bool IsInstanceArrayField(uint fieldOffset)
+            {
+                return _instanceArrayFields.Contains(fieldOffset);
+            }
+
+            /// <summary>How many bytes an array at this offset has before the next object starts.</summary>
+            public int RoomBeforeNextObject(uint arrayDataDst)
+            {
+                uint roomEnd = (uint)_source.DataPayload.Length;
+                int next = FirstAfter(_objectStarts, arrayDataDst);
+                if (next < _objectStarts.Length && _objectStarts[next] < roomEnd)
+                    roomEnd = _objectStarts[next];
+                return arrayDataDst >= roomEnd ? 0 : (int)(roomEnd - arrayDataDst);
+            }
+
+            /// <summary>
+            /// The first global fixup at or after an offset in list order, and the next one after it in list order that
+            /// sits further on - where the array length guess takes its stride from.
+            /// </summary>
+            public int FirstTwoGlobalsFrom(uint offset, out uint first, out uint second)
+            {
+                first = 0;
+                second = 0;
+                if (!_globalsInListOrder)
+                {
+                    int found = 0;
+                    for (int g = 0; g < _source.GlobalFixups.Count; g++)
+                    {
+                        uint src = _source.GlobalFixups[g].Src;
+                        if (src < offset)
+                            continue;
+                        if (found == 0) { first = src; found = 1; }
+                        else if (found == 1 && src > first)
+                        {
+                            second = src;
+                            return 2;
+                        }
+                    }
+                    return found;
+                }
+
+                int at = FirstAtOrAfter(_globalSrcs, offset);
+                if (at >= _globalSrcs.Length)
+                    return 0;
+                first = _globalSrcs[at];
+                int beyond = FirstAfter(_globalSrcs, first);
+                if (beyond >= _globalSrcs.Length)
+                    return 1;
+                second = _globalSrcs[beyond];
+                return 2;
+            }
+
+            private static int FirstAtOrAfter(uint[] sorted, uint value)
+            {
+                int lo = 0, hi = sorted.Length;
+                while (lo < hi)
+                {
+                    int mid = (lo + hi) >> 1;
+                    if (sorted[mid] < value) lo = mid + 1;
+                    else hi = mid;
+                }
+                return lo;
+            }
+
+            private static int FirstAfter(uint[] sorted, uint value)
+            {
+                int lo = 0, hi = sorted.Length;
+                while (lo < hi)
+                {
+                    int mid = (lo + hi) >> 1;
+                    if (sorted[mid] <= value) lo = mid + 1;
+                    else hi = mid;
+                }
+                return lo;
+            }
+        }
+
+        /* Built once per walk - or once per port, on a source that keeps its boundaries cached (CacheRangeBoundaries:
+           a port only reads it) */
+        static GraphIndex GraphIndexOf(HavokPackfile source)
+        {
+            if (source.CacheRangeBoundaries && source._cachedGraphIndex != null)
+                return source._cachedGraphIndex;
+            GraphIndex index = new GraphIndex(source);
+            if (source.CacheRangeBoundaries)
+                source._cachedGraphIndex = index;
+            return index;
+        }
+
+        /// <summary>
         /// An array's data cannot run into the next object, so no inferred length may either. The
         /// stride guess below borrows the gap between the first two global fixups at or after the
         /// array, which for an array with no internal pointers belong to some later object entirely
@@ -3323,28 +3461,15 @@ namespace CATHODE
         /// did so differently per pointer width - so the two widths imported different object sets
         /// from structurally identical sources.
         /// </summary>
-        static int ClampArrayToNextObject(HavokPackfile source, uint arrayDataDst, int bytes)
+        static int ClampArrayToNextObject(GraphIndex index, uint arrayDataDst, int bytes)
         {
             if (bytes <= 0)
                 return bytes;
-            int room = RoomBeforeNextObject(source, arrayDataDst);
+            int room = index.RoomBeforeNextObject(arrayDataDst);
             return bytes > room ? room : bytes;
         }
 
-        /// <summary>How many bytes an array at this offset has before the next object starts.</summary>
-        static int RoomBeforeNextObject(HavokPackfile source, uint arrayDataDst)
-        {
-            uint roomEnd = (uint)source.DataPayload.Length;
-            for (int i = 0; i < source.Objects.Count; i++)
-            {
-                uint off = source.Objects[i].DataOffset;
-                if (off > arrayDataDst && off < roomEnd)
-                    roomEnd = off;
-            }
-            return arrayDataDst >= roomEnd ? 0 : (int)(roomEnd - arrayDataDst);
-        }
-
-        static int InferArrayByteLength(HavokPackfile source, uint arrayFieldSrc, uint arrayDataDst)
+        static int InferArrayByteLength(HavokPackfile source, GraphIndex index, uint arrayFieldSrc, uint arrayDataDst)
         {
             int ptrSize = source.Header.PointerSize;
             int sizePos = (int)arrayFieldSrc + ptrSize;
@@ -3355,26 +3480,11 @@ namespace CATHODE
                 return 0;
 
             // Prefer stride implied by consecutive global fixups in the array.
-            uint first = 0;
-            uint second = 0;
-            int found = 0;
-            for (int g = 0; g < source.GlobalFixups.Count; g++)
-            {
-                uint src = source.GlobalFixups[g].Src;
-                if (src < arrayDataDst)
-                    continue;
-                if (found == 0) { first = src; found = 1; }
-                else if (found == 1 && src > first)
-                {
-                    second = src;
-                    found = 2;
-                    break;
-                }
-            }
+            int found = index.FirstTwoGlobalsFrom(arrayDataDst, out uint first, out uint second);
             if (found == 2)
             {
                 uint stride = second - first;
-                int room = RoomBeforeNextObject(source, arrayDataDst);
+                int room = index.RoomBeforeNextObject(arrayDataDst);
                 /* Those two fixups only describe this array if they sit inside it, and a stride that
                  * makes the array overrun the next object was borrowed from a later object entirely.
                  * Reject the guess instead of truncating it: truncation still copies whatever the
@@ -3390,16 +3500,11 @@ namespace CATHODE
             if (count * instanceStride < source.DataPayload.Length)
             {
                 // If array field is the instances field of a compound, instance stride fits.
-                for (int c = 0; c < source.StaticCompoundShapes.Count; c++)
-                {
-                    StaticCompoundShape compound = source.StaticCompoundShapes[c];
-                    int instancesArrayOffset = ptrSize == 8 ? 0x38 : 0x20;
-                    if (arrayFieldSrc == compound.DataOffset + (uint)instancesArrayOffset)
-                        return ClampArrayToNextObject(source, arrayDataDst, count * instanceStride);
-                }
+                if (index.IsInstanceArrayField(arrayFieldSrc))
+                    return ClampArrayToNextObject(index, arrayDataDst, count * instanceStride);
             }
 
-            return ClampArrayToNextObject(source, arrayDataDst, count * ptrSize);
+            return ClampArrayToNextObject(index, arrayDataDst, count * ptrSize);
         }
 
         static List<(uint Start, uint End)> MergeRanges(List<(uint Start, uint End)> ranges)
@@ -3424,36 +3529,38 @@ namespace CATHODE
             return merged;
         }
 
+        /* The bytes of the extras that no object range covers, merged. The object ranges are merged first, so each extra
+           is cut against the few that reach it, found by binary search - cutting every extra by every object, a list
+           apiece, cost a port of a package's 436 compounds 14 s. MergeRanges gives a set of bytes one form whichever way
+           it was cut. */
         static List<(uint Start, uint End)> SubtractObjectRanges(
             List<(uint Start, uint End)> extras,
             List<(uint Start, uint End, PackfileObject Obj)> objects)
         {
+            List<(uint Start, uint End)> covered = MergeRanges(objects.Select(o => (o.Start, o.End)).ToList());
             var result = new List<(uint Start, uint End)>();
             for (int i = 0; i < extras.Count; i++)
             {
                 uint start = extras[i].Start;
                 uint end = extras[i].End;
-                var pieces = new List<(uint Start, uint End)> { (start, end) };
-                for (int o = 0; o < objects.Count; o++)
+
+                //The first covered range that ends after this extra starts
+                int lo = 0, hi = covered.Count;
+                while (lo < hi)
                 {
-                    uint os = objects[o].Start, oe = objects[o].End;
-                    var next = new List<(uint Start, uint End)>();
-                    for (int p = 0; p < pieces.Count; p++)
-                    {
-                        uint ps = pieces[p].Start, pe = pieces[p].End;
-                        if (oe <= ps || os >= pe)
-                        {
-                            next.Add((ps, pe));
-                            continue;
-                        }
-                        if (ps < os)
-                            next.Add((ps, os));
-                        if (oe < pe)
-                            next.Add((oe, pe));
-                    }
-                    pieces = next;
+                    int mid = (lo + hi) >> 1;
+                    if (covered[mid].End <= start) lo = mid + 1;
+                    else hi = mid;
                 }
-                result.AddRange(pieces);
+                for (int c = lo; c < covered.Count && covered[c].Start < end; c++)
+                {
+                    if (start < covered[c].Start)
+                        result.Add((start, covered[c].Start));
+                    if (covered[c].End > start)
+                        start = covered[c].End;
+                }
+                if (start < end)
+                    result.Add((start, end));
             }
             return MergeRanges(result);
         }
