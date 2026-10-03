@@ -4606,6 +4606,9 @@ namespace CathodeLib
             if (mvr == null || mvr.RenderableElements == null || mvr.RenderableElements.Count == 0)
                 return;
 
+            if (mvr.RenderableElements.Count > RenderableElements.MaxElementsPerInstance)
+                WarnLongRun(entity, mvr.RenderableElements.Count);
+
             if (entity != null)
             {
                 ApplyMoverFlags(mvr, entity, isTemplate);
@@ -4628,6 +4631,22 @@ namespace CathodeLib
                     mvr.RenderableElements = _level.RenderableElements.EnsureRegistered(mvr.RenderableElements);
                 _level.Movers.Entries.Add(mvr);
             }
+        }
+
+        /* A run longer than the game can hold draws part of its mesh and says nothing (see
+           RenderableElements.MaxElementsPerInstance) - once per entity, however often it is placed */
+        private readonly HashSet<(ShortGuid, ShortGuid)> _longRunsWarned = new HashSet<(ShortGuid, ShortGuid)>();
+
+        private void WarnLongRun(InstancedEntity entity, int length)
+        {
+            lock (_longRunsWarned)
+            {
+                if (!_longRunsWarned.Add((entity?.Composite?.shortGUID ?? ShortGuid.Invalid, entity?.Entity?.shortGUID ?? ShortGuid.Invalid)))
+                    return;
+            }
+            Warn((entity == null ? "a renderable" : DescribeForLog(entity)) + " draws " + length + " submeshes, but the game draws no more than " +
+                 RenderableElements.MaxElementsPerInstance + " for one entity: in game only the first " + (length % 256) + " will show. " +
+                 "Split the model into components of " + RenderableElements.MaxElementsPerInstance + " submeshes or fewer and place each one separately.");
         }
 
         //Utility to get the correct zone ID for a collision map entry

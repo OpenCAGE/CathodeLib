@@ -19,6 +19,8 @@ namespace CATHODE
         public List<Element> Entries = new List<Element>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
+        public const int MaxElementsPerInstance = 255;
+
         protected override bool HandlesLoadingManually => true;
         private Models _models;
         private Materials _materials;
