@@ -306,6 +306,104 @@ namespace CathodeLib
             return Skeletons.FirstOrDefault(x => string.Equals(x.Name, file, StringComparison.OrdinalIgnoreCase));
         }
 
+        /// <summary>
+        /// The rig a skinned character mesh was built for - the one whose bones sit where the mesh's
+        /// weights say they do. Null if the mesh isn't skinned, or no rig in the PAK fits it.
+        ///
+        /// A mesh only poses properly on its own rig: its weights are bone numbers, and two rigs number
+        /// their bones differently, so posing ASH's mesh with MALE (the rig ASH's clips are authored
+        /// on) tears it apart. Anything playing a clip on a mesh wants this rig, with the clip
+        /// retargeted onto it the way the game does it.
+        ///
+        /// Many of the human rigs share a layout, so several fit a mesh - but a rig with the right
+        /// numbering and someone else's proportions still bends the mesh about joints that aren't
+        /// where its own are. The rig the mesh is filed under wins (CHARACTERS\ASH\model0 is ASH,
+        /// HEAD_ALBERT is ALBERT), then the closest fit. <paramref name="prefer"/> only settles a tie:
+        /// FEMALEFP and SPACESUITFP, or SAMUELS and SPACESUIT_SAMUELS, are copies of one another and
+        /// score the same, and then the rig already in use, or the one a clip was authored on, will do.
+        /// </summary>
+        public Skeleton RigFor(Models.CS2 model, params string[] prefer)
+        {
+            if (model == null || Skeleton.RequiredBoneCount(model) == 0) return null;
+
+            List<Skeleton> rigs = Skeletons.Select(x => x.Skeleton ?? x.Skeleton64).Where(x => x != null).ToList();
+            List<float> fits = Skeleton.ScoreFits(model, rigs);
+            List<int> order = Enumerable.Range(0, rigs.Count)
+                .Where(i => fits[i] >= 0 && fits[i] <= Skeleton.FitLimit)
+                .OrderBy(i => fits[i]).ToList();
+            if (order.Count == 0) return null;
+            List<Skeleton> fitting = order.Select(i => rigs[i]).ToList();
+
+            MeshNames(model, out string folder, out string file);
+            Skeleton named = fitting.FirstOrDefault(x => string.Equals(x.Name, folder, StringComparison.OrdinalIgnoreCase)
+                                                      || string.Equals(x.Name, file, StringComparison.OrdinalIgnoreCase))
+                          ?? fitting.Where(x => file.EndsWith("_" + x.Name, StringComparison.OrdinalIgnoreCase))
+                                    .OrderByDescending(x => x.Name.Length).FirstOrDefault();
+            if (named != null) return named;
+
+            /* The rigs that tie are copies of one another (FEMALEFP and SPACESUITFP agree to 0.00 cm on
+             * every bone) and score the same. Anything else is a different character: ASH and MARLOW_GP
+             * fit ASH's mesh only 0.1 mm apart and still put the face 1.6 cm apart. */
+            List<Skeleton> tied = order.Where(i => fits[i] - fits[order[0]] <= 0.00001f).Select(i => rigs[i]).ToList();
+            foreach (string name in prefer ?? new string[0])
+            {
+                Skeleton preferred = tied.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (preferred != null) return preferred;
+            }
+            return fitting[0];
+        }
+
+        /// <summary>
+        /// Whether a mesh is filed under a rig's name: CHARACTERS\ASH\model0 under ASH, HEAD_ALBERT under
+        /// ALBERT. Fit can't tell apart the rigs that share a layout - a character's mesh fits ninety of
+        /// them within a tenth of a millimetre of each other - so this is the only thing that says which
+        /// of those is its own, and when <see cref="RigFor"/> picked one by fit alone.
+        /// </summary>
+        public static bool NamedFor(Models.CS2 model, string rig)
+        {
+            if (model == null || string.IsNullOrEmpty(rig)) return false;
+            MeshNames(model, out string folder, out string file);
+            return string.Equals(rig, folder, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rig, file, StringComparison.OrdinalIgnoreCase)
+                || file.EndsWith("_" + rig, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Whether a mesh already on <paramref name="held"/> is as well off there as on <paramref name="own"/>,
+        /// the rig <see cref="RigFor"/> picked for it - so whatever chose <paramref name="held"/> (a set's own
+        /// rig, or the one a clip is authored on) can keep it.
+        ///
+        /// Fit only separates rigs by their numbering, not by sex or build: male trousers, skinned to MALE's
+        /// numbering, fit the female reference rigs 1.2 cm closer than they fit MALE, and the closest of a
+        /// hundred-odd rigs by a fraction of a millimetre is no more theirs than MALE or the NPC rig wearing
+        /// them. Measured over the NPC outfit parts and heads, the rigs that number a part's bones the same
+        /// way and share its build all fit within 2 cm of the best; any other sits 3.5 cm or more behind it
+        /// (male arms on FEMALENPC 6.8 cm, a woman's shirt on a female NPC's head rig 7 cm, a man's head on
+        /// a woman's rig 4 cm), which is a visibly bent mesh. A mesh filed under <paramref name="own"/>'s
+        /// name always goes to it.
+        /// </summary>
+        public static bool KeepsRig(Models.CS2 model, Skeleton held, Skeleton own)
+        {
+            if (model == null || held == null) return false;
+            if (own == null || ReferenceEquals(held, own)) return true;
+            if (NamedFor(model, own.Name)) return false;
+            if (held.Bones.Count < Skeleton.RequiredBoneCount(model)) return false;
+
+            float fit = held.ScoreFit(model);
+            return fit >= 0 && fit <= Skeleton.FitLimit && fit - own.ScoreFit(model) <= SameLayoutMargin;
+        }
+
+        /// <summary>How much further than the best rig another rig can sit from a mesh's weights and still be as good a home for it. See <see cref="KeepsRig"/>.</summary>
+        public const float SameLayoutMargin = 0.025f;
+
+        /* The folder a mesh is filed in and its own file name, e.g. ASH and model0 */
+        private static void MeshNames(Models.CS2 model, out string folder, out string file)
+        {
+            string path = (model.Name ?? "").Replace('/', '\\');
+            file = System.IO.Path.GetFileNameWithoutExtension(path);
+            folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path) ?? "") ?? "";
+        }
+
         /// <summary>Find the retargeting data that plays <paramref name="from"/>'s animation on <paramref name="to"/>.</summary>
         public MappingAsset GetMapping(string from, string to)
         {

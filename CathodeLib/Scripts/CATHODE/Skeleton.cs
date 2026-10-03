@@ -648,9 +648,70 @@ namespace CATHODE
         /// </summary>
         public float ScoreFit(Models.CS2 model)
         {
+            if (model == null || Bones.Count < RequiredBoneCount(model)) return -1;
+            return ScoreFit(WeightCentres(model));
+        }
+
+        /// <summary>
+        /// The largest <see cref="ScoreFit(Models.CS2)"/> that still means the mesh was skinned to this
+        /// skeleton. Measured across the shipped characters: own rig 2.5 to 7.8 cm, any rig with a
+        /// different bone numbering 22.9 cm and up.
+        /// </summary>
+        public const float FitLimit = 0.15f;
+
+        /// <summary>
+        /// <see cref="ScoreFit(Models.CS2)"/> for several skeletons at once, answered in the order given.
+        /// The model's weights are read once rather than once per skeleton, which is nearly all of the
+        /// cost: asking the slow way which of the hundred-odd human rigs a character mesh belongs to
+        /// takes about a second.
+        /// </summary>
+        public static List<float> ScoreFits(Models.CS2 model, IList<Skeleton> skeletons)
+        {
+            List<float> scores = new List<float>(skeletons.Count);
+            int required = RequiredBoneCount(model);
+            Dictionary<int, Vector3> centres = null;
+            foreach (Skeleton skeleton in skeletons)
+            {
+                if (model == null || skeleton == null || skeleton.Bones.Count < required) { scores.Add(-1); continue; }
+                if (centres == null) centres = WeightCentres(model);
+                scores.Add(skeleton.ScoreFit(centres));
+            }
+            return scores;
+        }
+
+        private float ScoreFit(Dictionary<int, Vector3> centres)
+        {
+            return centres.Count == 0 ? -1 : ScoreFit(centres, GetBindPose());
+        }
+
+        /// <summary>
+        /// Mean distance in metres from each bone, posed as given, to where the vertices weighted to it
+        /// sit (<see cref="WeightCentres"/>) - <see cref="ScoreFit(Models.CS2)"/> against any pose of the
+        /// skeleton, such as <see cref="GetModelSpacePose"/> for a rig that sits in its prop's space.
+        /// Returns -1 if nothing is weighted, or a weighted bone isn't in the pose.
+        /// </summary>
+        public static float ScoreFit(Dictionary<int, Vector3> centres, List<Matrix4x4> pose)
+        {
+            if (centres.Count == 0) return -1;
+
+            double total = 0;
+            foreach (KeyValuePair<int, Vector3> entry in centres)
+            {
+                if (entry.Key < 0 || entry.Key >= pose.Count) return -1;
+                total += (entry.Value - pose[entry.Key].Translation).Length();
+            }
+            return (float)(total / centres.Count);
+        }
+
+        /// <summary>
+        /// Where the vertices weighted to each bone sit on average, by bone index - empty for a mesh with
+        /// no weights. Reading these is nearly all of the cost of scoring a fit, so read them once to
+        /// score one mesh against several skeletons or poses.
+        /// </summary>
+        public static Dictionary<int, Vector3> WeightCentres(Models.CS2 model)
+        {
             Dictionary<int, Vector3> weighted = new Dictionary<int, Vector3>();
             Dictionary<int, float> totals = new Dictionary<int, float>();
-            if (model == null || Bones.Count < RequiredBoneCount(model)) return -1;
 
             foreach (Models.CS2.Component component in model.Components)
                 foreach (Models.CS2.Component.LOD lod in component.LODs)
@@ -680,16 +741,10 @@ namespace CATHODE
                         }
                     }
 
-            if (weighted.Count == 0) return -1;
-
-            List<Matrix4x4> pose = GetBindPose();
-            double total = 0;
+            Dictionary<int, Vector3> centres = new Dictionary<int, Vector3>(weighted.Count);
             foreach (KeyValuePair<int, Vector3> entry in weighted)
-            {
-                if (entry.Key < 0 || entry.Key >= pose.Count) return -1;
-                total += (entry.Value / totals[entry.Key] - pose[entry.Key].Translation).Length();
-            }
-            return (float)(total / weighted.Count);
+                centres.Add(entry.Key, entry.Value / totals[entry.Key]);
+            return centres;
         }
         #endregion
 

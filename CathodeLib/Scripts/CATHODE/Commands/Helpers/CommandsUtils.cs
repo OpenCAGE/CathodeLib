@@ -656,6 +656,7 @@ namespace CATHODE.Scripting
 
         /// <summary>
         /// Add all parameters to a given entity with default values (NOTE: you only need to pass in composite if Entity is an Alias or Variable, otherwise feel free to pass null)
+        /// Only parameters of the given variants are added, bar a function's own data, which is added whatever the variants: its default 'resource' and on-entity resources, and an empty 'points' path on a SplinePath that has none
         /// </summary>
         public void AddAllDefaultParameters(Entity entity, Composite composite, bool overwrite = true, ParameterVariant variants = ParameterVariant.STATE_PARAMETER | ParameterVariant.INPUT_PIN | ParameterVariant.PARAMETER, bool includeInherited = true)
         {
@@ -824,6 +825,7 @@ namespace CATHODE.Scripting
                     if (functionType == null) break;
                 }
                 ApplyDefaultResourceParameter(baseEntity, targetEntity, overwrite, includeInherited);
+                ApplyDefaultSplinePath(baseEntity, targetEntity, includeInherited);
                 ApplyDefaultEntityResources(baseEntity, targetEntity);
             }
             else
@@ -891,6 +893,39 @@ namespace CATHODE.Scripting
                     bool own = carried && !fromTemplate;
                     targetEntity.AddParameter(ShortGuids.resource, defaultValue, ParameterVariant.INTERNAL, true, bindResourceToEntity: !own);
                     return;
+                }
+
+                if (!includeInherited) break;
+                functionType = GetInheritedFunction(functionType.Value);
+            }
+        }
+
+        /// <summary>
+        /// Give a SplinePath its own path (an empty spline) when it has none, whichever variants were asked for
+        /// </summary>
+        private void ApplyDefaultSplinePath(FunctionEntity baseEntity, Entity targetEntity, bool includeInherited)
+        {
+            /* A SplinePath's points are INTERNAL, which the defaults passes leave out: most INTERNAL parameters are
+               indices the level build writes (system_index, environmentmap_index) or values only the engine sets, so
+               adding them would invent data. The points are the entity's own data instead - stored on all 11,960
+               SplinePaths across the shipped levels, never wired - and without them a new SplinePath had no row to
+               author its path on. Only the entity itself gets one: a proxy or alias showing a SplinePath reads the
+               path from it, and a copy would be an override that never follows the original. SplinePath.points is
+               the only INTERNAL spline in the definitions, and nothing inherits from SplinePath, so every other
+               function returns before the definitions are read: this runs on every defaults pass. */
+            if (!(targetEntity is FunctionEntity) || baseEntity.function != FunctionType.SplinePath)
+                return;
+
+            FunctionType? functionType = FunctionType.SplinePath;
+            while (functionType != null)
+            {
+                foreach ((ShortGuid guid, ParameterVariant variant, DataType type) in GetAllParameters(functionType.Value))
+                {
+                    if (variant != ParameterVariant.INTERNAL || type != DataType.SPLINE || targetEntity.GetParameter(guid) != null)
+                        continue;
+                    ParameterData path = CreateDefaultParameterData(functionType.Value, guid, ParameterVariant.INTERNAL);
+                    if (path != null)
+                        targetEntity.AddParameter(guid, path, ParameterVariant.INTERNAL);
                 }
 
                 if (!includeInherited) break;
@@ -1552,6 +1587,15 @@ namespace CATHODE.Scripting
                                         return parameter == ShortGuids.resource ? new cResource((ResourceType)reader.ReadInt32()) : null;
                                     else
                                         reader.BaseStream.Position += 4;
+                                    break;
+                                case DataType.SPLINE:
+                                    /* The only spline parameter a level stores a value on is SplinePath's own points
+                                       (INTERNAL, stored on all 329 SplinePaths in BSP_TORRENS). The other 26 are input
+                                       pins wired to a SplinePath, and none of BSP_TORRENS's 439 carries a value. A float
+                                       stood in for both: a new TRAV_ or CameraPath entity got a number row on each pin,
+                                       written into the pak, and Reset on a points row swapped the spline for a 0. */
+                                    if (isCorrectParam)
+                                        return variant == ParameterVariant.INPUT_PIN ? null : new cSpline();
                                     break;
                                 default:
                                     /* Objects, zones, reference frames and animation infos are pointers: the
