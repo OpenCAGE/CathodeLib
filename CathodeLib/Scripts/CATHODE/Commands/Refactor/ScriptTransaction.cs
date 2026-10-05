@@ -238,6 +238,7 @@ namespace CATHODE.Scripting.Refactor
             private List<EntityConnector> _links;
             private List<(Parameter parameter, ShortGuid name, ParameterData content, ParameterVariant variant)> _parameters;
             private ShortGuid[] _path;
+            private ShortGuid _function;            //what a function entity is (a type, or the composite an instance places)
             private ShortGuid _proxyFunction;
             private List<TriggerSequence.SequenceEntry> _sequence;
             private List<TriggerSequence.MethodEntry> _methods;
@@ -250,6 +251,8 @@ namespace CATHODE.Scripting.Refactor
                 state._links = new List<EntityConnector>(entity.childLinks);
                 //The Parameter objects are kept, not copied: the inspector holds them, and a restore should leave it holding live ones
                 state._parameters = entity.parameters.Select(o => (o, o.name, o.content, o.variant)).ToList();
+                if (entity is FunctionEntity function)
+                    state._function = function.function;
                 switch (entity)
                 {
                     case AliasEntity alias:
@@ -284,6 +287,8 @@ namespace CATHODE.Scripting.Refactor
                     saved.parameter.variant = saved.variant;
                     entity.parameters.Add(saved.parameter);
                 }
+                if (entity is FunctionEntity function)
+                    function.function = _function;
                 switch (entity)
                 {
                     case AliasEntity alias:
@@ -319,6 +324,9 @@ namespace CATHODE.Scripting.Refactor
                     if (!ReferenceEquals(_parameters[i].content, other._parameters[i].content)) return false;
                 }
                 if (!SamePath(_path, other._path))
+                    return false;
+                //An instance switched to another composite is a different thing to place
+                if (_function != other._function)
                     return false;
                 return true;
             }
