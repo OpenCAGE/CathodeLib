@@ -595,7 +595,7 @@ namespace CATHODE.Scripting.Refactor
                 HashSet<ShortGuid> staying = new HashSet<ShortGuid>(P.GetEntities().Select(o => o.shortGUID));
                 staying.Remove(In.shortGUID);
                 List<FlowgraphMeta> withMoved = _pageSource.PagesCarryLinks(P) ? sourcePages.Where(o => o.Nodes.Any(n => _plan._movingIds.Contains(n.EntityGUID))).ToList() : new List<FlowgraphMeta>();
-                PageRewriter newPages = new PageRewriter(N, withMoved);
+                PageRewriter newPages = new PageRewriter(N, withMoved, _plan._ctx.Commands);
                 newPages.IndexDrawnConnections();
                 newPages.RemoveNodes(staying);
                 newPages.Reconcile(_newHints, RefactorContext.LeafName(N));
@@ -603,7 +603,7 @@ namespace CATHODE.Scripting.Refactor
 
                 if (parentPages != null)
                 {
-                    PageRewriter pages = new PageRewriter(P, parentPages);
+                    PageRewriter pages = new PageRewriter(P, parentPages, _plan._ctx.Commands);
                     pages.IndexDrawnConnections();
                     pages.RemoveNodes(_plan._movingIds);
                     pages.Reconcile(_parentHints, RefactorContext.LeafName(P));

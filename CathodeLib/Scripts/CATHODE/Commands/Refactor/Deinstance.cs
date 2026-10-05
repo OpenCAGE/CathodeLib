@@ -1574,7 +1574,7 @@ namespace CATHODE.Scripting.Refactor
                 //P: its own pages, plus C's pages (for its copies), then drawn to match P's links
                 if (Carries(P))
                 {
-                    PageRewriter pages = new PageRewriter(P, _pageSource.GetPages(P));
+                    PageRewriter pages = new PageRewriter(P, _pageSource.GetPages(P), _ctx.Commands);
                     List<FlowgraphMeta> contentPages = Carries(C) ? _pageSource.GetPages(C) : new List<FlowgraphMeta>();
                     string name = _ctx.NameOf(P, I);
                     HashSet<ShortGuid> pins = new HashSet<ShortGuid>(C.variables_dictionary.Keys);
@@ -1615,7 +1615,7 @@ namespace CATHODE.Scripting.Refactor
 
             private void AboveLevelPages(Composite composite)
             {
-                PageRewriter pages = new PageRewriter(composite, _pageSource.GetPages(composite));
+                PageRewriter pages = new PageRewriter(composite, _pageSource.GetPages(composite), _ctx.Commands);
                 pages.IndexDrawnConnections();
                 if (_removedNodes.TryGetValue(composite, out HashSet<ShortGuid> removed))
                     pages.RemoveNodes(removed);

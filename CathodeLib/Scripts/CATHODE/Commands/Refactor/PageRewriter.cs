@@ -34,12 +34,14 @@ namespace CATHODE.Scripting.Refactor
         /// <summary>
         /// Pages that draw exactly a composite's links, starting from the pages it has: what they already draw
         /// stays where it is, connections with no link behind them go, and every link not drawn is drawn beside
-        /// a node of one of its ends, or else laid out in columns on the page named <paramref name="fallbackPageName"/>.
-        /// The pages passed in are not changed. A composite with no links can come back with no pages.
+        /// a node of one of its ends, or else laid out (<see cref="PageArranger"/>) on the page named
+        /// <paramref name="fallbackPageName"/> - with each pin on the side the editor draws it, when
+        /// <paramref name="commands"/> is given to tell. The pages passed in are not changed. A composite with
+        /// no links can come back with no pages.
         /// </summary>
-        public static List<FlowgraphMeta> DrawLinks(Composite composite, IEnumerable<FlowgraphMeta> pages, string fallbackPageName)
+        public static List<FlowgraphMeta> DrawLinks(Composite composite, IEnumerable<FlowgraphMeta> pages, string fallbackPageName, Commands commands = null)
         {
-            PageRewriter rewriter = new PageRewriter(composite, pages ?? Enumerable.Empty<FlowgraphMeta>());
+            PageRewriter rewriter = new PageRewriter(composite, pages ?? Enumerable.Empty<FlowgraphMeta>(), commands);
             rewriter.Reconcile(Enumerable.Empty<PageHint>(), fallbackPageName);
             return rewriter.Pages;
         }
@@ -53,7 +55,7 @@ namespace CATHODE.Scripting.Refactor
     /// every link is drawn exactly once across them. So after a refactor the pages have to hold exactly
     /// the composite's links: connections whose link has gone are dropped, and every link not yet drawn
     /// is drawn - next to what it replaced where the refactor says what that was, otherwise beside a node
-    /// of one of its ends, otherwise on a page of its own laid out in columns.
+    /// of one of its ends, otherwise on a page of its own laid out by <see cref="PageArranger"/>.
     /// </remarks>
     internal sealed class PageRewriter
     {
@@ -61,12 +63,15 @@ namespace CATHODE.Scripting.Refactor
         private const int RowHeight = 200;
 
         private readonly Composite _composite;
+        private readonly Commands _commands;
         private readonly List<FlowgraphMeta> _pages;
         private readonly Dictionary<LinkKey, List<(FlowgraphMeta page, NodeMeta owner, NodeMeta target)>> _drawn = new Dictionary<LinkKey, List<(FlowgraphMeta, NodeMeta, NodeMeta)>>();
 
-        public PageRewriter(Composite composite, IEnumerable<FlowgraphMeta> pages)
+        /// <param name="commands">The script the composite is in, if to hand: it says which side of a node each pin is drawn on, for laying out a page of new nodes.</param>
+        public PageRewriter(Composite composite, IEnumerable<FlowgraphMeta> pages, Commands commands = null)
         {
             _composite = composite;
+            _commands = commands;
             _pages = pages.Select(o => Copy(o, composite.shortGUID)).ToList();
         }
 
@@ -295,7 +300,10 @@ namespace CATHODE.Scripting.Refactor
             return false;
         }
 
-        /// <summary>Links whose ends have no node anywhere go on one page, laid out in columns by how far down the chain of links each entity sits.</summary>
+        /// <summary>
+        /// Links whose ends have no node anywhere go on one page: the nodes they need are added below whatever
+        /// the page already holds and laid out together by <see cref="PageArranger"/>.
+        /// </summary>
         private void DrawOnFallbackPage(List<LinkKey> links, string name)
         {
             FlowgraphMeta page = _pages.FirstOrDefault(o => o.Name == name);
@@ -305,46 +313,41 @@ namespace CATHODE.Scripting.Refactor
                 _pages.Add(page);
             }
 
-            List<ShortGuid> entities = new List<ShortGuid>();
-            foreach (LinkKey link in links)
-            {
-                if (!entities.Contains(link.Owner)) entities.Add(link.Owner);
-                if (!entities.Contains(link.Target)) entities.Add(link.Target);
-            }
-            Dictionary<ShortGuid, int> depth = entities.ToDictionary(o => o, o => 0);
-            for (int pass = 0; pass < entities.Count; pass++)
-            {
-                bool changed = false;
-                foreach (LinkKey link in links)
-                {
-                    if (link.Owner == link.Target) continue;
-                    if (depth[link.Target] < depth[link.Owner] + 1 && depth[link.Owner] + 1 < entities.Count)
-                    {
-                        depth[link.Target] = depth[link.Owner] + 1;
-                        changed = true;
-                    }
-                }
-                if (!changed) break;
-            }
+            Point start = page.Nodes.Count == 0 ? new Point(0, 0) : new Point(page.Nodes.Min(o => o.Position.X), page.Nodes.Max(o => o.Position.Y) + RowHeight * 2);
+            HashSet<NodeMeta> before = new HashSet<NodeMeta>(page.Nodes);
 
-            int top = page.Nodes.Count == 0 ? 0 : page.Nodes.Max(o => o.Position.Y) + RowHeight * 2;
-            Dictionary<int, int> rows = new Dictionary<int, int>();
-            Dictionary<ShortGuid, NodeMeta> placed = new Dictionary<ShortGuid, NodeMeta>();
-            foreach (ShortGuid entity in entities)
+            //A variable (one of the composite's pins) joined to several entities gets a node beside each of them, as the
+            //shipped pages draw them, rather than one node with connections fanning out across the page
+            Dictionary<ShortGuid, HashSet<ShortGuid>> partners = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+            foreach (LinkKey link in links)
             {
-                NodeMeta existing = page.Nodes.FirstOrDefault(o => o.EntityGUID == entity);
-                if (existing != null)
+                if (link.Owner == link.Target) continue;
+                foreach ((ShortGuid entity, ShortGuid other) in new[] { (link.Owner, link.Target), (link.Target, link.Owner) })
                 {
-                    placed[entity] = existing;
-                    continue;
+                    if (!(_composite.GetEntityByID(entity) is VariableEntity) || before.Any(o => o.EntityGUID == entity)) continue;
+                    if (!partners.TryGetValue(entity, out HashSet<ShortGuid> set)) partners.Add(entity, set = new HashSet<ShortGuid>());
+                    set.Add(other);
                 }
-                int column = depth[entity];
-                rows.TryGetValue(column, out int row);
-                rows[column] = row + 1;
-                placed[entity] = NodeFor(page, entity, new Point(column * ColumnWidth, top + row * RowHeight));
+            }
+            bool Split(ShortGuid entity) => partners.TryGetValue(entity, out HashSet<ShortGuid> set) && set.Count > 1;
+
+            Dictionary<(ShortGuid entity, ShortGuid beside), NodeMeta> placed = new Dictionary<(ShortGuid, ShortGuid), NodeMeta>();
+            NodeMeta Place(ShortGuid entity, ShortGuid other)
+            {
+                (ShortGuid, ShortGuid) key = (entity, Split(entity) ? other : ShortGuid.Invalid);
+                if (!placed.TryGetValue(key, out NodeMeta node))
+                    placed[key] = node = (Split(entity) ? null : page.Nodes.FirstOrDefault(o => o.EntityGUID == entity)) ?? NewNode(page, entity, start, findSpace: false);
+                return node;
             }
             foreach (LinkKey link in links)
-                Connect(page, placed[link.Owner], placed[link.Target], link);
+                Connect(page, Place(link.Owner, link.Target), Place(link.Target, link.Owner), link);
+
+            //Everything just added (second nodes for doubled links too) is laid out together, from where the new nodes start -
+            //with a node of its own for any data link that would otherwise cross the page, as the shipped pages draw them
+            List<NodeMeta> added = page.Nodes.Where(o => !before.Contains(o)).ToList();
+            foreach (NodeMeta node in added)
+                node.Position = start;
+            PageArranger.ArrangePage(_composite, page, _commands, added, pageOrder: true);
         }
 
         private NodeMeta NodeFor(FlowgraphMeta page, ShortGuid entity, Point at)
@@ -356,13 +359,13 @@ namespace CATHODE.Scripting.Refactor
             return NewNode(page, entity, at);
         }
 
-        private NodeMeta NewNode(FlowgraphMeta page, ShortGuid entity, Point at)
+        private NodeMeta NewNode(FlowgraphMeta page, ShortGuid entity, Point at, bool findSpace = true)
         {
             NodeMeta node = new NodeMeta()
             {
                 EntityGUID = entity,
                 NodeID = page.Nodes.Count == 0 ? 0 : page.Nodes.Max(o => o.NodeID) + 1,
-                Position = FreeSpot(page, at),
+                Position = findSpace ? FreeSpot(page, at) : at,
             };
             page.Nodes.Add(node);
             return node;
