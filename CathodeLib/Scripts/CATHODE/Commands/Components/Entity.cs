@@ -102,12 +102,6 @@ namespace CATHODE.Scripting.Internal
         }
         public List<Parameter> parameters = new List<Parameter>();
 
-        ~Entity()
-        {
-            childLinks.Clear();
-            parameters.Clear();
-        }
-
         /// <summary>
         /// Implements IComparable for searching
         /// </summary>
@@ -486,11 +480,6 @@ namespace CATHODE.Scripting
     {
         public FunctionEntity() : base(EntityVariant.FUNCTION) { }
         public FunctionEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.FUNCTION) { }
-
-        ~FunctionEntity()
-        {
-            resources.Clear();
-        }
 
         public FunctionEntity(string function) : base(EntityVariant.FUNCTION)
         {

@@ -21,11 +21,6 @@ namespace CATHODE
         public AnimationStrings(MemoryStream stream, string path = "") : base(stream, path) { }
         public AnimationStrings(byte[] data, string path = "") : base(data, path) { }
 
-        ~AnimationStrings()
-        {
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

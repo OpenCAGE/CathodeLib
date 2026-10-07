@@ -70,13 +70,6 @@ namespace CATHODE
             _textures = null;
         }
 
-        ~Movers()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -1056,13 +1049,6 @@ namespace CATHODE
                     hash = hash * 23 + Flags.Stationary.GetHashCode();
                     return hash;
                 }
-            }
-
-            ~MOVER_DESCRIPTOR()
-            {
-                GPUConstants = null;
-                RenderConstants = null;
-                Entity = null;
             }
         };
 #endregion

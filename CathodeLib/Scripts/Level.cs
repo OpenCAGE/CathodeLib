@@ -32,12 +32,6 @@ namespace CathodeLib
                 Animations = new Animation(new PAK2(root + "..\\..\\GLOBAL\\ANIMATION.PAK"), false);
         }
 
-        ~Global()
-        {
-            Textures = null;
-            Animations = null;
-        }
-
         /// <summary>
         /// A skeleton's bones, from the animation PAK. Returns null if it isn't there.
         /// </summary>
@@ -60,6 +54,11 @@ namespace CathodeLib
     /// <summary>
     /// A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all
     /// </summary>
+    /// <remarks>
+    /// A component stays usable after the Level is dropped: code that keeps only <see cref="Commands"/> can still save it.
+    /// Components hold the ones they write through (Commands holds the renderable elements, collision maps and environment
+    /// animations, for example), so a level's memory is freed once nothing refers to any of its components.
+    /// </remarks>
     public class Level
     {
         public Textures Textures;
@@ -116,18 +115,6 @@ namespace CathodeLib
             public SpottingPositions SpottingPositions;
             public SpottingPositions CrawlSpaceSpottingPositions;
             public AssaultPositions AssaultPositions;
-
-            ~State()
-            {
-                ExclusiveMaster = null;
-                Resource = null;
-
-                Cover = null;
-                NavMesh = null;
-                SpottingPositions = null;
-                CrawlSpaceSpottingPositions = null;
-                AssaultPositions = null;
-            }
         }
         public List<State> StateResources = new List<State>(); //State 0 loaded by default
 
@@ -201,63 +188,6 @@ namespace CathodeLib
 
             if (loadImmediately)
                 Load();
-        }
-
-        ~Level()
-        {
-            Materials?.ClearReferences();
-            Models?.ClearReferences();
-            RenderableElements?.ClearReferences();
-            Movers?.ClearReferences();
-            PathBarrierResources?.ClearReferences();
-            CollisionMaps?.ClearReferences();
-            PhysicsMaps?.ClearReferences();
-            Commands?.ClearReferences();
-            EnvironmentAnimations?.ClearReferences();
-
-            Textures = null;
-            Shaders = null;
-            WeightedCollisions = null;
-            MorphTargetDB = null;
-            Resources = null;
-            Materials = null;
-            Models = null;
-            RenderableElements = null;
-            Movers = null;
-            PathBarrierResources = null;
-            CollisionHKX = null;
-            CollisionHKX64 = null;
-            PhysicsHKX = null;
-            PhysicsHKX64 = null;
-            CollisionMaps = null;
-#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
-            RadiosityInstanceMap = null;
-            RadiosityCollisionMap = null;
-            RadiosityRuntime = null;
-#endif
-            AlphaLight = null;
-            AccessorySets = null;
-            Commands = null;
-            EnvironmentAnimations = null;
-            Lights = null;
-            OccluderTriangleBVH = null;
-            MaterialMappings = null;
-            PhysicsMaps = null;
-            SoundNodeNetwork = null;
-            SoundBankData = null;
-            SoundDialogueLookups = null;
-            SoundEnvironmentData = null;
-            SoundEventData = null;
-            BehaviorTreeDB = null;
-            GalaxyItems = null;
-            GalaxyDefinition = null;
-
-            _global = null;
-
-            StateResources?.Clear();
-            StateResources = null;
-            Strings?.Clear();
-            Strings = null;
         }
 
         /// <summary>

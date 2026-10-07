@@ -36,13 +36,6 @@ namespace CATHODE
         public Lights(MemoryStream stream, string path = "") : base(stream, path) { }
         public Lights(byte[] data, string path = "") : base(data, path) { }
 
-        ~Lights()
-        {
-            Indexes.Clear();
-            Values.Clear();
-            Sun = null;
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

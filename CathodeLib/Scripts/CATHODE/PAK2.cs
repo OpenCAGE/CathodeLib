@@ -18,11 +18,6 @@ namespace CATHODE
         public PAK2(MemoryStream stream, string path = "") : base(stream, path) { }
         public PAK2(byte[] data, string path = "") : base(data, path) { }
 
-        ~PAK2()
-        {
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -100,11 +95,6 @@ namespace CATHODE
         #region STRUCTURES
         public class File
         {
-            ~File()
-            {
-                Content = null;
-            }
-
             public string Filename = "";
             public byte[] Content;
         }

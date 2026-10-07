@@ -114,15 +114,6 @@ namespace CATHODE
             _shaders = null;
         }
 
-        ~Materials()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
-            _writeIndexByRef = null;
-            _writeIndex = null;
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

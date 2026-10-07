@@ -63,13 +63,6 @@ namespace CATHODE
             _physicsHKX = null;
         }
 
-        ~PhysicsMaps()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

@@ -63,23 +63,6 @@ namespace CATHODE.Scripting
                 LoadInfo(_commands.Filepath);
         }
 
-        ~CommandsUtils()
-        {
-            if (_commands == null)
-                return;
-
-            _commands.OnLoadSuccess -= LoadInfo;
-            _commands.OnSaveBegin -= ApplyEntityTransformsToResources;
-            _commands.OnSaveSuccess -= SaveInfo;
-
-            _compPurges?.purged?.Clear();
-            _entityNames?.names?.Clear();
-            _modificationInfo?.modification_info?.Clear();
-            _pinInfo?.composite_pin_infos?.Clear();
-
-            _commands = null;
-        }
-
         #region Generic Utility Functions
         /// <summary>
         /// True if adding an instance of <paramref name="compositeToInstance"/> inside

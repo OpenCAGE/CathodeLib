@@ -37,12 +37,6 @@ namespace CATHODE
         //Movers serialise in parallel and each one resolves its resource here.
         private readonly object _writeIndexLock = new object();
 
-        ~Resources()
-        {
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

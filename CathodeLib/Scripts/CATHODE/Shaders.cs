@@ -37,24 +37,6 @@ namespace CATHODE
 
         public Shaders(string path) : base(path) { }
 
-        ~Shaders()
-        {
-            foreach (var shader in Entries)
-            {
-                if (shader != null)
-                {
-                    shader.VertexShader = null;
-                    shader.PixelShader = null;
-                    shader.HullShader = null;
-                    shader.DomainShader = null;
-                    shader.GeometryShader = null;
-                    shader.ComputeShader = null;
-                }
-            }
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream) 
         {
@@ -674,16 +656,6 @@ namespace CATHODE
                     }
                     return hash;
                 }
-            }
-
-            ~Shader()
-            {
-                VertexShader = null;
-                PixelShader = null;
-                HullShader = null;
-                DomainShader = null;
-                GeometryShader = null;
-                ComputeShader = null;
             }
         }
 

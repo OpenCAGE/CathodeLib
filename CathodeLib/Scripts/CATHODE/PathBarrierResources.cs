@@ -31,12 +31,6 @@ namespace CATHODE
             _resources = null;
         }
 
-        ~PathBarrierResources()
-        {
-            ClearReferences();
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

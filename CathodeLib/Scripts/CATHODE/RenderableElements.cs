@@ -108,13 +108,6 @@ namespace CATHODE
             _materials = null;
         }
 
-        ~RenderableElements()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

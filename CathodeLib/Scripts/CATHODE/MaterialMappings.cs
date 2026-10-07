@@ -49,13 +49,6 @@ namespace CATHODE
             }
         }
 
-        ~MaterialMappings()         
-        {
-            Entries.Clear();
-            _writeList.Clear();
-            _writeIndex = null;
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

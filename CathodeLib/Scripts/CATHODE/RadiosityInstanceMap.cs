@@ -42,12 +42,6 @@ namespace CATHODE
             _resources = null;
         }
 
-        ~RadiosityInstanceMap()
-        {
-            ClearReferences();
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

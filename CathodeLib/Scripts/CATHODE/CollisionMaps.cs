@@ -71,14 +71,6 @@ namespace CATHODE
             _collisionHKX = null;
         }
 
-        ~CollisionMaps()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
-            _writeIndex = null;
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

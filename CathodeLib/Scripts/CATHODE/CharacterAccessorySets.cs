@@ -20,11 +20,6 @@ namespace CATHODE
         public CharacterAccessorySets(MemoryStream stream, string path = "") : base(stream, path) { }
         public CharacterAccessorySets(byte[] data, string path = "") : base(data, path) { }
 
-        ~CharacterAccessorySets()
-        {
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

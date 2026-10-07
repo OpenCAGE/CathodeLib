@@ -84,12 +84,6 @@ namespace CATHODE
             _globalTextures = null;
         }
 
-        ~Commands()
-        {
-            ClearReferences();
-            Entries.Clear();
-        }
-
         // This is always size of 3, in the order:
         //  - Root Instance (the map's entry composite, usually containing entities that call mission/environment composites)
         //  - Global Instance (the main data handler for keeping track of mission number, etc - kinda like a big singleton)

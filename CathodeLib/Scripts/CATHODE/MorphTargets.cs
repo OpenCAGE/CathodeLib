@@ -45,12 +45,6 @@ namespace CATHODE
          * the table. Keep what was loaded, in its original order, and append only what is new. */
         private List<string> _names = new List<string>();
 
-        ~MorphTargets()
-        {
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

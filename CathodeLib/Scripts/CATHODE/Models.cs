@@ -99,29 +99,6 @@ namespace CATHODE
             _morphTargets = null;
         }
 
-        ~Models()
-        {
-            foreach (var model in Entries)
-            {
-                foreach (var component in model?.Components ?? new List<CATHODE.Models.CS2.Component>())
-                {
-                    foreach (var lod in component?.LODs ?? new List<CATHODE.Models.CS2.Component.LOD>())
-                    {
-                        foreach (var submesh in lod?.Submeshes ?? new List<CATHODE.Models.CS2.Component.LOD.Submesh>())
-                        {
-                            if (submesh?.Data != null)
-                                submesh.Data = null;
-                        }
-                    }
-                }
-            }
-            ClearReferences();
-
-            Entries.Clear();
-            _writeList.Clear();
-            _writeIndex = null;
-        }
-
         #region FILE_IO
         /// <summary>
         /// Load the file
@@ -1199,11 +1176,6 @@ namespace CATHODE
                 return true;
             }
 
-            ~CS2()
-            {
-                Components.Clear();
-            }
-
             public class Component : IEquatable<Component>
             {
                 public List<LOD> LODs = new List<LOD>();
@@ -1248,11 +1220,6 @@ namespace CATHODE
                         if (x[i] != y[i]) return false;
                     }
                     return true;
-                }
-
-                ~Component()
-                {
-                    LODs.Clear();
                 }
 
                 public class LOD : IEquatable<LOD>
@@ -1307,11 +1274,6 @@ namespace CATHODE
                             if (x[i] != y[i]) return false;
                         }
                         return true;
-                    }
-
-                    ~LOD()
-                    {
-                        Submeshes.Clear();
                     }
 
                     [Flags]
@@ -1472,12 +1434,6 @@ namespace CATHODE
                                 if (x[i] != y[i]) return false;
                             }
                             return true;
-                        }
-
-                        ~Submesh()
-                        {
-                            Bones.Clear();
-                            Data = null;
                         }
                     }
 

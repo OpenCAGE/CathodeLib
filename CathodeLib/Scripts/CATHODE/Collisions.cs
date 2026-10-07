@@ -48,12 +48,6 @@ namespace CATHODE
         public Collisions(MemoryStream stream, string path = "") : base(stream, path) { }
         public Collisions(byte[] data, string path = "") : base(data, path) { }
 
-        ~Collisions()
-        {
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

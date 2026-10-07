@@ -108,19 +108,6 @@ namespace CATHODE
 
         public Textures(string path) : base(path) { }
 
-        ~Textures()
-        {
-            foreach (var tex in Entries)
-            {
-                if (tex?.TexturePersistent?.Content != null)
-                    tex.TexturePersistent.Content = null;
-                if (tex?.TextureStreamed?.Content != null)
-                    tex.TextureStreamed.Content = null;
-            }
-            Entries?.Clear();
-            _writeList?.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -607,12 +594,6 @@ namespace CATHODE
                 }
             }
 
-            ~TEX4()
-            {
-                TexturePersistent = null;
-                TextureStreamed = null;
-            }
-
             public class Texture : IEquatable<Texture>
             {
                 public Int16 Width = 0;
@@ -684,11 +665,6 @@ namespace CATHODE
                         }
                         return hash;
                     }
-                }
-
-                ~Texture()
-                {
-                    Content = null;
                 }
             }
         }

@@ -38,12 +38,6 @@ namespace CATHODE
         public OccluderTriangleBVH(MemoryStream stream, string path = "") : base(stream, path) { }
         public OccluderTriangleBVH(byte[] data, string path = "") : base(data, path) { }
 
-        ~OccluderTriangleBVH()
-        {
-            Triangles?.Clear();
-            Nodes?.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {

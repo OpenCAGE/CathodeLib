@@ -61,13 +61,6 @@ namespace CATHODE
             _strings = null;
         }
 
-        ~EnvironmentAnimations()
-        {
-            ClearReferences();
-            _writeList.Clear();
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
