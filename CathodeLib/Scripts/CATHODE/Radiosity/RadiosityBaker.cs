@@ -1187,6 +1187,10 @@ namespace CathodeLib.Radiosity
                 else
                     log?.Invoke("Radiosity: retail light placement skipped - the radiosity being replaced is not a shipped bake");
             }
+            // Without a shipped bake to take placement from, put each light's samples where retail's own rule puts them: on the
+            // probes nearest the emitter's emissive surface (see ApplyEmitterSurfacePlacement).
+            if (settings.EmitterSurfacePlacement > 0 && settings.EmitSurfaceLights && !(settings.UseRetailLightPlacement && replacingRetail))
+                ApplyEmitterSurfacePlacement(runtime, geometry, level, settings.EmitterSurfacePlacement, log);
 
             if (level.RadiosityInstanceMap != null)
             {

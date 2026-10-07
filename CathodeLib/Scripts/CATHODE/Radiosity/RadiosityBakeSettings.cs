@@ -2423,6 +2423,16 @@ namespace CathodeLib.Radiosity
         /// <see cref="CATHODE.RadiosityRuntime.FullyRegenerated"/>), where it would freeze the old light table the same way.</summary>
         public bool UseRetailLightPlacement = false;
         public float RetailLightPlacementRadius = 1.0f;
+
+        /// <summary>
+        /// Light placement where no shipped bake supplies it (new, wiped and regenerated levels): after the cut, each light slice's
+        /// items move onto the probes of its slice that score best by -(distance to the emitter's nearest emissive triangle)
+        /// + this x (probe normal . emissive normal), with no visibility test. Retail's own rule is "the K probes nearest the
+        /// emissive triangles" (84.8% of its items exactly on its own scaffold); on ours, 0.5 reproduces 48.8% of retail placement's
+        /// probes against our sampler's 32%. Measured 1 Oct 2026 on the full rebake: 13 small levels 9.96 against 10.00, big maps
+        /// better (see the parity report), and it lights ChallengeMap16's stairwell (cam1 luma 10.8 -> 21.7). 0 = off.
+        /// </summary>
+        public float EmitterSurfacePlacement = 0f;
         /// <summary>AddUnbakedEmitterLights samples an emitter at the nearest input probes to its EMISSIVE centroid instead of
         /// its transform origin (a panel assembly's pivot can sit metres from its glowing faces).</summary>
         public bool UnbakedEmitterAtEmissiveCentroid = false;
@@ -2532,6 +2542,8 @@ namespace CathodeLib.Radiosity
             //Over a retail bake: retail light placement
             s.UseRetailLightPlacement = replacingRetail;
             s.RetailLightPlacementRadius = 1.0f;
+            //Otherwise: place the derived lights by retail's rule (nearest the emissive surface)
+            s.EmitterSurfacePlacement = 0.5f;
             return s;
         }
 
