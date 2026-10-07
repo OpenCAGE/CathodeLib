@@ -515,8 +515,18 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
+            /* Written in a fixed order, not the dictionary's insertion order: ShortGuidUtils fills its
+             * cache from parallel loops (Instancing, the PAK parser, material remapping), so that order
+             * changed from run to run and two saves of the same level wrote the same entries shuffled.
+             * Sorted by guid, then name - except that where several names share a guid, the one this
+             * table resolves it to goes first, since Read keeps the first name it sees for a guid. */
+            IEnumerable<KeyValuePair<string, ShortGuid>> ordered = cache
+                .OrderBy(o => o.Value.AsUInt32)
+                .ThenBy(o => cacheReversed.TryGetValue(o.Value, out string resolved) && resolved == o.Key ? 0 : 1)
+                .ThenBy(o => o.Key, StringComparer.Ordinal);
+
             writer.Write(cache.Count);
-            foreach (KeyValuePair<string, ShortGuid> val in cache)
+            foreach (KeyValuePair<string, ShortGuid> val in ordered)
             {
                 Utilities.Write<ShortGuid>(writer, val.Value);
                 writer.Write(val.Key);
