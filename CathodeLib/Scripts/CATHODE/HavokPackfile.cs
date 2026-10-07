@@ -2115,6 +2115,13 @@ namespace CATHODE
             foreach (uint offset in candidates)
                 if (!_freeBoxShapes.Contains(offset))
                     _freeBoxShapes.Add(offset);
+
+            /* Handed out lowest offset first (the list is kept descending and popped from the end). They were
+               freed in host slot order, and popping that list from the end gave the first box placed the LAST
+               box freed - reversing the assignment on every save, so re-saving an unchanged level flipped
+               COLLISION.HKX/HKX64 between two contents for ever. In offset order the k-th box placed always
+               gets the k-th lowest box object whatever the previous save did, which is also retail's order. */
+            _freeBoxShapes.Sort((a, b) => b.CompareTo(a));
         }
 
         public uint AppendBoxShape(Vector3 halfExtents)
