@@ -33,6 +33,12 @@ namespace CATHODE
         private Dictionary<string, TEX4> _byNormalisedName = null;
         private int _byNormalisedNameCount = 0;
 
+        /// <summary>The texture with this name (compared the way an import compares names), or null.</summary>
+        public TEX4 FindByName(string name)
+        {
+            return FindByNormalisedName(NormaliseTextureName(name));
+        }
+
         private TEX4 FindByNormalisedName(string normalisedName)
         {
             /* Entries is a public list that the editors add to and remove from directly, so the index

@@ -140,6 +140,44 @@ namespace CathodeLib
             }
         }
 
+        /// <summary>
+        /// Bring over the level data some entities copied from the source refer to - renderables with their models,
+        /// materials and textures, collision, physics, animated models, an environment map's cubemap - and point their
+        /// references at the destination's objects. For merging entity by entity rather than whole composites: the
+        /// entities are the caller's own copies (Copy() of the source's), in or bound for a destination composite.
+        /// </summary>
+        public void PortEntityResources(IEnumerable<Entity> copiedEntities)
+        {
+            using (new ImportMemoScope(Source, Destination))
+            {
+                foreach (Entity entity in copiedEntities)
+                {
+                    if (entity is FunctionEntity function)
+                    {
+                        if (function.resources != null)
+                            CopyResources(function.resources);
+                        PortEnvironmentMapTexture(function);
+                    }
+                    Parameter resources = entity.GetParameter("resource");
+                    if (resources?.content is cResource resourceParam && resourceParam.value != null)
+                        CopyResources(resourceParam.value);
+                }
+                ApplyProxyIndexRemap();
+            }
+        }
+
+        /// <summary>Port resource references copied from the source (a changed resource parameter, say), in place.</summary>
+        public void PortResourceReferences(List<ResourceReference> copiedReferences)
+        {
+            if (copiedReferences == null)
+                return;
+            using (new ImportMemoScope(Source, Destination))
+            {
+                CopyResources(copiedReferences);
+                ApplyProxyIndexRemap();
+            }
+        }
+
         /* One port's worth of memo on the destination's model, material and texture tables (see Models.PortMemo): a
            source object imported once is not imported again. The source's Havok files keep their object boundaries for
            the port too (see HavokPackfile.CacheRangeBoundaries) - a port only ever reads them. Only what this scope

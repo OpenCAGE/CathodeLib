@@ -31,6 +31,9 @@ namespace CATHODE.Scripting.Refactor
         /// </summary>
         public static bool PagesMatchLinks(Composite composite, IEnumerable<FlowgraphMeta> pages) => PageRewriter.PagesMatchLinks(composite, pages);
 
+        /// <summary>A deep copy of a page, for the given composite.</summary>
+        public static FlowgraphMeta Copy(FlowgraphMeta page, ShortGuid composite) => PageRewriter.Copy(page, composite);
+
         /// <summary>
         /// Pages that draw exactly a composite's links, starting from the pages it has: what they already draw
         /// stays where it is, connections with no link behind them go, and every link not drawn is drawn beside
