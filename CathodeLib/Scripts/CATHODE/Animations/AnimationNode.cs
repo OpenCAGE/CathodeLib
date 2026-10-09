@@ -81,7 +81,7 @@ namespace CATHODE.Animations
         {
             if (oldNode == null || newNode == null || string.IsNullOrEmpty(newNode.Name))
                 return;
-            int idx = Nodes.IndexOf(oldNode);
+            int idx = Nodes.FindIndex(o => ReferenceEquals(o, oldNode)); //by reference: Equals is name and type, which trees repeat
             if (idx >= 0)
                 Nodes[idx] = newNode;
             else
@@ -103,19 +103,38 @@ namespace CATHODE.Animations
             if (node == null)
                 return;
 
-            Nodes.Remove(node);
-            Children.Remove(node);
+            //By reference: Equals is name and type, which trees repeat - removing by it can take out another node
+            int at = Nodes.FindIndex(o => ReferenceEquals(o, node));
+            if (at >= 0)
+                Nodes.RemoveAt(at);
+            Children.RemoveAll(o => ReferenceEquals(o, node));
 
             if (!string.IsNullOrEmpty(node.Name))
-            {
-                if (_byName.TryGetValue(node.Name, out AnimationNode mapped) && ReferenceEquals(mapped, node))
-                    _byName.Remove(node.Name);
-                _byNameAndType.Remove((node.Name, node.Type));
-            }
+                Unlist(node, node.Name);
 
             foreach (AnimationNode other in Nodes)
                 ClearReferencesTo(other, node);
             ClearReferencesTo(this, node);
+        }
+
+        /* Take a node out of the name lookups under a name it no longer goes by (renamed, or out of the tree): another node of
+           that name - and of that name and type - takes its place there, so it can still be found */
+        private void Unlist(AnimationNode node, string name)
+        {
+            if (_byName.TryGetValue(name, out AnimationNode mapped) && ReferenceEquals(mapped, node))
+            {
+                _byName.Remove(name);
+                AnimationNode other = Nodes.Find(o => o != null && !ReferenceEquals(o, node) && o.Name == name);
+                if (other != null)
+                    _byName[name] = other;
+            }
+            if (_byNameAndType.TryGetValue((name, node.Type), out AnimationNode typed) && ReferenceEquals(typed, node))
+            {
+                _byNameAndType.Remove((name, node.Type));
+                AnimationNode other = Nodes.Find(o => o != null && !ReferenceEquals(o, node) && o.Name == name && o.Type == node.Type);
+                if (other != null)
+                    _byNameAndType[(name, node.Type)] = other;
+            }
         }
 
         private static void ClearReferencesTo(AnimationNode owner, AnimationNode target)
@@ -123,7 +142,7 @@ namespace CATHODE.Animations
             if (owner == null || target == null)
                 return;
 
-            owner.Children.Remove(target);
+            owner.Children.RemoveAll(o => ReferenceEquals(o, target));
 
             switch (owner)
             {
@@ -223,11 +242,7 @@ namespace CATHODE.Animations
 
             string oldName = node.Name;
             if (!string.IsNullOrEmpty(oldName))
-            {
-                if (_byName.TryGetValue(oldName, out AnimationNode mapped) && ReferenceEquals(mapped, node))
-                    _byName.Remove(oldName);
-                _byNameAndType.Remove((oldName, node.Type));
-            }
+                Unlist(node, oldName);
 
             node.Name = newName;
             if (!_byName.ContainsKey(newName))
