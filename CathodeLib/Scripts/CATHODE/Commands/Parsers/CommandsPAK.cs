@@ -888,7 +888,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                     //writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
-                                                    writer.Write(resourceReferences[i][p].AnimatedModel.ID);
+                                                    //A reference with no entry (the save gives every EnvironmentModelReference one) reads back as none
+                                                    writer.Write(resourceReferences[i][p].AnimatedModel?.ID ?? -1);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:

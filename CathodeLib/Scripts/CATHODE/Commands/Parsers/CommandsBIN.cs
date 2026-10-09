@@ -1122,7 +1122,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                 case ResourceType.ANIMATED_MODEL:
                     offset = (int)writer.BaseStream.Position;
                     //writer.Write(envAnims.GetWriteIndex(resource.AnimatedModel));
-                    writer.Write(resource.AnimatedModel.ID);
+                    //A reference with no entry (the save gives every EnvironmentModelReference one) reads back as none
+                    writer.Write(resource.AnimatedModel?.ID ?? -1);
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_INT | 4, offset));
 
                     offset = (int)writer.BaseStream.Position;

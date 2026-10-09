@@ -134,17 +134,21 @@ namespace CATHODE
 
             public class Components
             {
-                public Component Torso = new Component();
-                public Component Legs = new Component();
-                public Component Shoes = new Component();
-                public Component Head = new Component();
-                public Component Arms = new Component();
-                public Component Collision = new Component();
+                //Every retail set gives each part its slot's index (a head sometimes carries another)
+                public Component Torso = new Component(0);
+                public Component Legs = new Component(1);
+                public Component Shoes = new Component(2);
+                public Component Head = new Component(3);
+                public Component Arms = new Component(4);
+                public Component Collision = new Component(5);
 
                 public class Component
                 {
                     public ShortGuid Composite = ShortGuid.Invalid;
                     public int AccessoryIndex = -1;
+
+                    public Component() { }
+                    public Component(int accessoryIndex) { AccessoryIndex = accessoryIndex; }
                 }
             }
 

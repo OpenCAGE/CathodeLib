@@ -426,6 +426,74 @@ namespace NanoRT
         }
 
         /// <summary>
+        /// Closest-hit query over the triangles <paramref name="accept"/> lets through (all of them when null): a triangle
+        /// it turns down is never a hit, so a surface level with it (or just behind it) is still found. Returns false when
+        /// the ray misses everything accepted.
+        /// </summary>
+        public bool Traverse(ref Ray ray, out Hit hit, Func<int, bool> accept)
+        {
+            hit = default;
+            hit.T = ray.MaxT;
+            hit.PrimId = -1;
+            if (_nodeCount == 0)
+                return false;
+
+            Vector3 invDir = new Vector3(
+                1.0f / (ray.Direction.X == 0 ? 1e-30f : ray.Direction.X),
+                1.0f / (ray.Direction.Y == 0 ? 1e-30f : ray.Direction.Y),
+                1.0f / (ray.Direction.Z == 0 ? 1e-30f : ray.Direction.Z));
+
+            Span<int> stack = stackalloc int[64];
+            int sp = 0;
+            stack[sp++] = 0;
+
+            while (sp > 0)
+            {
+                int nodeIndex = stack[--sp];
+                ref Node node = ref _nodes[nodeIndex];
+
+                if (!IntersectAabb(node.Min, node.Max, ray.Origin, invDir, ray.MinT, hit.T))
+                    continue;
+
+                if (node.PrimCount > 0)
+                {
+                    for (int i = 0; i < node.PrimCount; i++)
+                    {
+                        int tri = _indices[node.Data0 + i];
+                        if (IntersectTriangle(tri, ref ray, hit.T, out float t, out float u, out float v) && (accept == null || accept(tri)))
+                        {
+                            hit.T = t;
+                            hit.U = u;
+                            hit.V = v;
+                            hit.PrimId = tri;
+                        }
+                    }
+                    continue;
+                }
+
+                if (sp + 2 > stack.Length)
+                    continue; // Depth cap reached; a dropped subtree can only cost us a hit, never correctness of a miss.
+
+                // Visit the near child first so the far one is more likely to be culled by hit.T.
+                bool nearIsLeft = Component(ray.Direction, node.Data1) >= 0;
+                int left = nodeIndex + 1;
+                int right = node.Data0;
+                if (nearIsLeft)
+                {
+                    stack[sp++] = right;
+                    stack[sp++] = left;
+                }
+                else
+                {
+                    stack[sp++] = left;
+                    stack[sp++] = right;
+                }
+            }
+
+            return hit.PrimId >= 0;
+        }
+
+        /// <summary>
         /// Any-hit query. Cheaper than <see cref="Traverse"/> because it stops at the first
         /// intersection inside the ray's range.
         /// </summary>

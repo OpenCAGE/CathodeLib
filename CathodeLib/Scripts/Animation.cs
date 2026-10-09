@@ -1258,8 +1258,32 @@ namespace CathodeLib
                             List<short> trackToBone, List<List<HavokPackfile.SampledTransform>> frames,
                             float frameDuration = 1f / 30f, bool additive = false)
         {
+            return AddClip(set, clipName, clipPath, skeletonName, trackToBone, frames, frameDuration, additive, null);
+        }
+
+        /// <summary>
+        /// As <see cref="AddClip(AnimationSet, string, string, string, List{short}, List{List{HavokPackfile.SampledTransform}}, float, bool)"/>,
+        /// filed in one of the set's named contexts (WEAPON_HANDGUN, CROUCHED...): the clip DB line goes in that
+        /// context, so the game only offers the clip while the character is in that state. Null or empty files it
+        /// in the set's own unnamed context. False if the set has no such context.
+        /// </summary>
+        public bool AddClip(AnimationSet set, string clipName, string clipPath, string skeletonName,
+                            List<short> trackToBone, List<List<HavokPackfile.SampledTransform>> frames,
+                            float frameDuration, bool additive, string contextName)
+        {
             EnsureContents(); //everything below works on the parsed contents, not the index
             if (set?.Database == null || ClipIndex == null || _pak?.Entries == null) return false;
+
+            //where the clip DB line goes, and the resolved context that lists it
+            List<AnimClipDB.AnimClip> lines = set.Database.Animations;
+            AnimationContext context = set.Contexts.FirstOrDefault(x => x.Name.Length == 0) ?? set.Contexts.FirstOrDefault();
+            if (!string.IsNullOrEmpty(contextName))
+            {
+                AnimClipDB.Context named = set.Database.Contexts.FirstOrDefault(x => string.Equals(x.Name, contextName, StringComparison.OrdinalIgnoreCase));
+                context = set.Contexts.FirstOrDefault(x => x.Name.Length != 0 && string.Equals(x.Name, contextName, StringComparison.OrdinalIgnoreCase));
+                if (named == null || context == null) return false;
+                lines = named.Animations;
+            }
             if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) return false;
             if (string.IsNullOrEmpty(clipName) || string.IsNullOrEmpty(clipPath)) return false;
             if (_sectionOfClip != null && _sectionOfClip.ContainsKey(clipPath)) return false;
@@ -1311,13 +1335,12 @@ namespace CathodeLib
                 SectionIndex = -1,
             };
             ClipIndex.ClipDbSections.Add(index);
-            set.Database.Animations.Add(new AnimClipDB.AnimClip { Name = clipName, Path = clipPath, MetadataInstance = 0 });
+            lines.Add(new AnimClipDB.AnimClip { Name = clipName, Path = clipPath, MetadataInstance = 0 });
 
             //keep the resolved view in step rather than rebuilding every set for one clip
             if (_sectionOfClip != null) _sectionOfClip[clipPath] = index;
             if (_sectionByName != null) _sectionByName[Path.GetFileNameWithoutExtension(filename)] = primary;
 
-            AnimationContext context = set.Contexts.FirstOrDefault(x => x.Name.Length == 0) ?? set.Contexts.FirstOrDefault();
             if (context != null)
             {
                 context.Clips.Add(new ClipReference
@@ -1331,6 +1354,306 @@ namespace CathodeLib
                 set.ClipCount++;
             }
             return true;
+        }
+
+        /// <summary>
+        /// Every copy of a section: the one the sets resolve to and its build for the other pointer size, which
+        /// shares its filename in the sibling folder (STREAMED and STREAMED64).
+        /// </summary>
+        public List<AnimClipDBSec> CopiesOf(AnimClipDBSec section)
+        {
+            if (section == null) return new List<AnimClipDBSec>();
+            string file = Path.GetFileName(section.Filepath ?? "");
+            List<AnimClipDBSec> copies = Sections.Where(x => string.Equals(Path.GetFileName(x.Filepath ?? ""), file, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!copies.Contains(section)) copies.Insert(0, section);
+            return copies;
+        }
+
+        /// <summary>
+        /// Every clip reference, in any set, that plays out of this section (or another copy of it).
+        /// </summary>
+        public List<ClipReference> ClipsIn(AnimClipDBSec section)
+        {
+            List<AnimClipDBSec> copies = CopiesOf(section);
+            return GetClips().Where(x => x.Section != null && copies.Contains(x.Section)).ToList();
+        }
+
+        /// <summary>
+        /// Rebuild a clip's animation in place: its name, path, context and every reference to it stay, and only
+        /// what plays changes. Only a section holding this one clip can be rebuilt, in every copy it ships in; each
+        /// copy is its own template, so it keeps the build it was. The clip keeps its label and the events tagged
+        /// on it (those past its new end are dropped); its length is restated. Nothing changes unless every copy
+        /// builds. <paramref name="problem"/> says why not.
+        /// </summary>
+        public bool ReplaceClip(ClipReference clip, string skeletonName, List<short> trackToBone,
+                                List<List<HavokPackfile.SampledTransform>> frames, float frameDuration, bool additive, out string problem)
+        {
+            EnsureContents();
+            problem = null;
+            if (clip?.Section == null) { problem = "That clip's section is not in ANIMATION.PAK."; return false; }
+            if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) { problem = "There is nothing to build."; return false; }
+            if (clip.Section.Metadata.Count != 1 || clip.Section.GetAnimations().Count != 1)
+            {
+                problem = "Its section holds " + clip.Section.GetAnimations().Count + " clips, and only a section holding one clip can be rebuilt in place.";
+                return false;
+            }
+
+            List<AnimClipDBSec> copies = CopiesOf(clip.Section);
+            AnimClipDBSec.MetadataSet before = clip.Section.Metadata[0];
+            //A rebuild carries the first instance block only, and the clip's lines can select the others by number
+            int instances = copies.Select(x => x.Metadata.Count != 0 ? x.Metadata[0].Instances.Count : 0).DefaultIfEmpty(0).Max();
+            instances = Math.Max(instances, before.Instances.Count);
+            if (instances > 1)
+            {
+                problem = "Its metadata has " + instances + " instance blocks, which lines in its set's clip database select by number, and a rebuild keeps only the first: import it under a new name instead.";
+                return false;
+            }
+            string label = before.Instances.Count != 0 ? ArgumentOf(before.Instances[0], "meta_label") as string : null;
+            if (string.IsNullOrEmpty(label)) label = (clip.Context?.Set?.Name ?? "") + "\\" + (clip.Name ?? "").ToUpperInvariant();
+            float duration = frames.Count > 1 ? (frames.Count - 1) * frameDuration : frameDuration;
+
+            List<AnimClipDBSec> built = new List<AnimClipDBSec>();
+            List<byte[]> contents = new List<byte[]>();
+            foreach (AnimClipDBSec copy in copies)
+            {
+                AnimClipDBSec section;
+                try { section = BuildSection(Copy(frames), trackToBone, skeletonName, clip.Path, label, frameDuration, additive, copy); }
+                catch (Exception e) { problem = "The clip could not be built over " + Path.GetFileName(copy.Filepath) + ": " + e.Message; return false; }
+                if (section == null) { problem = "The clip could not be built over " + copy.Filepath + "."; return false; }
+
+                //the old events come across, so a re-import keeps its footsteps
+                AnimClipDBSec.MetadataSet old = copy.Metadata.Count != 0 ? copy.Metadata[0] : before;
+                CarryEvents(old, section.Metadata[0], duration);
+
+                //read back from its own bytes under the copy's filename, so what is held is exactly what a save writes
+                byte[] content = section.ToBytes();
+                AnimClipDBSec reread = content == null ? null : new AnimClipDBSec(content, Strings, copy.Filepath, StringsDebug);
+                if (reread == null || !reread.Loaded) { problem = "The rebuilt section could not be written out."; return false; }
+                if (reread.Metadata.Count != section.Metadata.Count) { problem = "The rebuilt clip's metadata does not read back, so the game would lose it; nothing was changed."; return false; }
+                built.Add(reread);
+                contents.Add(content);
+            }
+
+            for (int i = 0; i < copies.Count; i++)
+            {
+                PAK2.File entry = _pak.Entries.FirstOrDefault(x => string.Equals(x.Filename, copies[i].Filepath, StringComparison.OrdinalIgnoreCase));
+                if (entry != null) entry.Content = contents[i];
+                int at = Sections.IndexOf(copies[i]);
+                if (at >= 0) Sections[at] = built[i];
+                string key = Path.GetFileNameWithoutExtension(copies[i].Filepath);
+                if (_sectionByName != null && _sectionByName.TryGetValue(key, out AnimClipDBSec indexed) && ReferenceEquals(indexed, copies[i]))
+                    _sectionByName[key] = built[i];
+            }
+
+            //every reference re-reads the animation and its markers from the new section
+            foreach (AnimationSet set in Sets)
+                foreach (AnimationContext context in set.Contexts)
+                    for (int i = 0; i < context.Clips.Count; i++)
+                    {
+                        ClipReference held = context.Clips[i];
+                        int copy = copies.IndexOf(held.Section);
+                        if (copy < 0) continue;
+                        context.Clips[i] = new ClipReference { Name = held.Name, Path = held.Path, Context = held.Context, Section = built[copy], Index = held.Index };
+                    }
+            return true;
+        }
+
+        private static List<List<HavokPackfile.SampledTransform>> Copy(List<List<HavokPackfile.SampledTransform>> frames)
+        {
+            return frames.Select(x => new List<HavokPackfile.SampledTransform>(x)).ToList();
+        }
+
+        /* A rebuild keeps the clip's settings and events: every argument the fresh metadata lacks (the length it
+         * restates) and every property, in the common block and the first instance block - times past the new end
+         * are dropped. The settings include the movement measurements locomotion is chosen and blended on (linear_speed,
+         * translation, yTotalRotation, the spherical_blend anchors): retail walks and turns are in-place loops whose
+         * travel lives only there, so they cannot be measured again from new frames and are kept. KeptSettings lists
+         * them. */
+        private static void CarryEvents(AnimClipDBSec.MetadataSet from, AnimClipDBSec.MetadataSet into, float duration)
+        {
+            if (from == null || into == null) return;
+            CarryBlock(from.Common, into.Common, duration);
+            if (from.Instances.Count != 0 && into.Instances.Count != 0)
+                CarryBlock(from.Instances[0], into.Instances[0], duration);
+            FitBlocks(into);
+        }
+
+        /// <summary>
+        /// The settings <see cref="ReplaceClip"/> keeps from a clip's old metadata rather than restating them: every
+        /// argument the fresh metadata lacks (movement measurements, blend anchors...; not the audio declarations, which
+        /// are what the kept events play). They describe the old animation, so a new one that moves differently is still
+        /// chosen and blended as the old one was.
+        /// </summary>
+        public static List<string> KeptSettings(AnimClipDBSec section)
+        {
+            List<string> kept = new List<string>();
+            if (section == null || section.Metadata.Count == 0) return kept;
+            AnimClipDBSec.MetadataSet before = section.Metadata[0];
+            AnimClipDBSec.MetadataSet fresh = BuildMetadata("", "", 2, 1.0f / 30.0f);
+            void From(AnimClipDBSec.MetadataBlock old, AnimClipDBSec.MetadataBlock restated)
+            {
+                if (old == null || restated == null) return;
+                foreach (AnimClipDBSec.MetadataArgument argument in old.Arguments)
+                    if (!string.IsNullOrEmpty(argument.Name) && argument.Name != "0" && argument.Type != MetadataValueType.AUDIO && !kept.Contains(argument.Name) && !restated.Arguments.Any(x => x.Name == argument.Name))
+                        kept.Add(argument.Name);
+            }
+            From(before.Common, fresh.Common);
+            if (before.Instances.Count != 0) From(before.Instances[0], fresh.Instances[0]);
+            return kept;
+        }
+
+        private static void CarryBlock(AnimClipDBSec.MetadataBlock source, AnimClipDBSec.MetadataBlock target, float duration)
+        {
+            if (source == null || target == null) return;
+            foreach (AnimClipDBSec.MetadataArgument argument in source.Arguments)
+                if (!target.Arguments.Any(x => x.Name == argument.Name))
+                    target.Arguments.Add(argument);
+            foreach (AnimClipDBSec.MetadataProperty property in source.Properties)
+            {
+                AnimClipDBSec.MetadataProperty kept = new AnimClipDBSec.MetadataProperty { Name = property.Name, HasEvents = property.HasEvents };
+                for (int i = 0; i < property.Times.Count; i++)
+                {
+                    if (property.Times[i] > duration + 0.0001f) continue;
+                    kept.Times.Add(property.Times[i]);
+                    if (i < property.Events.Count) kept.Events.Add(property.Events[i]);
+                }
+                if (kept.Times.Count == 0) continue;
+                target.Properties.Add(kept);
+                target.HasProperties = true;
+            }
+        }
+
+        /// <summary>
+        /// Take a clip out of its set and the PAK: the line in its set's clip DB, its entry in the global index and
+        /// its section in every copy. Only a clip with a section to itself that no other set plays can go.
+        /// Strings it registered stay (they cost nothing and other things may name them). <paramref name="problem"/>
+        /// says why not.
+        /// </summary>
+        public bool RemoveClip(ClipReference clip, out string problem)
+        {
+            EnsureContents();
+            problem = null;
+            if (clip?.Context?.Set?.Database == null) { problem = "That clip is not reached through a set."; return false; }
+            AnimationSet set = clip.Context.Set;
+            if (clip.Section != null)
+            {
+                if (clip.Section.Metadata.Count > 1 || clip.Section.GetAnimations().Count > 1)
+                {
+                    problem = "Its section holds other clips too, so it cannot be taken out on its own.";
+                    return false;
+                }
+                List<ClipReference> sharing = ClipsIn(clip.Section).Where(x => !ReferenceEquals(x, clip)).ToList();
+                if (sharing.Count != 0)
+                {
+                    problem = "Its animation is also played as " + string.Join(", ", sharing.Take(5).Select(x => (x.Context?.Set?.Name ?? "?") + "\\" + x.Name)) + ".";
+                    return false;
+                }
+            }
+
+            //the clip DB line, in whichever context lists it
+            bool removed = set.Database.Animations.RemoveAll(x => string.Equals(x.Path, clip.Path, StringComparison.OrdinalIgnoreCase) && string.Equals(x.Name, clip.Name, StringComparison.OrdinalIgnoreCase)) != 0;
+            foreach (AnimClipDB.Context context in set.Database.Contexts)
+                removed |= context.Animations.RemoveAll(x => string.Equals(x.Path, clip.Path, StringComparison.OrdinalIgnoreCase) && string.Equals(x.Name, clip.Name, StringComparison.OrdinalIgnoreCase)) != 0;
+            if (!removed) { problem = set.Name + "'s clip DB does not list it."; return false; }
+
+            //nothing else plays the path any more, so its index entry and sections go
+            bool stillPlayed = GetClips().Any(x => !ReferenceEquals(x, clip) && string.Equals(x.Path, clip.Path, StringComparison.OrdinalIgnoreCase));
+            if (!stillPlayed)
+            {
+                ClipIndex?.ClipDbSections.RemoveAll(x => string.Equals(x.Name, clip.Path, StringComparison.OrdinalIgnoreCase));
+                _sectionOfClip?.Remove(clip.Path);
+                if (clip.Section != null)
+                {
+                    foreach (AnimClipDBSec copy in CopiesOf(clip.Section))
+                    {
+                        _pak.Entries.RemoveAll(x => string.Equals(x.Filename, copy.Filepath, StringComparison.OrdinalIgnoreCase));
+                        Sections.Remove(copy);
+                        string key = Path.GetFileNameWithoutExtension(copy.Filepath);
+                        if (_sectionByName != null && _sectionByName.TryGetValue(key, out AnimClipDBSec indexed) && ReferenceEquals(indexed, copy))
+                            _sectionByName.Remove(key);
+                    }
+                }
+            }
+
+            clip.Context.Clips.Remove(clip);
+            set.ClipCount = set.Contexts.Sum(x => x.Clips.Count);
+            return true;
+        }
+
+        /// <summary>
+        /// Change a clip's tagged events (or anything else in its metadata) in every copy of its section at once.
+        /// <paramref name="edit"/> runs on each copy's metadata set; the clip's markers are read afresh afterwards.
+        /// False, with <paramref name="problem"/>, for a section whose metadata a save would not write back.
+        /// </summary>
+        public bool EditMetadata(ClipReference clip, Action<AnimClipDBSec.MetadataSet> edit, out string problem)
+        {
+            EnsureContents();
+            problem = null;
+            if (clip?.Section == null || edit == null) { problem = "That clip's section is not in ANIMATION.PAK."; return false; }
+            List<AnimClipDBSec> copies = CopiesOf(clip.Section);
+            foreach (AnimClipDBSec copy in copies)
+            {
+                if (!copy.MetadataParsed) { problem = Path.GetFileName(copy.Filepath) + "'s metadata is kept byte for byte (it does not read back exactly), so it cannot be edited."; return false; }
+                if (clip.Index < 0 || clip.Index >= copy.Metadata.Count) { problem = Path.GetFileName(copy.Filepath) + " has no metadata for this clip."; return false; }
+            }
+            //Tried on a copy read from each section's bytes first: an edit whose metadata would not read back changes nothing
+            foreach (AnimClipDBSec copy in copies)
+            {
+                byte[] bytes = copy.ToBytes();
+                AnimClipDBSec trial = bytes == null ? null : new AnimClipDBSec(bytes, Strings, copy.Filepath, StringsDebug);
+                if (trial == null || !trial.Loaded || clip.Index >= trial.Metadata.Count) { problem = Path.GetFileName(copy.Filepath) + " could not be read back to try the edit on."; return false; }
+                edit(trial.Metadata[clip.Index]);
+                FitBlocks(trial.Metadata[clip.Index]);
+                byte[] after = trial.ToBytes();
+                AnimClipDBSec check = after == null ? null : new AnimClipDBSec(after, Strings, copy.Filepath, StringsDebug);
+                if (check == null || check.Metadata.Count != trial.Metadata.Count) { problem = "After that edit " + Path.GetFileName(copy.Filepath) + "'s metadata would not read back, so the game would lose it; nothing was changed."; return false; }
+            }
+            foreach (AnimClipDBSec copy in copies)
+            {
+                edit(copy.Metadata[clip.Index]);
+                FitBlocks(copy.Metadata[clip.Index]);
+            }
+            clip.Refresh();
+            return true;
+        }
+
+        /// <summary>
+        /// Leave room after each block for everything it points at. A block's data ends with its last property's times,
+        /// but a property's 48-byte entry, or its last 32-byte event header, can reach past them: the times share the
+        /// tail of the entry (no events) or of the last header. A block laid out tight against the end of the image (or
+        /// the next block) then points past it, and the reader - the game's too - throws the whole set away. Retail
+        /// blocks always carry the slack; a block given properties here gets it too. Call after changing a set's properties.
+        /// </summary>
+        public static void FitBlocks(AnimClipDBSec.MetadataSet set)
+        {
+            if (set == null) return;
+            FitBlock(set.Common);
+            foreach (AnimClipDBSec.MetadataBlock block in set.Instances) FitBlock(block);
+        }
+
+        private static void FitBlock(AnimClipDBSec.MetadataBlock block)
+        {
+            //The layout AnimClipDBSec writes: arguments (48 bytes each) from +56, the property entries (48 each) after them,
+            //then each property's event headers (32 each) and times (4 each)
+            if (block == null || !block.HasProperties || block.Properties.Count == 0) return;
+            long arrayEnd = 56 + (block.Arguments.Count * 48) + (block.Properties.Count * 48);
+            long cursor = arrayEnd - (block.Properties[0].HasEvents ? 0 : 8);
+            long reach = arrayEnd;
+            for (int i = 0; i < block.Properties.Count; i++)
+            {
+                AnimClipDBSec.MetadataProperty property = block.Properties[i];
+                int count = property.Times.Count;
+                if (i != 0 && block.Properties[i - 1].HasEvents) cursor += 8;
+                long times = cursor;
+                if (property.HasEvents)
+                {
+                    if (count != 0) reach = Math.Max(reach, cursor + (count * 32));
+                    times = count == 0 ? cursor - 8 : cursor + ((count - 1) * 32) + 24;
+                }
+                cursor = times + (count * 4);
+            }
+            long overhang = reach - cursor;
+            if (overhang > block.TrailingPadding) block.TrailingPadding = (int)((overhang + 7) / 8 * 8);
         }
 
         /// <summary>
@@ -1456,6 +1779,7 @@ namespace CathodeLib
             property.Times.AddRange(times);
             block.Properties.Add(property);
             block.HasProperties = true;
+            FitBlocks(set);
             return property;
         }
 
@@ -1576,6 +1900,13 @@ namespace CathodeLib
             public string Skeleton { get { return Animation?.SkeletonName ?? Section?.SkeletonDependencies.FirstOrDefault() ?? ""; } }
 
             private HavokPackfile.AnimationClip _animation;
+
+            /// <summary>Forget what was read out of the section, so the animation and markers are read again after an edit.</summary>
+            public void Refresh()
+            {
+                _animation = null;
+                _markers = null;
+            }
 
             public override string ToString() => Name.Length != 0 ? Name : (Label ?? Path);
         }
