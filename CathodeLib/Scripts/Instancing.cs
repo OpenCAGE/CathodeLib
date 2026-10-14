@@ -5799,6 +5799,17 @@ namespace CathodeLib
                         mvr.RenderableElements = _materialFactory != null
                             ? _materialFactory.ApplyMaterial(lightReds, lightMaterial)
                             : lightReds;
+                        /* A light made in the editor has no renderable of its own - nothing gives a new LightReference a
+                           RENDERABLE_INSTANCE, whichever way it is made - and a mover with no run is never written
+                           (AddMover), so the build made no light for it at all, whatever cast_shadow said (issue 741).
+                           Its run is what retail's are: the deferred volume for its type, in the material its own
+                           parameters called for - built the way a projective decal's is. */
+                        if ((lightReds == null || lightReds.Count == 0) && _materialFactory != null && lightMaterial != null)
+                        {
+                            Models.CS2.Component.LOD.Submesh volume = RequiredModels.Resolve(_level?.Models, RequiredModels.ForLight(cpuConstants.Type));
+                            if (volume != null)
+                                mvr.RenderableElements = _materialFactory.BuildRun(volume, lightMaterial) ?? mvr.RenderableElements;
+                        }
                         //The deferred volume is per light TYPE - retail partitions point/spot/strip
                         //across the three proxy meshes with no overlap in 41,376 light movers.
                         mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements, RequiredModels.ForLight(cpuConstants.Type));
