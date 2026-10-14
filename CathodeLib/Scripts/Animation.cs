@@ -108,6 +108,12 @@ namespace CathodeLib
         private bool _contentsLoaded;
 
         /// <summary>
+        /// Whether everything the index doesn't cover (trees, clips, skeletons...) has been parsed yet - without parsing it,
+        /// as touching any of those properties does.
+        /// </summary>
+        public bool ContentsLoaded { get { return _contentsLoaded; } }
+
+        /// <summary>
         /// Parse everything the index doesn't cover, once. Everything in here works on the backing
         /// fields rather than the properties, which would come straight back round to this.
         /// </summary>
