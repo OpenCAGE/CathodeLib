@@ -554,6 +554,7 @@ namespace CATHODE
                 {
                     SyncPhysicsSystemIndexParameter(function);
                     SyncEnvironmentMapIndexParameters(function, _textures, _globalTextures, envMapIndices);
+                    SyncColourLutIndexParameters(function, _textures);
                 }
             });
         }
@@ -734,6 +735,38 @@ namespace CATHODE
             if (textureIndex >= 0 || function.GetParameter(ShortGuids.Texture_Index) != null)
                 SetIntegerParameter(function, ShortGuids.Texture_Index, textureIndex);
             SetIntegerParameter(function, ShortGuids.environmentmap_index, envMapIndex);
+        }
+
+        /// <summary>
+        /// Sets ColourCorrectionTransition colour_lut_a_index / colour_lut_b_index from the colour_lut_a / colour_lut_b paths.
+        /// </summary>
+        /// <remarks>
+        /// The engine grades with the baked index, a write index into the LEVEL texture pak, not the path (retail keeps the
+        /// ayz\lut\instagram_* LUTs at 12-14 on every level, TECH_RnD its own at 15-18). Nothing re-derived it, so in a level
+        /// whose pak never held the LUTs (every level made by Level.MakeNewLevelFrom) GLOBAL's GlobalPostProcessing graded
+        /// with whatever sat at 12-14 - camera_frost_threshold.tga gave a frame-wide green shift. Re-derived from all 35
+        /// shipped levels this reproduces every stored index (198 of 198). A path the level pak cannot resolve keeps the
+        /// index it has: the Nostromo _PATCH levels name the LUTs from a pak that does not hold them.
+        /// </remarks>
+        private static void SyncColourLutIndexParameters(FunctionEntity function, Textures levelTextures)
+        {
+            if (function == null || levelTextures == null || function.function != FunctionType.ColourCorrectionTransition)
+                return;
+
+            SyncColourLutIndexParameter(function, levelTextures, ShortGuids.colour_lut_a, ShortGuids.colour_lut_a_index);
+            SyncColourLutIndexParameter(function, levelTextures, ShortGuids.colour_lut_b, ShortGuids.colour_lut_b_index);
+        }
+
+        private static void SyncColourLutIndexParameter(FunctionEntity function, Textures levelTextures, ShortGuid pathParameter, ShortGuid indexParameter)
+        {
+            string path = (function.GetParameter(pathParameter)?.content as cString)?.value;
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            Textures.TEX4 lut = levelTextures.GetEnvironmentMapByPath(path);
+            int index = lut == null ? -1 : levelTextures.GetWriteIndex(lut);
+            if (index >= 0)
+                SetIntegerParameter(function, indexParameter, index);
         }
 
         private static void SetIntegerParameter(FunctionEntity function, ShortGuid id, int value)

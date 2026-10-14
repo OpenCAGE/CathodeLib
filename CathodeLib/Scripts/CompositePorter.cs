@@ -12,8 +12,10 @@ namespace CathodeLib
     /// <summary>
     /// Copies composites from one loaded level into another, bringing the level data they reference
     /// (renderables with their models, materials and textures; collision mappings with their Havok
-    /// proxies; dynamic physics systems; animated models) and the editor metadata that travels in the
-    /// COMMANDS custom tables (custom pin info, modification info, the purge list).
+    /// proxies; dynamic physics systems; animated models; the material mappings their instances select
+    /// and the materials they name; the characters they spawn, with their accessory sets) and the editor
+    /// metadata that travels in the COMMANDS custom tables (custom pin info, modification info, the purge
+    /// list).
     ///
     /// One instance is one source-to-destination pairing. It remembers what it has already visited, so
     /// a composite reachable down several paths is copied once and a cyclic reference terminates, and it
@@ -38,7 +40,8 @@ namespace CathodeLib
         public bool OverwriteAssets = false;
 
         /// <summary>
-        /// Follow composite instances and port the composites they refer to as well.
+        /// Follow composite instances and port the composites they refer to as well - and the composites
+        /// the engine finds without an instance: a character's DisplayModel, an NPC's accessory components.
         /// </summary>
         public bool Recurse = true;
 
@@ -80,6 +83,11 @@ namespace CathodeLib
         public int PhysicsSystemsPorted { get; private set; }
         public int AnimatedModelsPorted { get; private set; }
         public int EnvironmentMapsPorted { get; private set; }
+        public int ColourLutTexturesPorted { get; private set; }
+        public int MaterialMappingsPorted { get; private set; }
+        public int NamedMaterialsPorted { get; private set; }
+        public int CharacterCompositesPorted { get; private set; }
+        public int AccessorySetsPorted { get; private set; }
         public int ResourcesSkipped { get; private set; }
 
         //Source Havok data offset to destination object, so shared proxies/systems are imported once
@@ -120,6 +128,7 @@ namespace CathodeLib
             using (new ImportMemoScope(Source, Destination))
             {
                 PortRecursive(composite);
+                PortAccessorySets(composite);
                 ApplyProxyIndexRemap();
             }
         }
@@ -136,15 +145,18 @@ namespace CathodeLib
                     if (composite != null)
                         PortRecursive(composite);
                 }
+                if (Source.Commands.EntryPoints?[0] != null)
+                    PortAccessorySets(Source.Commands.EntryPoints[0]);
                 ApplyProxyIndexRemap();
             }
         }
 
         /// <summary>
         /// Bring over the level data some entities copied from the source refer to - renderables with their models,
-        /// materials and textures, collision, physics, animated models, an environment map's cubemap - and point their
-        /// references at the destination's objects. For merging entity by entity rather than whole composites: the
-        /// entities are the caller's own copies (Copy() of the source's), in or bound for a destination composite.
+        /// materials and textures, collision, physics, animated models, an environment map's cubemap, the material
+        /// mappings they select and the materials they name - and point their references at the destination's objects.
+        /// For merging entity by entity rather than whole composites: the entities are the caller's own copies (Copy()
+        /// of the source's), in or bound for a destination composite.
         /// </summary>
         public void PortEntityResources(IEnumerable<Entity> copiedEntities)
         {
@@ -157,10 +169,12 @@ namespace CathodeLib
                         if (function.resources != null)
                             CopyResources(function.resources);
                         PortEnvironmentMapTexture(function);
+                        PortColourLutTextures(function);
                     }
                     Parameter resources = entity.GetParameter("resource");
                     if (resources?.content is cResource resourceParam && resourceParam.value != null)
                         CopyResources(resourceParam.value);
+                    PortMappingsAndNamedMaterials(entity);
                 }
                 ApplyProxyIndexRemap();
             }
@@ -300,7 +314,10 @@ namespace CathodeLib
                         CopyResources(resourceParam.value);
 
                     PortEnvironmentMapTexture(ent);
+                    PortColourLutTextures(ent);
                 }
+                foreach (Entity ent in copiedComp.GetEntities())
+                    PortMappingsAndNamedMaterials(ent);
 
                 //Bring over generic metadata
                 //NOTE: entity names travel with the entities themselves (as a 'name' parameter)
@@ -323,7 +340,219 @@ namespace CathodeLib
                 if (nestedComp != null)
                     PortRecursive(nestedComp);
             }
+            PortCharacters(composite);
         }
+
+        /* Characters are not instanced. The engine builds one from the composite named "DisplayModel:<name>", where <name>
+           is a string the script hands it (Character.display_model, RegisterCharacterModel, a variable feeding either). No
+           instance leads to one, so porting ChallengeMap3's root into a new level brought none of its 13: the player and the
+           androids started spawning and never finished, and the mission waited for them behind a black frame. They are
+           followed here like instances - their ModelReferences bring the character models, weighted collisions and animated
+           models along. Any string can carry the name on its way to a Character, so any string naming one counts. */
+        private void PortCharacters(Composite composite)
+        {
+            if (_sourceDisplayModels == null)
+            {
+                _sourceDisplayModels = new Dictionary<string, Composite>(StringComparer.OrdinalIgnoreCase);
+                foreach (Composite candidate in Source.Commands.Entries)
+                {
+                    if (candidate?.name == null || !candidate.name.StartsWith(DisplayModelPrefix, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    string character = candidate.name.Substring(DisplayModelPrefix.Length);
+                    if (!_sourceDisplayModels.ContainsKey(character))
+                        _sourceDisplayModels.Add(character, candidate);
+                }
+            }
+            if (_sourceDisplayModels.Count == 0)
+                return;
+
+            foreach (Entity entity in composite.GetEntities())
+            {
+                foreach (Parameter parameter in entity.parameters)
+                {
+                    if (parameter.content is cString text && !string.IsNullOrEmpty(text.value) &&
+                        _sourceDisplayModels.TryGetValue(text.value, out Composite displayModel))
+                        PortCharacterComposite(displayModel);
+                }
+            }
+        }
+        private const string DisplayModelPrefix = "DisplayModel:";
+        private Dictionary<string, Composite> _sourceDisplayModels = null;
+
+        /* A custom-character NPC is dressed from the component composites its WORLD/CHARACTERACCESSORYSETS.BIN row names (12 on
+           ChallengeMap3, none of them instanced by anything), and the row is keyed by the character entity and the composite
+           instance it sits in - an id hashed from the hop path down from the level root. Every row for an NPC inside the
+           ported composite comes across with its components, keyed by the path from that composite down: once the composite
+           is placed in its new level, instancing finds the instance whose path ends with that one and completes the key
+           (Instancing.RekeyAccessorySets). Rows for NPCs elsewhere in the source stay behind. */
+        private void PortAccessorySets(Composite root)
+        {
+            if (!Recurse || DoNotDescendInto.Contains(root.shortGUID) || Destination.AccessorySets == null || Source.AccessorySets?.Entries == null)
+                return;
+
+            //Below the source's own root the keys already are paths from the composite being ported
+            bool levelRoot = root.shortGUID == Source.Commands.EntryPoints?[0]?.shortGUID;
+            foreach (CharacterAccessorySets.CharacterAttributes row in Source.AccessorySets.Entries)
+            {
+                if (row?.character == null)
+                    continue;
+
+                ShortGuid key = row.character.composite_instance_id;
+                if (!levelRoot)
+                {
+                    List<ShortGuid> below = HopsBelow(root, key);
+                    if (below == null)
+                        continue;
+                    key = below.GenerateCompositeInstanceID(false);
+                }
+
+                foreach (CharacterAccessorySets.CharacterAttributes.Components.Component component in new[] {
+                    row.components.Torso, row.components.Legs, row.components.Shoes, row.components.Head, row.components.Arms, row.components.Collision })
+                {
+                    Composite componentComposite = component.Composite == ShortGuid.Invalid ? null : Source.Commands.GetComposite(component.Composite);
+                    if (componentComposite != null)
+                        PortCharacterComposite(componentComposite);
+                }
+                CarryAccessorySet(row, key);
+            }
+        }
+
+        /* The hops below the instance of root on the source path whose composite instance id is instanceId, or null when that
+           path does not pass through one. The source's paths are walked once per port, keeping only those a row is keyed by. */
+        private List<ShortGuid> HopsBelow(Composite root, ShortGuid instanceId)
+        {
+            if (_accessorySetPaths == null)
+            {
+                _accessorySetPaths = new Dictionary<ShortGuid, (List<ShortGuid> Hops, List<ShortGuid> Opened)>();
+                HashSet<ShortGuid> wanted = new HashSet<ShortGuid>(Source.AccessorySets.Entries.Where(o => o?.character != null).Select(o => o.character.composite_instance_id));
+                Stack<(Composite Composite, List<ShortGuid> Hops, List<ShortGuid> Opened)> todo = new Stack<(Composite, List<ShortGuid>, List<ShortGuid>)>();
+                if (Source.Commands.EntryPoints?[0] != null)
+                    todo.Push((Source.Commands.EntryPoints[0], new List<ShortGuid>(), new List<ShortGuid>()));
+                while (todo.Count != 0 && wanted.Count != 0)
+                {
+                    (Composite composite, List<ShortGuid> hops, List<ShortGuid> opened) = todo.Pop();
+                    if (hops.Count != 0)
+                    {
+                        ShortGuid id = hops.GenerateCompositeInstanceID(false);
+                        if (wanted.Remove(id))
+                            _accessorySetPaths.Add(id, (hops, opened));
+                    }
+                    if (hops.Count >= 64)
+                        continue;
+                    foreach (FunctionEntity function in composite.functions)
+                    {
+                        if (function.function.IsFunctionType)
+                            continue;
+                        Composite child = Source.Commands.GetComposite(function.function);
+                        if (child != null)
+                            todo.Push((child, new List<ShortGuid>(hops) { function.shortGUID }, new List<ShortGuid>(opened) { child.shortGUID }));
+                    }
+                }
+            }
+
+            if (!_accessorySetPaths.TryGetValue(instanceId, out (List<ShortGuid> Hops, List<ShortGuid> Opened) path))
+                return null;
+            int at = path.Opened.IndexOf(root.shortGUID);
+            return at < 0 ? null : path.Hops.GetRange(at + 1, path.Hops.Count - at - 1);
+        }
+        private Dictionary<ShortGuid, (List<ShortGuid> Hops, List<ShortGuid> Opened)> _accessorySetPaths = null;
+
+        private void PortCharacterComposite(Composite composite)
+        {
+            if (DoNotDescendInto.Contains(composite.shortGUID))
+                return;
+            int before = _ported.Count;
+            PortRecursive(composite);
+            if (_ported.Count > before && _ported[before].shortGUID == composite.shortGUID)
+                CharacterCompositesPorted++;
+        }
+
+        private void CarryAccessorySet(CharacterAccessorySets.CharacterAttributes row, ShortGuid compositeInstanceId)
+        {
+            if (Destination.AccessorySets.Entries.Any(o => o?.character != null && o.character.entity_id == row.character.entity_id &&
+                                                           o.character.composite_instance_id == compositeInstanceId))
+                return;
+            CharacterAccessorySets.CharacterAttributes copy = row.Copy();
+            copy.character = new EntityHandle() { entity_id = row.character.entity_id, composite_instance_id = compositeInstanceId };
+            Destination.AccessorySets.Entries.Add(copy);
+            AccessorySetsPorted++;
+        }
+
+        /* A composite instance's 'mapping' resource selects a WORLD/MATERIAL_MAPPINGS.PAK row by its ID, and instancing remaps
+           every model below the instance through it (MaterialRemappingUtils.ApplyMapping). The row's targets, a
+           ModelReference's 'material' override, and the string a variable feeds into one (ChallengeMap3's
+           RandomStaticVDUscreen picks its screen that way) are all looked up by NAME. No resource leads to any of them:
+           ported from ChallengeMap3 into a level made from FRONTEND, 11 of its 20 mappings were missing from the campaign
+           table and 362 movers rendered on other materials (its orange/grey walls came out white). The row comes across as
+           it is, and with it every source material answering to each name it remaps to or a string gives - all of them,
+           because FindMaterialByName chooses among same-named twins by radiosity class and vertex format, and the
+           destination needs the candidates the source had. */
+        private void PortMappingsAndNamedMaterials(Entity entity)
+        {
+            if (Destination.Materials == null || Source.Materials == null)
+                return;
+
+            foreach (Parameter parameter in entity.parameters)
+            {
+                if (parameter.name == ShortGuids.mapping && parameter.content is cResource mapping)
+                    PortMaterialMapping(mapping.shortGUID);
+                else if (parameter.name != ShortGuids.name && parameter.content is cString text) //'name' is the entity's own
+                    PortMaterialsNamed(text.value);
+            }
+            OnProgress?.Invoke();
+        }
+
+        private void PortMaterialMapping(ShortGuid id)
+        {
+            if (id == ShortGuid.Invalid || Source.MaterialMappings == null || Destination.MaterialMappings == null || !_mappingsVisited.Add(id))
+                return;
+
+            MaterialMappings.MaterialMapping source = Source.MaterialMappings.Entries.FirstOrDefault(o => o.ID == id);
+            if (source == null)
+                return;
+
+            //A destination row of the same name stays unless assets are overwritten, as any named asset does
+            int before = Destination.MaterialMappings.Entries.Count;
+            MaterialMappings.MaterialMapping imported = Destination.MaterialMappings.ImportEntry(source, OverwriteAssets);
+            if (Destination.MaterialMappings.Entries.Count != before)
+                MaterialMappingsPorted++;
+            foreach (MaterialMappings.MaterialMapping.Mapping row in imported?.Mappings ?? source.Mappings)
+                PortMaterialsNamed(row?.to);
+        }
+        private readonly HashSet<ShortGuid> _mappingsVisited = new HashSet<ShortGuid>();
+
+        private void PortMaterialsNamed(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !_materialNamesVisited.Add(name))
+                return;
+
+            //Most strings name no material: answer that from the source's names before scanning its table
+            if (_sourceMaterialNames == null)
+            {
+                _sourceMaterialNames = new HashSet<string>();
+                foreach (Materials.Material material in Source.Materials.Entries)
+                {
+                    if (string.IsNullOrEmpty(material?.Name))
+                        continue;
+                    _sourceMaterialNames.Add(MaterialRemappingUtils.NormalizeMaterialNameForLookup(material.Name));
+                    _sourceMaterialNames.Add(MaterialRemappingUtils.NormalizeMaterialNameForLookup(MaterialRemappingUtils.StripAuthoringSlot(material.Name)));
+                }
+            }
+            if (!_sourceMaterialNames.Contains(MaterialRemappingUtils.NormalizeMaterialNameForLookup(name)) &&
+                !_sourceMaterialNames.Contains(MaterialRemappingUtils.NormalizeMaterialNameForLookup(MaterialRemappingUtils.StripAuthoringSlot(name))))
+                return;
+
+            foreach (Materials.Material material in MaterialRemappingUtils.MaterialsAnsweringTo(Source.Materials, name).ToList())
+            {
+                int before = Destination.Materials.Entries.Count;
+                Destination.Materials.ImportEntry(material, OverwriteAssets);
+                if (Destination.Materials.Entries.Count != before)
+                    NamedMaterialsPorted++;
+            }
+            OnProgress?.Invoke();
+        }
+        private readonly HashSet<string> _materialNamesVisited = new HashSet<string>();
+        private HashSet<string> _sourceMaterialNames = null;
 
         /* An EnvironmentMap names its cubemap by a Texture path parameter rather than by a resource,
            so CopyResources never sees it: Commands.Save resolves the path level-pak first, then global,
@@ -349,6 +578,36 @@ namespace CathodeLib
 
             Destination.Textures.ImportEntry(texture, OverwriteAssets);
             EnvironmentMapsPorted++;
+            OnProgress?.Invoke();
+        }
+
+        /* A ColourCorrectionTransition names its colour-grading LUTs by path (colour_lut_a / colour_lut_b) and the engine
+           grades with the LEVEL texture pak index Commands.Save bakes from them. No material references a LUT, so nothing
+           else brings one: a level made from FRONTEND by MakeNewLevelFrom (which ports GLOBAL, and so GlobalPostProcessing,
+           through here) had none in its pak, and its baked indices named camera_frost_threshold.tga. They come across from
+           the source's level pak by name; one the destination already holds dedupes. */
+        private void PortColourLutTextures(FunctionEntity entity)
+        {
+            if (entity == null || !entity.function.IsFunctionType || entity.function.AsFunctionType != FunctionType.ColourCorrectionTransition)
+                return;
+            if (Destination.Textures == null || Source.Textures == null)
+                return;
+
+            foreach (ShortGuid parameter in new[] { ShortGuids.colour_lut_a, ShortGuids.colour_lut_b })
+            {
+                string path = (entity.GetParameter(parameter)?.content as cString)?.value;
+                if (string.IsNullOrEmpty(path))
+                    continue;
+
+                Textures.TEX4 lut = Source.Textures.GetEnvironmentMapByPath(path);
+                if (lut == null)
+                    continue;
+
+                int before = Destination.Textures.Entries.Count;
+                Destination.Textures.ImportEntry(lut, OverwriteAssets);
+                if (Destination.Textures.Entries.Count != before)
+                    ColourLutTexturesPorted++;
+            }
             OnProgress?.Invoke();
         }
 

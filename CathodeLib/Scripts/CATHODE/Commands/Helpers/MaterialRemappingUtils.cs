@@ -364,7 +364,7 @@ namespace CathodeLib
         /// MUN_Plastic_Gloss movers resolving their mapping correctly and then missing this lookup.
         /// Two-part names come back unchanged.
         /// </summary>
-        private static string StripAuthoringSlot(string materialName)
+        internal static string StripAuthoringSlot(string materialName)
         {
             if (string.IsNullOrEmpty(materialName))
                 return materialName;
@@ -462,6 +462,18 @@ namespace CathodeLib
             }
 
             return formatMatch ?? flagMatch ?? fallback;
+        }
+
+        /// <summary>
+        /// Every material <see cref="FindMaterialByName(Materials, string, Materials.Material, Models)"/> could pick for
+        /// <paramref name="name"/>, best tier first - so a port can bring all the candidates a mapping target or a material
+        /// override resolves between, and the destination chooses among them as the source did.
+        /// </summary>
+        public static IEnumerable<Materials.Material> MaterialsAnsweringTo(Materials materials, string name)
+        {
+            if (materials?.Entries == null || string.IsNullOrEmpty(name))
+                return Enumerable.Empty<Materials.Material>();
+            return MatchesByName(materials, name);
         }
 
         private static IEnumerable<Materials.Material> MatchesByName(Materials materials, string name)

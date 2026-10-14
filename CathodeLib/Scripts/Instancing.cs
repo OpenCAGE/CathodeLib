@@ -2872,6 +2872,7 @@ namespace CathodeLib
             Phase("GenerateInstances", GenerateInstances);
             if (ProfilePhases)
                 Console.WriteLine("  [phase]   -> " + AllEntities.Count + " instanced entities in " + AllComposites.Count + " composite instances");
+            Phase("RekeyAccessorySets", RekeyAccessorySets);
             Phase("ProcessInstances", ProcessInstances);
             Phase("BuildStateProperties", BuildStateProperties);
             if (_remapTypeReverts != 0)
@@ -3044,6 +3045,93 @@ namespace CathodeLib
             };
             GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>(), false, null);
             OrderInstancesDeterministically();
+        }
+
+        /// <summary>
+        /// Move CHARACTERACCESSORYSETS rows onto the composite instances their characters are placed in now.
+        /// </summary>
+        /// <remarks>
+        /// A row is keyed by its character entity and the composite instance holding it, an id hashed from the hop path down
+        /// from the level root - but a row that came across with a ported composite (CompositePorter) can only be keyed by
+        /// the path down from that composite, since where it will be placed is not known yet, and until then it names an
+        /// instance that does not exist: the engine never finds it, and the NPC never finishes spawning. Rows whose key
+        /// matches an instanced entity are left exactly as they are, which is every row of every shipped level. A row that
+        /// matches nothing moves to the instance of its entity whose hop path ENDS with the path the row was keyed by - the
+        /// same NPC, reached through the composites it now sits under - and is repeated when the
+        /// same content is placed more than once. Nothing else gets a row: retail leaves most instances of a character
+        /// unkeyed (ChallengeMap3 keys 2 of the 8 its NPC_Logic is instanced as), and a row with nowhere to go stays as it was.
+        /// </remarks>
+        private void RekeyAccessorySets()
+        {
+            List<CharacterAccessorySets.CharacterAttributes> rows = _level.AccessorySets?.Entries;
+            if (rows == null || rows.Count == 0)
+                return;
+
+            HashSet<ShortGuid> characters = new HashSet<ShortGuid>();
+            foreach (CharacterAccessorySets.CharacterAttributes row in rows)
+                if (row?.character != null)
+                    characters.Add(row.character.entity_id);
+
+            //Walk order, so the same level always re-keys the same way
+            List<InstancedEntity> placed = new List<InstancedEntity>();
+            HashSet<(ShortGuid, ShortGuid)> instanced = new HashSet<(ShortGuid, ShortGuid)>();
+            foreach (InstancedEntity entity in AllEntities)
+            {
+                if (entity?.Entity == null || entity.ThisCompositeInstance == null || !characters.Contains(entity.Entity.shortGUID))
+                    continue;
+                if (instanced.Add((entity.Entity.shortGUID, entity.ThisCompositeInstance.InstanceID)))
+                    placed.Add(entity);
+            }
+
+            Dictionary<(ShortGuid, ShortGuid), CharacterAccessorySets.CharacterAttributes> stale = new Dictionary<(ShortGuid, ShortGuid), CharacterAccessorySets.CharacterAttributes>();
+            HashSet<(ShortGuid, ShortGuid)> keyed = new HashSet<(ShortGuid, ShortGuid)>();
+            foreach (CharacterAccessorySets.CharacterAttributes row in rows)
+            {
+                if (row?.character == null)
+                    continue;
+                (ShortGuid, ShortGuid) key = (row.character.entity_id, row.character.composite_instance_id);
+                keyed.Add(key);
+                if (!instanced.Contains(key) && !stale.ContainsKey(key))
+                    stale.Add(key, row);
+            }
+            if (stale.Count == 0)
+                return;
+
+            int moved = 0, repeated = 0;
+            HashSet<CharacterAccessorySets.CharacterAttributes> used = new HashSet<CharacterAccessorySets.CharacterAttributes>();
+            foreach (InstancedEntity entity in placed)
+            {
+                ShortGuid character = entity.Entity.shortGUID;
+                ShortGuid instance = entity.ThisCompositeInstance.InstanceID;
+                if (keyed.Contains((character, instance)))
+                    continue;
+
+                //The composite-instance hops from the level root down to the character, then their suffixes, longest first
+                List<ShortGuid> hops = new List<ShortGuid>();
+                for (InstancedComposite composite = entity.ThisCompositeInstance; composite?.Opener?.Entity != null; composite = composite.Opener.ThisCompositeInstance)
+                    hops.Insert(0, composite.Opener.Entity.shortGUID);
+                for (int skip = 1; skip <= hops.Count; skip++)
+                {
+                    ShortGuid wasKeyedAs = hops.GetRange(skip, hops.Count - skip).GenerateCompositeInstanceID(false);
+                    if (!stale.TryGetValue((character, wasKeyedAs), out CharacterAccessorySets.CharacterAttributes row))
+                        continue;
+                    if (used.Add(row))
+                    {
+                        moved++;
+                    }
+                    else
+                    {
+                        row = row.Copy();
+                        rows.Add(row);
+                        repeated++;
+                    }
+                    row.character = new EntityHandle() { entity_id = character, composite_instance_id = instance };
+                    keyed.Add((character, instance));
+                    break;
+                }
+            }
+            if (moved != 0 || repeated != 0)
+                Console.WriteLine("Instancing: re-keyed " + moved + " character accessory set(s) to where their characters are placed" + (repeated == 0 ? "" : ", and repeated " + repeated + " for further placements of the same content") + ".");
         }
 
         /// <summary>

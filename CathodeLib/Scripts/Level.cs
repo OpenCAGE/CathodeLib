@@ -845,7 +845,9 @@ namespace CathodeLib
 
             //Script: GLOBAL and PAUSEMENU from the base, the REQUIRED_ASSETS composites the engine instances on
             //every level without a script referencing them (weapons, gadgets, the jobs the AI needs) - each
-            //with everything it instances, via the porter - then an empty root for the level itself
+            //with everything it instances, via the porter - then an empty root for the level itself. The porter
+            //also brings the colour-grading LUTs GLOBAL's GlobalPostProcessing names, which no material does: the
+            //save below bakes their level-pak indices (Commands.SyncDerivedResourceParameters)
             Composite baseGlobal = baseLevel.Commands.EntryPoints?[1];
             Composite basePauseMenu = baseLevel.Commands.EntryPoints?[2];
             CompositePorter porter = new CompositePorter(baseLevel, level) { OverwriteComposites = true, Recurse = true };
