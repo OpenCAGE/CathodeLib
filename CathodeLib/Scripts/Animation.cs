@@ -56,6 +56,12 @@ namespace CathodeLib
         /// <summary>The PAK everything came out of. Entry content is refreshed by <see cref="Save"/>.</summary>
         public PAK2 PAK { get { return _pak; } }
 
+        /// <summary>
+        /// Called as <see cref="Save"/> puts each file back into the PAK, before the PAK is written (which reports through
+        /// <see cref="PAK2.OnSaveProgress"/>): the files done so far, and in all. On the thread saving.
+        /// </summary>
+        public Action<int, int> OnSaveProgress;
+
         /// <summary>Whether every file in the PAK was parsed. See <see cref="Failures"/> if not.</summary>
         public bool Loaded { get { return _loaded; } }
 
@@ -206,28 +212,36 @@ namespace CathodeLib
                 if (!entries.ContainsKey(name)) entries[name] = entry;      //first wins, as a search would
             }
 
-            Write(entries, Strings, x => x.ToBytes());
-            Write(entries, StringsDebug, x => x.ToBytes());
-            Write(entries, SkeletonIndex, x => x.ToBytes());
-            Write(entries, ClipIndex, x => x.ToBytes());
-            foreach (AnimClipDB clips in ClipDatabases) Write(entries, clips, x => x.ToBytes());
-            foreach (AnimClipDBSec section in Sections) Write(entries, section, x => x.ToBytes());
-            foreach (AnimTreeDB tree in Trees) Write(entries, tree, x => x.ToBytes());
+            int done = 0;
+            int total = 4 + ClipDatabases.Count + Sections.Count + Trees.Count + 2 * (Skeletons.Count + Mappings.Count + Ragdolls.Count);
+            void Put<T>(T file, Func<T, byte[]> serialise) where T : CathodeFile
+            {
+                Write(entries, file, serialise);
+                OnSaveProgress?.Invoke(++done, total);
+            }
+
+            Put(Strings, x => x.ToBytes());
+            Put(StringsDebug, x => x.ToBytes());
+            Put(SkeletonIndex, x => x.ToBytes());
+            Put(ClipIndex, x => x.ToBytes());
+            foreach (AnimClipDB clips in ClipDatabases) Put(clips, x => x.ToBytes());
+            foreach (AnimClipDBSec section in Sections) Put(section, x => x.ToBytes());
+            foreach (AnimTreeDB tree in Trees) Put(tree, x => x.ToBytes());
 
             foreach (SkeletonAsset skeleton in Skeletons)
             {
-                Write(entries, skeleton.Skeleton, x => x.ToBytes());
-                Write(entries, skeleton.Skeleton64, x => x.ToBytes());
+                Put(skeleton.Skeleton, x => x.ToBytes());
+                Put(skeleton.Skeleton64, x => x.ToBytes());
             }
             foreach (MappingAsset mapping in Mappings)
             {
-                Write(entries, mapping.Mapping, x => x.ToBytes());
-                Write(entries, mapping.Mapping64, x => x.ToBytes());
+                Put(mapping.Mapping, x => x.ToBytes());
+                Put(mapping.Mapping64, x => x.ToBytes());
             }
             foreach (RagdollAsset ragdoll in Ragdolls)
             {
-                Write(entries, ragdoll.Ragdoll, x => x.ToBytes());
-                Write(entries, ragdoll.Ragdoll64, x => x.ToBytes());
+                Put(ragdoll.Ragdoll, x => x.ToBytes());
+                Put(ragdoll.Ragdoll64, x => x.ToBytes());
             }
 
             return path.Length == 0 ? _pak.Save() : _pak.Save(path);

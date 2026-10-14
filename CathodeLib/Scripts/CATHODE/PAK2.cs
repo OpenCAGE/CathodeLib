@@ -14,6 +14,12 @@ namespace CATHODE
         public List<File> Entries = new List<File>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
+        /// <summary>
+        /// Called as a save writes the entries' content, after each one: the bytes of content written so far, and in all.
+        /// On the thread saving. A PAK can be hundreds of MB (ANIMATION.PAK), so a caller can show how far the write has got.
+        /// </summary>
+        public System.Action<long, long> OnSaveProgress;
+
         public PAK2(string path) : base(path) { }
         public PAK2(MemoryStream stream, string path = "") : base(stream, path) { }
         public PAK2(byte[] data, string path = "") : base(data, path) { }
@@ -74,11 +80,19 @@ namespace CATHODE
 
                 //Write files
                 List<int> offsets = new List<int>();
+                long total = 0, written = 0;
+                if (OnSaveProgress != null)
+                    for (int i = 0; i < Entries.Count; i++) total += Entries[i].Content?.Length ?? 0;
                 for (int i = 0; i < Entries.Count; i++)
                 {
                     Utilities.Align(writer, 4);
                     writer.Write(Entries[i].Content);
                     offsets.Add((int)writer.BaseStream.Position);
+                    if (OnSaveProgress != null)
+                    {
+                        written += Entries[i].Content.Length;
+                        OnSaveProgress(written, total);
+                    }
                 }
                 Utilities.Align(writer, 4);
 
