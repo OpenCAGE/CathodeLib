@@ -232,7 +232,7 @@ namespace CathodeLib
 #elif GODOT
                                     mesh.Colours.Add(new Color(v.X, v.Y, v.Z, v.W));
 #else
-                                    mesh.Colours.Add(Color.FromArgb((int)(v.W * 255.0f), (int)(v.X * 255.0f), (int)(v.Y * 255.0f), (int)(v.Z * 255.0f))); // TODO: is this correct?
+                                    mesh.Colours.Add(Color.FromArgb(ColourByte(v.W), ColourByte(v.X), ColourByte(v.Y), ColourByte(v.Z)));
 #endif
                                     break;
                             }
@@ -307,8 +307,9 @@ namespace CathodeLib
                 case Models.VertexFormat.Type.FP32_4:
                     return new Vector4(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                 case Models.VertexFormat.Type.Color:
+                    //The game declares it DXGI_FORMAT_B8G8R8A8_UNORM: blue, green, red, alpha in memory. Read as red, green, blue, alpha
                     uint data = reader.ReadUInt32();
-                    return new Vector4((float)((data & 0xFF000000) >> 24) / 255.0f, (float)((data & 0x00FF0000) >> 16) / 255.0f, (float)((data & 0x0000FF00) >> 8) / 255.0f, (float)((data & 0x000000FF) >> 0) / 255.0f);
+                    return new Vector4((float)((data & 0x00FF0000) >> 16) / 255.0f, (float)((data & 0x0000FF00) >> 8) / 255.0f, (float)((data & 0x000000FF) >> 0) / 255.0f, (float)((data & 0xFF000000) >> 24) / 255.0f);
                 case Models.VertexFormat.Type.U8_4:
                     return new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                 case Models.VertexFormat.Type.S16_2:
@@ -407,6 +408,12 @@ namespace CathodeLib
         }
 
         /// <summary>Encode one vertex attribute - the exact inverse of <see cref="ReadVertexData"/>.</summary>
+        /* A 0-1 colour channel as a byte, rounded, so a colour read and written again comes back the same */
+        private static byte ColourByte(float value)
+        {
+            return (byte)Math.Max(0, Math.Min(255, Math.Round(value * 255.0f)));
+        }
+
         public static void WriteVertexData(BinaryWriter writer, Vector4 v, Models.VertexFormat.Type type)
         {
             switch (type)
@@ -452,10 +459,11 @@ namespace CathodeLib
 #endif
                     break;
                 case Models.VertexFormat.Type.Color:
+                    //Red, green, blue, alpha written as the game reads it: blue, green, red, alpha in memory (see ReadVertexData)
 #if UNITY_EDITOR || UNITY_STANDALONE
-                    uint data = ((uint)(v.x * 255.0f) << 24) | ((uint)(v.y * 255.0f) << 16) | ((uint)(v.z * 255.0f) << 8) | (uint)(v.w * 255.0f);
+                    uint data = ((uint)ColourByte(v.w) << 24) | ((uint)ColourByte(v.x) << 16) | ((uint)ColourByte(v.y) << 8) | (uint)ColourByte(v.z);
 #else
-                    uint data = ((uint)(v.X * 255.0f) << 24) | ((uint)(v.Y * 255.0f) << 16) | ((uint)(v.Z * 255.0f) << 8) | (uint)(v.W * 255.0f);
+                    uint data = ((uint)ColourByte(v.W) << 24) | ((uint)ColourByte(v.X) << 16) | ((uint)ColourByte(v.Y) << 8) | (uint)ColourByte(v.Z);
 #endif
                     writer.Write(data);
                     break;
