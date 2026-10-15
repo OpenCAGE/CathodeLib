@@ -13,33 +13,21 @@ namespace CathodeLib.Radiosity
     /// geometry is lit live from the volume probe field instead of needing a lightmap rebake.
     /// </summary>
     /// <remarks>
-    /// <para>Dynamic radiosity IS the lightmap pipeline: the same relit probe atlas, decoded by
-    /// the same shader instructions, sampled at one per-instance coordinate the engine derives
-    /// from the volume probe hash at the instance's pivot (cbInstanceXSC's
-    /// RadiosityProbeTexcoordAndScale) instead of per-pixel lightmap UVs through the instance's
-    /// MODEL_PARAMS rect. A dynamic instance therefore needs no atlas allocation at all - which
-    /// is exactly what an edit-added instance does not have.</para>
-    /// <para>Retail's dynamic convention, all three parts of which this reproduces per mover:
-    /// a genuinely dynamic shader (bytecode that reads cb10[11].xy, not just flipped flags - a
-    /// flag-flipped static shader still samples the atlas through its rect and renders one
-    /// stripe per UV chart), a zeroed 16-byte lightmap transform (the engine asserts on a rect
-    /// plus the dynamic bit), and no RADIOSITY_INSTANCE_MAP row.</para>
-    /// <para>Materials are CLONED, never flipped in place - a material and its shader are shared
-    /// by every retail user. The clone is pointed at the level's own compiled dynamic twin where
-    /// one ships (same ubershader family, features with the family's radiosity bits swapped,
-    /// requirements swapped); where none does, a dynamic permutation is SYNTHESISED by cloning
-    /// the shader entry and applying <see cref="DxbcUtils.PatchStaticToDynamic"/> - the exact
-    /// transformation CA's compiler produces between the permutations, golden-tested against
-    /// every shipped twin pair.</para>
-    /// <para>Because added movers frequently reference retail REDS runs (that is how instancing
-    /// binds them), each converted mover first gets its own duplicated run with LOD chains
-    /// deep-copied; otherwise the [DYN] clone leaks onto every retail mover sharing the run.</para>
-    /// <para>The 16-byte constants head is zeroed ONLY when the mover actually has a
-    /// radiosity-class element: on glass/FX movers those bytes are per-type parameters (tint),
-    /// not a lightmap transform, and zeroing them corrupts the material (measured: a
-    /// GLASS_Distortion panel rendered uniform blue).</para>
+    /// <para>Dynamic radiosity IS the lightmap pipeline: the same relit probe atlas and shader decode, sampled at one
+    /// per-instance coordinate the engine derives from the volume probe hash at the instance's pivot (cbInstanceXSC's
+    /// RadiosityProbeTexcoordAndScale) instead of per-pixel lightmap UVs through MODEL_PARAMS. A dynamic instance needs
+    /// no atlas allocation, which is exactly what an edit-added instance does not have.</para>
+    /// <para>Retail's dynamic convention, reproduced per mover: a genuinely dynamic shader (bytecode reading
+    /// cb10[11].xy; a flag-flipped static shader still samples the atlas through its rect), a zeroed 16-byte lightmap
+    /// transform (the engine asserts on a rect plus the dynamic bit), and no RADIOSITY_INSTANCE_MAP row.</para>
+    /// <para>Materials are CLONED, never flipped in place (a material and its shader are shared by every retail user).
+    /// The clone uses the level's own compiled dynamic twin where one ships; otherwise a dynamic permutation is
+    /// SYNTHESISED with <see cref="DxbcUtils.PatchStaticToDynamic"/>, the transformation CA's compiler makes between
+    /// the permutations. Each converted mover first gets its own REDS run, LOD chains included, or the clone leaks onto
+    /// every retail mover sharing the run. The constants head is zeroed ONLY when the mover has a radiosity-class
+    /// element: on glass/FX movers those bytes are per-type parameters (tint).</para>
     /// </remarks>
-    public static class DynamicRadiosityConverter
+    internal static class DynamicRadiosityConverter
     {
         public sealed class Result
         {
@@ -49,10 +37,7 @@ namespace CathodeLib.Radiosity
             public HashSet<int> ConvertedMovers = new HashSet<int>();
             public int MoversNoRadiosity;
             public int ElementsRepointed;
-            public int ElementsAlreadyDynamic;
             public int ElementsUnconvertible;
-            /// <summary>Static-class elements whose bytecode never samples the probe atlas.</summary>
-            public int ElementsNeutralStatic;
             public int MaterialsCloned;
             public int ShadersSynthesised;
             public int TwinsUsed;
@@ -60,8 +45,7 @@ namespace CathodeLib.Radiosity
             public int MapRowsDropped;
         }
 
-        public static Result Convert(Level level, ICollection<int> moverIndices, Action<string> log = null, bool dropInstanceMapRows = true,
-                                     ICollection<int> preserveIslandRows = null)
+        public static Result Convert(Level level, ICollection<int> moverIndices, Action<string> log = null)
         {
             var result = new Result();
             if (moverIndices == null || moverIndices.Count == 0)
@@ -185,13 +169,10 @@ namespace CathodeLib.Radiosity
                 return clone;
             }
 
-            // A LOD chain is serialised as an index + count into the global REDS entry list, so
-            // a private copy of it MUST be a registered contiguous run of its own - an
-            // unregistered copy resolves to a garbage run index at save the moment one of its
-            // materials is repointed (it no longer value-matches the original run), and the
-            // game crashes streaming textures for the garbage element on zone load. Duplicate
-            // recursively: RegisterDuplicateRun's shallow copies share their sub-LOD lists with
-            // the originals, which conversion must never mutate.
+            // A LOD chain is serialised as an index + count into the global REDS entry list, so a private copy MUST be a
+            // registered contiguous run of its own: an unregistered copy resolves to a garbage run index at save once a
+            // material is repointed, and the game crashes streaming textures on zone load. Recursive, because
+            // RegisterDuplicateRun's shallow copies share their sub-LOD lists with the originals.
             List<RenderableElements.Element> DupLodChain(List<RenderableElements.Element> lods)
             {
                 if (lods == null || lods.Count == 0)
@@ -218,7 +199,7 @@ namespace CathodeLib.Radiosity
                 // Census first, before touching the mover: does it carry radiosity-lit elements
                 // at all, and does every static one have a dynamic route? (DynamicMaterial only
                 // builds the clone - nothing is repointed yet.)
-                int staticConvertible = 0, staticUnconvertible = 0, staticNeutral = 0, alreadyDynamic = 0;
+                int staticConvertible = 0, staticUnconvertible = 0, alreadyDynamic = 0;
                 void CensusElement(RenderableElements.Element e)
                 {
                     if (e == null)
@@ -232,12 +213,9 @@ namespace CathodeLib.Radiosity
                         else if ((f & staticBit) != 0)
                         {
                             if (DynamicMaterial(e.Material) != null) staticConvertible++;
-                            // Static-CLASS but the bytecode never reads the probe atlas: its
-                            // lighting does not depend on the rect, so it neither needs
-                            // conversion nor blocks it (48 such shaders on ChallengeMap3, all
-                            // measured to carry no mangle constant anywhere in their code).
-                            else if (!DxbcUtils.SamplesRadiosity(s.PixelShader)) staticNeutral++;
-                            else staticUnconvertible++;
+                            // Only a static-CLASS shader whose bytecode reads the probe atlas blocks the conversion; one
+                            // that never reads it does not depend on the rect (48 such shaders on ChallengeMap3).
+                            else if (DxbcUtils.SamplesRadiosity(s.PixelShader)) staticUnconvertible++;
                         }
                     }
                     if (e.LODs != null)
@@ -247,8 +225,6 @@ namespace CathodeLib.Radiosity
                 foreach (RenderableElements.Element e in mover.RenderableElements)
                     CensusElement(e);
 
-                result.ElementsAlreadyDynamic += alreadyDynamic;
-                result.ElementsNeutralStatic += staticNeutral;
                 if (staticConvertible == 0 && staticUnconvertible == 0 && alreadyDynamic == 0)
                 {
                     // Nothing radiosity-lit (FX, glass, decals): nothing to convert, nothing to
@@ -315,10 +291,11 @@ namespace CathodeLib.Radiosity
                 result.ConvertedMovers.Add(mi);
             }
 
-            // ...and no RADIOSITY_INSTANCE_MAP row. Added movers have none; moved movers carry
-            // their retail row, which must go - a map row plus the dynamic bit is the mixed
-            // state the engine asserts on. Rows are dropped only for movers actually converted.
-            if (dropInstanceMapRows && level.RadiosityInstanceMap?.Entries != null && result.ConvertedMovers.Count > 0)
+            // ...and no RADIOSITY_INSTANCE_MAP row. Moved movers carry their retail row, which must go: a map row plus the
+            // dynamic bit is the mixed state the engine asserts on. Rows are dropped only for movers actually converted
+            // (dropping nearly every row in a whole-level conversion stopped the retail slices' relight: the engine
+            // relights only slices a row's island points at). The probe slices' scheduling rows are appended after this.
+            if (level.RadiosityInstanceMap?.Entries != null && result.ConvertedMovers.Count > 0)
             {
                 var convertedResources = new HashSet<Resources.Resource>();
                 foreach (int mi in result.ConvertedMovers)
@@ -327,15 +304,6 @@ namespace CathodeLib.Radiosity
                 var keep = new List<RadiosityInstanceMap.Entry>(level.RadiosityInstanceMap.Entries.Count);
                 foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
                 {
-                    // Minted scheduling rows survive conversion: the engine's relight only
-                    // processes slices an instance-map row's island points at, and the row's
-                    // mover being dynamic is the state KEEPROWS mode ran at scale without
-                    // incident (zeroed rect = nothing samples pages through it).
-                    if (preserveIslandRows != null && preserveIslandRows.Contains(e.lightmap_transform))
-                    {
-                        keep.Add(e);
-                        continue;
-                    }
                     Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
                     if (r != null && convertedResources.Contains(r))
                     {

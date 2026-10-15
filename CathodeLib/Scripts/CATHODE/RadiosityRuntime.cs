@@ -591,6 +591,16 @@ namespace CATHODE
             public bool IsLeaf() => ChildA == 0 && ChildB == 0;
         }
 
+        /// <summary>
+        /// A slice's volume probe hash: the grid that maps a world position to its nearest input probes, read by
+        /// CA_RADIOSITY_OBJECT_PROBE_INTERP to light dynamic objects.
+        /// </summary>
+        /// <remarks>
+        /// An ABSENT hash is <see cref="NumSubdivsPerLevel"/> 0 with a zero AABB and zero dims, never 3 (BSP_LV426_PT01
+        /// slice 0, the one retail slice of 128 with no volume probes); every populated hash uses 3. Subdivisions 3 with no
+        /// items, nodes or offsets occurs in no retail level: it hands the object probe pass an empty hash, which is where
+        /// render_object_probes faults.
+        /// </remarks>
         public class VolumeProbeHash
         {
             public uint NumSubdivsPerLevel;

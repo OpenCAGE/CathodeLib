@@ -2782,14 +2782,6 @@ namespace CathodeLib
         }
 
         /// <summary>
-        /// Entities whose radiosity_multiplier parameter is authored zero, keyed by
-        /// (composite_instance_id, entity_id). The radiosity bake must attach no surface light to
-        /// these; the MVR field alone cannot express the rule because an absent parameter also
-        /// stores 0 there and those movers ARE lit.
-        /// </summary>
-        public readonly HashSet<(uint, uint)> RadiosityAuthoredOff = new HashSet<(uint, uint)>();
-
-        /// <summary>
         /// The collision soup a bake collected this pass, and the key describing the settings that
         /// shaped it. The cover and job-position bakes ask for the same triangles, and collecting
         /// them (and building the ray BVH over them) is seconds a level, so the second bake of a
@@ -2909,7 +2901,6 @@ namespace CathodeLib
                 RadiosityBaker.BakeResult radiosity = null;
                 Phase("bake: radiosity", () => radiosity = RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine));
                 RadiosityCleared = radiosity != null && radiosity.NothingToBake;
-                RadiosityBaked = !RadiosityCleared;
 
                 if (_level.Patched)
                     Utilities.ClearRadiosityPatchOnDisk(_level);
@@ -2919,12 +2910,6 @@ namespace CathodeLib
                 Utilities.ClearRadiosityOnDisk(_level);
             }
         }
-
-        /// <summary>
-        /// True when the radiosity bake ran this pass. False when radiosity was not requested, or
-        /// when <see cref="RadiosityCleared"/> says there was nothing to light.
-        /// </summary>
-        public bool RadiosityBaked { get; private set; }
 
         /// <summary>
         /// True when radiosity was requested but the level held no static geometry to light, so the
@@ -6167,13 +6152,6 @@ namespace CathodeLib
                                 mvr.EmissiveFlags |= Movers.EmissiveFlag.ReplaceTint;
                             mvr.EmissiveIntensityMultiplier = ResolveModelReferenceEmissiveIntensity(entity, isTemplate);
                             mvr.EmissiveRadiosityMultiplier = Math.Max(0.0f, entity.Floats.Get(ShortGuids.radiosity_multiplier));
-                            // An AUTHORED radiosity_multiplier of 0 excludes the model from the radiosity
-                            // bake, where a merely absent one does not - the distinction exists only here,
-                            // with the parameter table in hand, because both store 0 in the MVR. The value
-                            // itself does not scale the baked output; nonzero values are runtime-side.
-                            if (entity.Floats.Values.TryGetValue(ShortGuids.radiosity_multiplier, out float authoredRadiosity) &&
-                                authoredRadiosity <= 0.0f)
-                                RadiosityAuthoredOff.Add((entity.Handle.composite_instance_id.AsUInt32, entity.Handle.entity_id.AsUInt32));
                             ApplyMoverZones(mvr, entity);
                             mvr.LightingMasterID = entity.LightingMaster;
                             AddMover(entity, mvr, isTemplate);

@@ -93,6 +93,9 @@ namespace NanoRT
         private Vector3[] _triMin = Array.Empty<Vector3>();
         private Vector3[] _triMax = Array.Empty<Vector3>();
 
+        // Optional leaf-ordered triangle copy for Occluded (see BuildOcclusionCache): p0, p1 - p0, p2 - p0 for each _indices slot.
+        private Vector3[] _occlusionCache;
+
         public BVHBuildStatistics Statistics { get; private set; } = new BVHBuildStatistics();
         public int TriangleCount => _faces.Length / 3;
         public bool IsBuilt => _nodeCount > 0;
@@ -112,6 +115,7 @@ namespace NanoRT
 
             options ??= new BVHBuildOptions();
 
+            _occlusionCache = null;
             _vertices = vertices;
             _faces = faces;
 
@@ -521,6 +525,16 @@ namespace NanoRT
 
                 if (node.PrimCount > 0)
                 {
+                    Vector3[] cache = _occlusionCache;
+                    if (cache != null)
+                    {
+                        for (int i = 0, c = node.Data0 * 3; i < node.PrimCount; i++, c += 3)
+                        {
+                            if (IntersectTriangle(cache[c], cache[c + 1], cache[c + 2], ref ray, ray.MaxT))
+                                return true;
+                        }
+                        continue;
+                    }
                     for (int i = 0; i < node.PrimCount; i++)
                     {
                         if (IntersectTriangle(_indices[node.Data0 + i], ref ray, ray.MaxT, out _, out _, out _))
@@ -538,6 +552,35 @@ namespace NanoRT
 
             return false;
         }
+
+        /// <summary>
+        /// Give <see cref="Occluded"/> a leaf-ordered copy of every triangle (p0, p1 - p0, p2 - p0), so a leaf's triangles
+        /// are read from one contiguous block instead of being gathered through the face and vertex arrays. The copy holds
+        /// exactly the values the triangle test computes from those arrays, so every answer stays the same. Costs 36 bytes
+        /// per triangle until <see cref="ReleaseOcclusionCache"/> or the next <see cref="Build"/>. Returns false, and leaves
+        /// queries as they were, when the copy cannot be allocated.
+        /// </summary>
+        public bool BuildOcclusionCache()
+        {
+            Vector3[] cache;
+            try { cache = new Vector3[_indices.Length * 3]; }
+            catch (OutOfMemoryException) { return false; }
+            for (int i = 0; i < _indices.Length; i++)
+            {
+                int tri = _indices[i];
+                Vector3 p0 = Vertex(_faces[tri * 3 + 0]);
+                Vector3 p1 = Vertex(_faces[tri * 3 + 1]);
+                Vector3 p2 = Vertex(_faces[tri * 3 + 2]);
+                cache[i * 3 + 0] = p0;
+                cache[i * 3 + 1] = p1 - p0;
+                cache[i * 3 + 2] = p2 - p0;
+            }
+            _occlusionCache = cache;
+            return true;
+        }
+
+        /// <summary>Drop the copy made by <see cref="BuildOcclusionCache"/>.</summary>
+        public void ReleaseOcclusionCache() => _occlusionCache = null;
 
         /// <summary>Geometric normal of a triangle, in the winding order of the source mesh.</summary>
         public Vector3 TriangleNormal(int primId)
@@ -580,6 +623,33 @@ namespace NanoRT
                 return false;
 
             t = Vector3.Dot(e2, qv) * invDet;
+            return t >= ray.MinT && t <= tMax;
+        }
+
+        /// <summary>
+        /// The test above, statement for statement, on a cached p0, e1 = p1 - p0 and e2 = p2 - p0 (any-hit: no t, u or v out).
+        /// </summary>
+        private static bool IntersectTriangle(Vector3 p0, Vector3 e1, Vector3 e2, ref Ray ray, float tMax)
+        {
+            const float epsilon = 1e-9f;
+
+            Vector3 pv = Vector3.Cross(ray.Direction, e2);
+            float det = Vector3.Dot(e1, pv);
+            if (det > -epsilon && det < epsilon)
+                return false;
+
+            float invDet = 1.0f / det;
+            Vector3 tv = ray.Origin - p0;
+            float u = Vector3.Dot(tv, pv) * invDet;
+            if (u < 0.0f || u > 1.0f)
+                return false;
+
+            Vector3 qv = Vector3.Cross(tv, e1);
+            float v = Vector3.Dot(ray.Direction, qv) * invDet;
+            if (v < 0.0f || u + v > 1.0f)
+                return false;
+
+            float t = Vector3.Dot(e2, qv) * invDet;
             return t >= ray.MinT && t <= tMax;
         }
 

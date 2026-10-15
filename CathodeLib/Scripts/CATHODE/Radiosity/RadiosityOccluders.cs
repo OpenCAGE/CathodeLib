@@ -11,13 +11,9 @@ namespace CathodeLib.Radiosity
     /// Collision geometry as a low-detail stand-in for the render meshes when testing visibility.
     /// </summary>
     /// <remarks>
-    /// <para>A collision hull is a coarse closed shell around each object, which is exactly the
-    /// shape a visibility test wants.</para>
-    /// <para>What this buys is the difference between a probe that is genuinely in a sealed room and
-    /// one that is merely wedged inside a render mesh's own detail. Occluding against render
-    /// geometry, 26-27% of our surface probes found every direction blocked, against retail's
-    /// 7-9%; interior submeshes, panel back faces and coincident double-sided surfaces account for
-    /// almost all of it, and none of them exist in the collision shell.</para>
+    /// A collision hull is a coarse closed shell around each object, the shape a visibility test wants: occluding against
+    /// render geometry left 26-27% of our surface probes with every direction blocked (retail: 7-9%), wedged in interior
+    /// submeshes, panel back faces and double-sided surfaces the shell does not have.
     /// </remarks>
     public static class RadiosityOccluders
     {
@@ -40,6 +36,13 @@ namespace CathodeLib.Radiosity
         /// one entry per triangle. Triangles with no mapping - and the render-geometry fallback -
         /// get zero. Sound occlusion uses this to tell a wall from a prop standing against it.
         /// </param>
+        /// <param name="skipDoorBarriers">
+        /// Leave out doorway barriers (PATH_CLOSED), so the radiosity bake stores the doors-open field.
+        /// </param>
+        /// <param name="triangleInstances">
+        /// When supplied, receives the collider instance each triangle came from (null for the render-geometry fallback).
+        /// </param>
+        /// <param name="alsoSkip">Further collider instances to leave out.</param>
         public static bool TryCollect(Level level, RadiosityGeometry geometry,
                                       out float[] verts, out int[] tris, Action<string> log = null,
                                       bool staticOnly = false,
@@ -128,12 +131,9 @@ namespace CathodeLib.Radiosity
         /// Add the render triangles of any baked instance that has no collision of its own.
         /// </summary>
         /// <remarks>
-        /// An instance missing from COLLISION.MAP contributes nothing to the proxy, so without this
-        /// it would stop blocking light entirely - a wall that casts no shadow and leaks into the
-        /// room behind it. Retail geometry is almost fully covered, but user-imported movers
-        /// frequently have no collision at all, and they are exactly the case the bake must not
-        /// silently mislight. Their own render triangles stand in, which is strictly better than
-        /// nothing and no worse than the render-mesh occlusion we used before.
+        /// An instance missing from COLLISION.MAP contributes nothing to the proxy, so it would stop blocking light (a
+        /// wall that leaks into the room behind it). Retail geometry is almost fully covered, but user-imported movers
+        /// often have no collision at all; their own render triangles stand in.
         /// </remarks>
         static int AppendUncoveredRenderGeometry(Level level, RadiosityGeometry geometry,
                                                  List<float> positions, List<int> indices,
@@ -260,9 +260,8 @@ namespace CathodeLib.Radiosity
                     continue;
                 }
 
-                // Ballistic colliders stop bullets, not sound - grates, railings and thin panels
-                // are all shot-proof and all audible through. They are the largest single group in
-                // BSP_TORRENS' collision map (2623 of 4999).
+                // Ballistic colliders stop bullets, not sound: grates, railings and thin panels are shot-proof and
+                // audible through (the largest single group in BSP_TORRENS' collision map).
                 if ((entry.Flags & CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK) ==
                     (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.BALLISTICS)
                     skip.Add(entry.CollisionInstance);

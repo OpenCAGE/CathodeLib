@@ -8,12 +8,10 @@ namespace CathodeLib.Radiosity
     /// Skyline packer for one slice's 128x128 lightmap atlas.
     /// </summary>
     /// <remarks>
-    /// Each radiosity instance owns a disjoint rect here, and a mover's MODEL_PARAMS carries that
-    /// rect so the shader can map the mesh's UV1 into it. Retail bakes pack these tightly - slice 1
-    /// of BSP_TORRENS has zero overlapping texels across 174 instances - so the packer only has to
-    /// be disjoint and reasonably dense, not optimal.
+    /// Each radiosity instance owns a disjoint rect here, and a mover's MODEL_PARAMS carries that rect so the shader can
+    /// map the mesh's UV1 into it. The packer only has to be disjoint and reasonably dense, not optimal.
     /// </remarks>
-    public sealed class RadiosityAtlas
+    internal sealed class RadiosityAtlas
     {
         private struct Shelf
         {
@@ -76,7 +74,8 @@ namespace CathodeLib.Radiosity
             return true;
         }
 
-        /// <summary>Height of the tallest shelf spanned by <paramref name="width"/> from node i.</summary>
+        /// <summary>Whether <paramref name="width"/> fits from node <paramref name="index"/>; <paramref name="y"/> is the
+        /// height of the tallest shelf it spans.</summary>
         private bool TryFit(int index, int width, out int y)
         {
             int x = _skyline[index].X;
@@ -136,80 +135,36 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>
-        /// Rect size for an instance, from its world surface area. Retail averages roughly
-        /// 0.49 m² per texel, and instances are close to square.
-        /// </summary>
-        public static void RectSizeForArea(float surfaceArea, RadiosityBakeSettings settings, out int width, out int height)
-        {
-            float texels = surfaceArea / Math.Max(1e-4f, settings.MetresSquaredPerTexel);
-            int edge = (int)Math.Ceiling(Math.Sqrt(Math.Max(1.0f, texels)));
-            edge = Math.Max(settings.MinInstanceRect, Math.Min(settings.MaxInstanceRect, edge));
-            width = edge;
-            height = edge;
-        }
-
-        /// <summary>
-        /// Rect size honouring the instance's aspect ratio: a tall thin wall panel gets a tall
-        /// thin rect, which is what retail does (a 0.5 x 1.6 x 0.5 m panel gets 1x2).
-        /// </summary>
-        public static void RectSizeForBounds(float surfaceArea, System.Numerics.Vector3 boundsSize, RadiosityBakeSettings settings, out int width, out int height)
-        {
-            RectSizeForBounds(surfaceArea, boundsSize, 1.0f, settings, out width, out height);
-        }
-
-        /// <summary>
-        /// As above, but scaled for how much of the unit UV square the instance's triangles use.
+        /// Rect size for an instance: its surface area at
+        /// <see cref="RadiosityTuning.MetresSquaredPerTexel"/>, divided by how much of the
+        /// unit UV square its triangles use, in the shape of that use
+        /// (<see cref="RadiosityGeometry.Instance.UvAspect"/>).
         /// </summary>
         /// <remarks>
-        /// The rect covers the whole 0..1 square, so an instance whose authored UVs occupy only a
-        /// third of it wastes two thirds of its texels and ends up with a third of the probes its
-        /// surface area calls for. Sizing from world area alone put only 47.8% of Solace's rects
-        /// within 25% of retail's, spread from 0.04x to 78x, and that unevenness is what left 38%
-        /// of the cells retail fills empty in ours while others ran to 20x retail's density.
+        /// The rect covers the whole 0..1 UV square, so the area is divided by the coverage: a chart using a third of the
+        /// square would otherwise get a third of the probes its surface area calls for.
         /// </remarks>
-        public static void RectSizeForBounds(float surfaceArea, System.Numerics.Vector3 boundsSize, float uvCoverage,
-                                             RadiosityBakeSettings settings, out int width, out int height,
-                                             float uvAspect = 0.0f)
+        public static void RectSizeForBounds(float surfaceArea, float uvCoverage, out int width, out int height, float uvAspect)
         {
             float coverage = uvCoverage > 0.0f ? Math.Min(1.0f, uvCoverage) : 1.0f;
-            surfaceArea /= (float)Math.Pow(coverage, settings.UvCoverageCompensation);
-            float texels = Math.Max(1.0f, surfaceArea / Math.Max(1e-4f, settings.MetresSquaredPerTexel));
+            surfaceArea /= coverage;
+            float texels = Math.Max(1.0f, surfaceArea / RadiosityTuning.MetresSquaredPerTexel);
 
-            // Retail spends progressively more resolution on bigger surfaces; see
-            // RadiosityBakeSettings.LargeInstanceTexelBoost for the measurement.
-            if (settings.LargeInstanceTexelBoost > 0.0f && texels > 64.0f)
-                texels *= Math.Min(2.0f, (float)Math.Pow(texels / 64.0f, settings.LargeInstanceTexelBoost));
-
-            float aspect;
-            if (settings.UvShapedRects && uvAspect > 0.0f)
-            {
-                // The rect maps the unit UV square and nothing else, so its shape follows how the
-                // UVs are laid out in that square.
-                aspect = uvAspect;
-            }
-            else
-            {
-                // Project onto the two largest world axes so the rect follows the dominant faces.
-                float a = boundsSize.X, b = boundsSize.Y, c = boundsSize.Z;
-                float largest = Math.Max(a, Math.Max(b, c));
-                float smallest = Math.Min(a, Math.Min(b, c));
-                float middle = a + b + c - largest - smallest;
-                aspect = middle > 1e-4f ? largest / middle : 1.0f;
-            }
-
-            // Either way the rect is described width-over-height, so an aspect under one is a tall
-            // rect rather than an invalid one.
+            // The rect maps the unit UV square and nothing else, so its shape follows how the UVs
+            // are laid out in that square. It is described width-over-height, so an aspect under one
+            // is a tall rect rather than an invalid one. uvAspect is occupied columns over rows of
+            // the 16x16 UV grid, so the aspect lands in 1..16, inside MaxInstanceRect.
+            float aspect = uvAspect;
             bool tall = aspect < 1.0f;
             if (tall) aspect = aspect > 1e-4f ? 1.0f / aspect : 1.0f;
-            if (aspect > settings.MaxInstanceRect) aspect = settings.MaxInstanceRect;
 
             // w * h == texels with w / h == aspect.
             int w = (int)Math.Ceiling(Math.Sqrt(texels * aspect));
             int h = (int)Math.Ceiling(texels / Math.Max(1, w));
             if (tall) { int swap = w; w = h; h = swap; }
 
-            width = Math.Max(settings.MinInstanceRect, Math.Min(settings.MaxInstanceRect, w));
-            height = Math.Max(settings.MinInstanceRect, Math.Min(settings.MaxInstanceRect, h));
+            width = Math.Max(RadiosityTuning.MinInstanceRect, Math.Min(RadiosityTuning.MaxInstanceRect, w));
+            height = Math.Max(RadiosityTuning.MinInstanceRect, Math.Min(RadiosityTuning.MaxInstanceRect, h));
         }
     }
 }

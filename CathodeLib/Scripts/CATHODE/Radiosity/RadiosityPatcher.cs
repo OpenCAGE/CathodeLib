@@ -11,20 +11,24 @@ namespace CathodeLib.Radiosity
     /// invalidated, instead of regenerating everything.
     /// </summary>
     /// <remarks>
-    /// <para>The full synthetic bake is chaotically sensitive to structural detail (a one-percent
-    /// rect reallocation swings ChallengeMap3's whole-level fit by 14 luma, reproducibly), so for
-    /// edited RETAIL levels the robust route is to not regenerate unchanged content at all: the
-    /// instonly control runs prove retail's runtime renders correctly under an instanced level,
-    /// and the retailstrip experiments prove a loaded retail runtime can be selectively modified
-    /// and saved with the game accepting the result.</para>
-    /// <para>Version 1 scope: keep every slice verbatim; re-bind the surface-light slices'
-    /// entity references so they survive the resource renumbering an instanced save performs
-    /// (a retail-loaded runtime otherwise writes its stale raw indices back); zero the lights of
-    /// entities the edit deleted; log - but do not yet light - new geometry. Deleted geometry's
-    /// baked bounce (a removed wall's shadow) intentionally stays: un-baking is a full-bake
-    /// problem by definition.</para>
+    /// <para>For edited RETAIL levels the robust route is not to regenerate unchanged content at all: the full bake is
+    /// sensitive to structural detail, and the game accepts a loaded retail runtime selectively modified and saved.</para>
+    /// <para>The pipeline, in this order. Keep every shipped slice verbatim. Re-bind the
+    /// surface-light slices' entity references and the instance-map rows so they survive the
+    /// resource renumbering an instanced save performs (a retail-loaded runtime otherwise writes
+    /// its stale raw indices back); zero the lights of entities the edit deleted and drop the rows
+    /// of resources that no longer have a mover. Census the movers the edit ADDED or MOVED (the
+    /// delta). Extend the volume probe field over delta content outside it
+    /// (<see cref="RadiosityBaker.AppendProbeOnlySlice"/>), then force the delta movers onto the
+    /// dynamic radiosity path (<see cref="DynamicRadiosityConverter"/>); whatever the converter
+    /// cannot convert is baked into appended lightmap slices
+    /// (<see cref="RadiosityBaker.AppendDeltaSlices"/>). Append the probe slices' scheduling rows
+    /// (rendering follows a resource's first map row, so they go last), and finally restore the
+    /// pristine MODEL_PARAMS of every mover outside the delta. Deleted geometry's baked bounce (a
+    /// removed wall's shadow) intentionally stays: un-baking is a full-bake problem by
+    /// definition.</para>
     /// </remarks>
-    public static class RadiosityPatcher
+    internal static class RadiosityPatcher
     {
         public static RadiosityBaker.BakeResult PatchLevel(
             Level level,
@@ -35,6 +39,12 @@ namespace CathodeLib.Radiosity
                 ?? throw new InvalidOperationException("Level has no RADIOSITY_RUNTIME.BIN to patch.");
             if (runtime.Slices.Count == 0)
                 throw new InvalidOperationException("RADIOSITY_RUNTIME.BIN carries no slices - nothing to patch; run a full bake.");
+            // The census and the MODEL_PARAMS restore need the pristine snapshots, which Instancing
+            // harvests (PatchRetailRuntime on) before it rebuilds the movers.
+            if (settings.RetailTransforms == null || settings.RetailModelParams == null)
+                throw new InvalidOperationException("Patching needs the pristine RetailTransforms and RetailModelParams snapshots - Instancing harvests them when PatchRetailRuntime is on.");
+            var state = new DeltaBakeState(settings.RetailModelParams, settings.RetailTransforms);
+            var timer = new RadiosityBaker.PhaseTimer();
 
             // The disk still holds the pre-instancing files at this point (Level.Save writes
             // after the bakes), so the ORIGINAL resource ordering - the one the runtime's raw
@@ -119,15 +129,10 @@ namespace CathodeLib.Radiosity
                     }
                 }
 
-                // Resolving by GUID above is not enough to catch a stale index, because instancing
-                // re-emits every purged retail resource as a dangling placeholder so the
-                // runtime's positional EntityInstanceIndex values stay aligned - so the GUID of a
-                // retail-lit entity that no longer produces a mover still "resolves". The rows
-                // that hit this are exactly the ones for geometry an edit removed or re-identified
-                // (a deleted ModelReference, a light whose resource parameter was lost so its
-                // resource id fell back to the entity id); their lighting has nowhere to go and
-                // the row must not be written. Unresolved rows are dropped for the same reason:
-                // left in, they would be saved with their stale retail index.
+                // Resolving by GUID does not catch a stale index: instancing re-emits every purged retail resource as a
+                // dangling placeholder (so the runtime's positional EntityInstanceIndex values stay aligned), so the GUID
+                // of a retail-lit entity that no longer produces a mover still "resolves". Such rows must be dropped, as
+                // must unresolved ones (saved, they keep their stale retail index); the engine crashes on load otherwise.
                 var moverResources = new HashSet<(uint, uint)>();
                 foreach (Movers.MOVER_DESCRIPTOR mover in level.Movers.Entries)
                     if (mover.Resource != null)
@@ -138,10 +143,11 @@ namespace CathodeLib.Radiosity
                 if (mapDropped > 0)
                     log?.Invoke("Radiosity patch: dropped " + mapDropped + " instance-map row(s) whose resource no longer has a mover - the engine cannot bind them and crashes on load if they are kept");
             }
+            timer.Lap("rebind");
 
-            // New content census: movers whose resource GUID has no island in the shipped map
-            // would need lighting of their own. Version 1 only reports them - they render with
-            // whatever MODEL_PARAMS instancing gave them.
+            // Census: the delta is every mover the edit MOVED (its resource has an island in the
+            // shipped map, but its transform differs from the pristine one) or ADDED (no island,
+            // and absent from the pristine MVR). Everything else keeps its shipped lighting.
             var mappedGuids = new HashSet<(uint, uint)>();
             foreach (RadiosityInstanceMap.Entry entry in level.RadiosityInstanceMap?.Entries ?? new List<RadiosityInstanceMap.Entry>())
             {
@@ -163,28 +169,22 @@ namespace CathodeLib.Radiosity
 
                     // Moved since the pristine bake? Then its carried lightmap address would
                     // light it as it stood at the old location - rebake it.
-                    if (settings.RetailTransforms != null)
+                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                    if (settings.RetailTransforms.TryGetValue(key, out System.Numerics.Matrix4x4 pristineT) &&
+                        Differs(pristineT, mover.Transform))
                     {
-                        ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
-                        if (settings.RetailTransforms.TryGetValue(key, out System.Numerics.Matrix4x4 pristineT) &&
-                            Differs(pristineT, mover.Transform))
+                        // Stale-identity carries: a few FX-family movers snapshot a pristine transform of EXACTLY the
+                        // origin while sitting far from it. They are not moves.
+                        bool staleIdentity = pristineT.M41 == 0 && pristineT.M42 == 0 && pristineT.M43 == 0 &&
+                            (mover.Transform.M41 != 0 || mover.Transform.M42 != 0 || mover.Transform.M43 != 0);
+                        if (!staleIdentity)
                         {
-                            // Stale-identity carries: a handful of FX-family movers snapshot a
-                            // pristine transform of EXACTLY the origin while sitting far from it.
-                            // They are not moves - they polluted every census (CM9 and CM3 both
-                            // carry ~4), invented 20-35m "deltas", and burned the level's few
-                            // orphaned island ids on invisible junk.
-                            bool staleIdentity = pristineT.M41 == 0 && pristineT.M42 == 0 && pristineT.M43 == 0 &&
-                                (mover.Transform.M41 != 0 || mover.Transform.M42 != 0 || mover.Transform.M43 != 0);
-                            if (!staleIdentity)
-                            {
-                                deltaMovers.Add(i);
-                                movedMovers++;
-                                movedDeltas.Add(new System.Numerics.Vector3(
-                                    mover.Transform.M41 - pristineT.M41,
-                                    mover.Transform.M42 - pristineT.M42,
-                                    mover.Transform.M43 - pristineT.M43));
-                            }
+                            deltaMovers.Add(i);
+                            movedMovers++;
+                            movedDeltas.Add(new System.Numerics.Vector3(
+                                mover.Transform.M41 - pristineT.M41,
+                                mover.Transform.M42 - pristineT.M42,
+                                mover.Transform.M43 - pristineT.M43));
                         }
                     }
                 }
@@ -192,29 +192,23 @@ namespace CathodeLib.Radiosity
                 {
                     unmappedMovers++;
 
-                    // "New" means absent from the PRISTINE MVR, not merely absent from the retail
-                    // island map: instancing manufactures thousands of movers whose GUIDs never
-                    // join the map (Solace ships 11,907 of them before any edit), but those are
-                    // pre-existing content carrying pristine MODEL_PARAMS - rebaking them is both
-                    // wasteful and wrong. Only geometry the edit genuinely added qualifies.
+                    // "New" means absent from the PRISTINE MVR, not merely from the retail island map: instancing
+                    // manufactures thousands of movers whose GUIDs never join the map, but they are pre-existing content
+                    // carrying pristine MODEL_PARAMS.
                     if (mover.RenderableElements == null || mover.RenderableElements.Count == 0)
                         continue;
                     ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
-                    if (settings.RetailTransforms == null || !settings.RetailTransforms.ContainsKey(key))
+                    if (!settings.RetailTransforms.ContainsKey(key))
                         deltaMovers.Add(i);
                 }
             }
 
             log?.Invoke("Radiosity patch census: deltaMovers=" + deltaMovers.Count + " (moved=" + movedMovers + ")");
 
-            // Rigid group move detection: when the moved movers overwhelmingly share one
-            // translation (a shifted room or a shifted level), delta probes should reference
-            // the retail lighting of the place the group CAME FROM - set the calibration
-            // offset to map their positions back. A minimum cohort guards it: a duplicated
-            // environment manufactures 2-3 PHANTOM "moves" (added movers whose GUID pair
-            // collides with a pristine mover's), and on Torrens their consensus pointed 30m
-            // away from the true copy translation - every delta probe missed the retail exp
-            // mass and the whole duplicate whited out at the flat fallback bias.
+            // Rigid group move: when the moved movers overwhelmingly share one translation (a shifted room or level),
+            // delta probes reference the retail lighting of the place the group CAME FROM. The minimum cohort guards
+            // against the 2-3 PHANTOM "moves" a duplicated environment manufactures (added movers whose GUID pair
+            // collides with a pristine mover's), whose consensus once pointed 30 m off and whited out a whole duplicate.
             if (movedDeltas.Count >= 8)
             {
                 var sx = new List<float>(); var sy = new List<float>(); var sz = new List<float>();
@@ -226,23 +220,18 @@ namespace CathodeLib.Radiosity
                     if ((d - median).Length() < 0.25f) agree++;
                 if (median.Length() > 1.0f && agree >= movedDeltas.Count * 8 / 10)
                 {
-                    settings.DeltaCalibrationOffset = -median;
+                    state.CalibrationOffset = -median;
                     log?.Invoke("Radiosity patch census: rigid group move " + median.Length().ToString("0.0") +
                                 "m shared by " + agree + "/" + movedDeltas.Count +
                                 " moved movers - delta calibration references the original position");
                 }
             }
 
-            // Added-group provenance: a duplicated environment's movers are NEW to the census
-            // (fresh composite instance GUIDs) but each shares its resource_id with the
-            // pristine mover it was copied from. Where the pristine level places that resource
-            // exactly once the pairing is unambiguous, and every such added mover votes for
-            // the translation it was copied across - a duplicate casts thousands of identical
-            // votes where the phantom collisions above cast 2. Genuinely new content scatters
-            // its votes and never reaches consensus, leaving the offset at zero (in-place
-            // calibration, the pre-existing behaviour).
-            if (settings.DeltaCalibrationOffset == System.Numerics.Vector3.Zero &&
-                settings.RetailTransforms != null && deltaMovers.Count > 0)
+            // Added-group provenance: a duplicated environment's movers are NEW (fresh composite instance GUIDs) but each
+            // shares its resource_id with the pristine mover it was copied from. Where the pristine level places that
+            // resource exactly once, the added mover votes for the translation it was copied across; genuinely new
+            // content scatters its votes and leaves the offset at zero.
+            if (state.CalibrationOffset == System.Numerics.Vector3.Zero && deltaMovers.Count > 0)
             {
                 var ridCount = new Dictionary<uint, int>();
                 var ridPos = new Dictionary<uint, System.Numerics.Vector3>();
@@ -276,98 +265,52 @@ namespace CathodeLib.Radiosity
                         if ((d - median).Length() < 0.25f) agree++;
                     if (median.Length() > 1.0f && agree >= votes.Count * 8 / 10)
                     {
-                        settings.DeltaCalibrationOffset = -median;
+                        state.CalibrationOffset = -median;
                         log?.Invoke("Radiosity patch census: added group copied " + median.Length().ToString("0.0") +
                                     "m shared by " + agree + "/" + votes.Count +
                                     " added movers - delta calibration references the copied-from position");
                     }
                 }
             }
-            // A rigid whole-level move keeps every lightmap valid (they are UV-addressed):
-            // nothing needs converting, the field is translated instead (hash + probe
-            // position tables + probe BVHs). The caller sets this for level relocation.
-            if (settings.DeltaIgnoreMoves && deltaMovers.Count > 0)
-            {
-                log?.Invoke("Radiosity patch census: DeltaIgnoreMoves - " + deltaMovers.Count +
-                            " delta movers left untouched (rigid-move mode, retail radiosity kept)");
-                deltaMovers.Clear();
-            }
-            int retailSliceCount = runtime.Slices.Count;
+            timer.Lap("census");
             int deltaIslands = 0, dynConverted = 0, probeIslands = 0;
             if (deltaMovers.Count > 0)
             {
-                // Default route: force the delta movers onto the DYNAMIC radiosity path (no
-                // atlas allocation needed at all); whatever the converter cannot fully convert
-                // falls back to the lightmap delta bake. Converted movers deliberately STAY in
-                // deltaMovers - the pristine-params restore below must skip them, or it would
-                // re-apply a retail rect over the zeroed dynamic convention.
-                HashSet<int> lightmapMovers = deltaMovers;
-                if (settings.DeltaDynamicProps)
-                {
-                    // Hybrid split (H12/H13): the lightmap delta path lights everything its
-                    // geometry collector can bake - including rooms the probe path never lit -
-                    // so only the movers it CANNOT bake (dynamic-class props) go down the
-                    // convert+probe route; the rest keep the lightmap path below.
-                    HashSet<int> convertSet = deltaMovers;
-                    if (settings.DeltaHybridSplit)
-                    {
-                        convertSet = new HashSet<int>();
-                        foreach (int mi in deltaMovers)
-                            if (!RadiosityGeometry.IsBakeable(level.Movers.Entries[mi], settings))
-                                convertSet.Add(mi);
-                        log?.Invoke("Radiosity patch hybrid: " + convertSet.Count + " of " + deltaMovers.Count +
-                                    " delta movers to the dynamic path, rest to the lightmap delta bake");
-                    }
+                // Probe field extension FIRST: it must precede the converter, because geometry collection excludes
+                // dynamic-class movers, so the content is baked while its materials are still static-class.
+                probeIslands = RadiosityBaker.AppendProbeOnlySlice(level, state, deltaMovers, log);
+                timer.Lap("probeSlice");
 
-                    // Probe field extension FIRST: content outside the retail volume field gets
-                    // its own appended radiance slice + fine-celled hash. This must precede the
-                    // converter - geometry collection excludes dynamic-class movers, so the
-                    // content is baked while its materials are still static-class. The FULL
-                    // delta set builds the field even in hybrid mode: the probes come from the
-                    // static surfaces, and the dynamic props (which contribute no bakeable
-                    // geometry of their own - H13 baked zero slices from the props alone) sample
-                    // that field at their bounds centres.
-                    if (settings.DeltaProbeOnlySlice && convertSet.Count > 0)
-                        probeIslands = RadiosityBaker.AppendProbeOnlySlice(level, settings, deltaMovers, log);
-
-                    DynamicRadiosityConverter.Result conv = DynamicRadiosityConverter.Convert(level, convertSet, log, settings.DeltaDropInstanceMapRows,
-                        settings.DeltaMintedIslands);
-                    dynConverted = conv.ConvertedMovers.Count;
-                    lightmapMovers = new HashSet<int>(deltaMovers);
-                    lightmapMovers.ExceptWith(conv.ConvertedMovers);
-                }
-                bool ranLightmapDelta = settings.PatchBakeDelta && lightmapMovers.Count > 0;
-                if (ranLightmapDelta)
+                // Then force the delta movers onto the DYNAMIC radiosity path; whatever the converter cannot convert falls
+                // back to the lightmap delta bake. Converted movers STAY in deltaMovers: the pristine-params restore below
+                // must skip them, or it would re-apply a retail rect over the zeroed dynamic convention.
+                DynamicRadiosityConverter.Result conv = DynamicRadiosityConverter.Convert(level, deltaMovers, log);
+                dynConverted = conv.ConvertedMovers.Count;
+                HashSet<int> lightmapMovers = new HashSet<int>(deltaMovers);
+                lightmapMovers.ExceptWith(conv.ConvertedMovers);
+                timer.Lap("convert");
+                if (lightmapMovers.Count > 0)
                 {
-                    // AppendDeltaSlices bakes ONE slice per call - built for bounded edits.
-                    // A whole added environment overflows it (H12/H13: 2,507 islands parked on
-                    // 1x1 and rendered unmapped-dark), so large deltas are chunked by zone and
-                    // appended one slice per chunk.
-                    List<HashSet<int>> demandChunks = settings.DeltaAtlasFillTarget > 0.0f
-                        ? RadiosityBaker.ChunkDeltaByAtlasDemand(level, settings, lightmapMovers, log)
-                        : null;
+                    // AppendDeltaSlices bakes ONE slice per call, so a large delta (a whole added environment) is
+                    // chunked by atlas demand, one slice per chunk; the zone chunking below is the fallback when that
+                    // returns null.
+                    List<HashSet<int>> demandChunks = RadiosityBaker.ChunkDeltaByAtlasDemand(level, lightmapMovers, log);
+                    timer.Lap("chunk");
+                    int appended = 0;
                     if (demandChunks != null)
                     {
                         // Each call only sees its own chunk; tell it the whole delta so another
-                        // chunk's geometry is not mistaken for donor material (DeltaAllMovers).
-                        HashSet<int> priorAll = settings.DeltaAllMovers;
-                        settings.DeltaAllMovers = lightmapMovers;
-                        try
+                        // chunk's geometry is not mistaken for donor material (allMovers).
+                        foreach (HashSet<int> chunk in demandChunks)
                         {
-                            foreach (HashSet<int> chunk in demandChunks)
-                                deltaIslands += RadiosityBaker.AppendDeltaSlices(level, settings, chunk, log);
+                            deltaIslands += RadiosityBaker.AppendDeltaSlices(level, state, chunk, lightmapMovers, log);
+                            timer.Lap("append[" + appended++ + "]");
                         }
-                        finally { settings.DeltaAllMovers = priorAll; }
                     }
-                    else if (settings.DeltaLightmapChunkMovers > 0 && lightmapMovers.Count > settings.DeltaLightmapChunkMovers)
+                    else if (lightmapMovers.Count > RadiosityTuning.DeltaLightmapChunkMovers)
                     {
-                        // Chunked by ZONE. Grouping by island id instead was tried and REVERTED
-                        // (H28): at this point the delta movers have no instance-map rows yet -
-                        // the baker assigns their islands during each chunk's own bake - so 6249
-                        // of 6252 movers had no island to group on, the packing came out all but
-                        // identical, and the run measured slightly worse (cam16 0.77 -> 0.55,
-                        // cam3 0.74 -> 0.60). Any island-coherent scheme has to run inside the
-                        // baker where the assignment happens, not here.
+                        // Chunked by ZONE. Grouping by island id was REVERTED (H28): the delta movers have no
+                        // instance-map rows yet at this point, so an island-coherent scheme has to run inside the baker.
                         var byZone = new System.Collections.Generic.Dictionary<uint, System.Collections.Generic.List<int>>();
                         foreach (int mi in lightmapMovers)
                         {
@@ -381,85 +324,73 @@ namespace CathodeLib.Radiosity
                         {
                             System.Collections.Generic.List<int> target = null;
                             foreach (var c in chunks)
-                                if (c.Count + zl.Count <= settings.DeltaLightmapChunkMovers) { target = c; break; }
+                                if (c.Count + zl.Count <= RadiosityTuning.DeltaLightmapChunkMovers) { target = c; break; }
                             if (target == null) { target = new System.Collections.Generic.List<int>(); chunks.Add(target); }
                             target.AddRange(zl);
                         }
                         log?.Invoke("Radiosity delta lightmap: " + lightmapMovers.Count + " movers in " + byZone.Count +
-                                    " zones -> " + chunks.Count + " slice chunks (cap " + settings.DeltaLightmapChunkMovers + ")");
-                        HashSet<int> priorAllZ = settings.DeltaAllMovers;
-                        settings.DeltaAllMovers = lightmapMovers;
-                        try
+                                    " zones -> " + chunks.Count + " slice chunks (cap " + RadiosityTuning.DeltaLightmapChunkMovers + ")");
+                        timer.Lap("zoneChunk");
+                        foreach (var chunk in chunks)
                         {
-                            foreach (var chunk in chunks)
-                                deltaIslands += RadiosityBaker.AppendDeltaSlices(level, settings, new HashSet<int>(chunk), log);
+                            deltaIslands += RadiosityBaker.AppendDeltaSlices(level, state, new HashSet<int>(chunk), lightmapMovers, log);
+                            timer.Lap("append[" + appended++ + "]");
                         }
-                        finally { settings.DeltaAllMovers = priorAllZ; }
                     }
                     else
-                        deltaIslands = RadiosityBaker.AppendDeltaSlices(level, settings, lightmapMovers, log);
+                    {
+                        deltaIslands = RadiosityBaker.AppendDeltaSlices(level, state, lightmapMovers, log: log);
+                        timer.Lap("append");
+                    }
                 }
 
-                // Scheduling rows LAST: rendering follows a resource's FIRST map row, so these
-                // must land after the lightmap delta's real rect rows or they hijack their
-                // bound movers into dead-texel black (H16's doorway).
-                if (settings.DeltaPendingScheduleRows != null && settings.DeltaPendingScheduleRows.Count > 0 &&
-                    level.RadiosityInstanceMap?.Entries != null)
+                // Scheduling rows LAST: rendering follows a resource's FIRST map row, so they go after the lightmap
+                // delta's real rect rows (first, they hijacked their bound movers into dead-texel black: H16's doorway),
+                // and after the converter, whose row drop would remove them (their seeds are converted movers; H5).
+                if (state.PendingScheduleRows.Count > 0 && level.RadiosityInstanceMap?.Entries != null)
                 {
-                    foreach ((int island, object resource) in settings.DeltaPendingScheduleRows)
+                    foreach ((int island, Resources.Resource resource) in state.PendingScheduleRows)
                     {
                         level.RadiosityInstanceMap.Entries.Add(new RadiosityInstanceMap.Entry
                         {
                             lightmap_transform = island,
-                            Resource = (Resources.Resource)resource
+                            Resource = resource
                         });
-                        settings.DeltaMintedIslands?.Add(island);
                     }
-                    log?.Invoke("Radiosity patch: " + settings.DeltaPendingScheduleRows.Count +
+                    log?.Invoke("Radiosity patch: " + state.PendingScheduleRows.Count +
                                 " scheduling rows appended after the lightmap delta");
                 }
+                timer.Lap("rows");
             }
 
-            // Densify the KEPT retail slices' volume hashes: same probes, finer grid, so the
-            // engine's 8-cell blend spans half the distance per doubling - the measured fix for
-            // dynamic props reading over-bright in dark rooms. Appended slices (probe-only or
-            // lightmap delta) are born fine-celled and are never touched.
-            if (settings.VolumeHashUpsampleFactor >= 2)
-                VolumeHashUtils.UpsampleSlices(runtime, retailSliceCount, settings.VolumeHashUpsampleFactor, settings.VolumeHashRebind, log);
-
-            // Restore pristine MODEL_PARAMS on matched movers: instancing rebuilds a subset of
-            // movers without carrying the lightmap transform, and a rect-less mover samples a
-            // wrong atlas region (uniform wrong-colour walls) or degenerates entirely. Delta
-            // movers are EXCLUDED: the delta bake just wrote them fresh rects in the appended
-            // slice, and restoring the pristine address on top made a moved wall sample dead
-            // texels of the small delta atlas - it rendered black through three otherwise
-            // correct bakes before this order dependency was found.
+            // Restore pristine MODEL_PARAMS on matched movers: instancing rebuilds some movers without their lightmap
+            // transform, and a rect-less mover samples a wrong atlas region. Delta movers are EXCLUDED: the delta bake
+            // just wrote their fresh rects, and the pristine address on top made a moved wall sample dead texels (black).
             int paramsRestored = 0;
-            if (settings.RetailModelParams != null)
+            for (int i = 0; i < level.Movers.Entries.Count; i++)
             {
-                for (int i = 0; i < level.Movers.Entries.Count; i++)
-                {
-                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[i];
-                    if (deltaMovers.Contains(i))
-                        continue;
-                    if (mover.Resource == null || mover.RenderConstants == null)
-                        continue;
-                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
-                    if (!settings.RetailModelParams.TryGetValue(key, out byte[] pristine))
-                        continue;
-                    byte[] raw = mover.RenderConstants.RawBytes;
-                    if (raw == null || raw.Length < 16)
-                        continue;
-                    bool differs = false;
-                    for (int b = 0; b < 16; b++)
-                        if (raw[b] != pristine[b]) { differs = true; break; }
-                    if (!differs)
-                        continue;
-                    Array.Copy(pristine, raw, 16);
-                    mover.RenderConstants.SetRawBytes(raw);
-                    paramsRestored++;
-                }
+                Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[i];
+                if (deltaMovers.Contains(i))
+                    continue;
+                if (mover.Resource == null || mover.RenderConstants == null)
+                    continue;
+                ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+                if (!settings.RetailModelParams.TryGetValue(key, out byte[] pristine))
+                    continue;
+                byte[] raw = mover.RenderConstants.RawBytes;
+                if (raw == null || raw.Length < 16)
+                    continue;
+                bool differs = false;
+                for (int b = 0; b < 16; b++)
+                    if (raw[b] != pristine[b]) { differs = true; break; }
+                if (!differs)
+                    continue;
+                Array.Copy(pristine, raw, 16);
+                mover.RenderConstants.SetRawBytes(raw);
+                paramsRestored++;
             }
+            timer.Lap("restore");
+            log?.Invoke("Radiosity patch timing: " + timer);
 
             var result = new RadiosityBaker.BakeResult
             {
@@ -474,7 +405,7 @@ namespace CathodeLib.Radiosity
                           " probeSliceIslands=" + probeIslands +
                           " deltaIslandsBaked=" + deltaIslands +
                           " modelParamsRestored=" + paramsRestored +
-                          (unmappedMovers > 0 ? "  [unmapped movers keep instancing's MODEL_PARAMS and get no new lighting yet]" : "")
+                          (unmappedMovers > 0 ? "  [unmapped movers that predate the edit keep their shipped lighting; added ones are lit by the delta path]" : "")
             };
             log?.Invoke(result.Message);
             return result;
@@ -489,6 +420,42 @@ namespace CathodeLib.Radiosity
                    Math.Abs(a.M41 - b.M41) > eps || Math.Abs(a.M42 - b.M42) > eps || Math.Abs(a.M43 - b.M43) > eps;
         }
 
+        }
+    }
+
+    /// <summary>
+    /// The state of one delta bake: created by <see cref="RadiosityPatcher.PatchLevel"/> for each call and handed to
+    /// the append passes, never kept on the caller's settings object (which may be shared between saves).
+    /// </summary>
+    internal sealed class DeltaBakeState
+    {
+        /// <summary>The caller's pristine snapshots (<see cref="RadiosityBakeSettings.RetailModelParams"/>,
+        /// <see cref="RadiosityBakeSettings.RetailTransforms"/>); PatchLevel throws before creating the state without them.</summary>
+        public readonly Dictionary<ulong, byte[]> RetailModelParams;
+        public readonly Dictionary<ulong, System.Numerics.Matrix4x4> RetailTransforms;
+
+        /// <summary>
+        /// Added to a delta probe's position before querying RETAIL probes in the energy calibration
+        /// (RadiosityBaker.CalibrateDeltaEnergy): a rigidly-moved group (a shifted room, a shifted level) or a copied one
+        /// references the retail lighting of the place it CAME FROM instead of the flat bias fallback. Set by the census
+        /// when the moved or added movers share one translation, before any slice is appended.
+        /// </summary>
+        public System.Numerics.Vector3 CalibrationOffset = System.Numerics.Vector3.Zero;
+
+        /// <summary>
+        /// (island id, resource) scheduling rows the probe-only slices want in the instance map. The patcher adds them
+        /// AFTER the lightmap delta writes its real rows, so a resource's first row - the one rendering follows - stays its
+        /// real rect binding, and the scheduling row only feeds the relight walk. Adding them first blackened whatever the
+        /// row bound (H16's doorway).
+        /// </summary>
+        public readonly List<(int island, Resources.Resource resource)> PendingScheduleRows =
+            new List<(int island, Resources.Resource resource)>();
+
+        public DeltaBakeState(Dictionary<ulong, byte[]> retailModelParams,
+                              Dictionary<ulong, System.Numerics.Matrix4x4> retailTransforms)
+        {
+            RetailModelParams = retailModelParams;
+            RetailTransforms = retailTransforms;
         }
     }
 }

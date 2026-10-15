@@ -9,38 +9,23 @@ namespace CathodeLib.Radiosity
     /// the bake can sample per texel.
     /// </summary>
     /// <remarks>
-    /// <para>Only the formats that actually appear on a diffuse sampler are handled: BC7 is 96% of
-    /// them in a retail level, with a handful of DXT1 and uncompressed maps. BC6H, DXN and ASTC
-    /// are normal, roughness and console-only maps; a material that somehow slots one as its
-    /// diffuse falls back to the material average instead.</para>
-    /// <para>Values are left in the texture's own (sRGB-ish) space rather than linearised.
-    /// Retail's own albedo table averages 0.42 across BSP_TORRENS, which is what the raw texture
-    /// values give; linearising would put it near 0.15.</para>
+    /// <para>Only the formats that appear on a diffuse sampler are handled: BC7 (96% of a retail level's), DXT1/3/5 and
+    /// uncompressed. A material whose diffuse slot holds anything else (BC6H, DXN, ASTC) falls back to the material
+    /// average.</para>
+    /// <para>Returns the stored (sRGB-encoded) bytes; <see cref="RadiosityMaterialSampler"/> linearises.</para>
     /// </remarks>
-    public static partial class RadiosityTextureDecoder
+    internal static partial class RadiosityTextureDecoder
     {
         /// <summary>
         /// Decode a texture to RGB8, choosing the largest mip that fits inside <paramref name="maxEdge"/>.
         /// </summary>
         /// <remarks>
-        /// Prefers the persistent part: it is always resident, whereas the streamed part is paged
-        /// in on demand and is absent for a quarter of a level's diffuse maps. Picking a mip rather
-        /// than decoding mip 0 and downsampling gets the texture's own prefiltering for free.
+        /// Uses the larger of the streamed and persistent parts (<see cref="Pick"/>). Picking a mip rather than decoding mip
+        /// 0 and downsampling gets the texture's own prefiltering.
         /// </remarks>
-        public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out int width, out int height) =>
-            TryDecode(texture, maxEdge, false, out rgb, out _, out width, out height);
-
-        /// <summary>
-        /// As above, but also decodes the alpha channel (one byte per pixel). The dirt fold needs
-        /// it: a DIRT_MAP's alpha is the shader's lerp-mode blend weight, not cosmetic data.
-        /// </summary>
-        public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out byte[] alpha, out int width, out int height) =>
-            TryDecode(texture, maxEdge, true, out rgb, out alpha, out width, out height);
-
-        private static bool TryDecode(Textures.TEX4 texture, int maxEdge, bool wantAlpha, out byte[] rgb, out byte[] alpha, out int width, out int height)
+        public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out int width, out int height)
         {
             rgb = null;
-            alpha = null;
             width = height = 0;
             if (texture == null)
                 return false;
@@ -53,33 +38,26 @@ namespace CathodeLib.Radiosity
                 return false;
 
             rgb = new byte[width * height * 3];
-            alpha = wantAlpha ? new byte[width * height] : null;
             bool ok;
             switch (texture.Format)
             {
                 case Textures.TextureFormat.DXT1:
-                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 8, DecodeBc1Punchthrough);
+                    ok = DecodeBlocks(part.Content, offset, rgb, width, height, 8, DecodeBc1Punchthrough);
                     break;
                 case Textures.TextureFormat.DXT3:
-                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 16, DecodeBc2);
-                    break;
                 case Textures.TextureFormat.DXT5:
-                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 16, DecodeBc3);
+                    ok = DecodeBlocks(part.Content, offset, rgb, width, height, 16, DecodeBc2Or3);
                     break;
                 case Textures.TextureFormat.BC7:
-                    ok = DecodeBlocks(part.Content, offset, rgb, alpha, width, height, 16, DecodeBc7);
+                    ok = DecodeBlocks(part.Content, offset, rgb, width, height, 16, DecodeBc7);
                     break;
                 case Textures.TextureFormat.A8R8G8B8:
-                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 4, true);
-                    break;
                 case Textures.TextureFormat.X8R8G8B8:
-                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 4, false);
+                    ok = DecodeUncompressed(part.Content, offset, rgb, width, height, 4);
                     break;
                 case Textures.TextureFormat.L8:
-                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 1, false);
-                    break;
                 case Textures.TextureFormat.A8:
-                    ok = DecodeUncompressed(part.Content, offset, rgb, alpha, width, height, 1, true);
+                    ok = DecodeUncompressed(part.Content, offset, rgb, width, height, 1);
                     break;
                 default:
                     ok = false;
@@ -87,17 +65,13 @@ namespace CathodeLib.Radiosity
             }
 
             if (!ok)
-            {
                 rgb = null;
-                alpha = null;
-            }
             return ok;
         }
 
         /// <summary>
-        /// Prefer the higher-resolution part. Streaming is a runtime concern; an offline bake has
-        /// the whole PAK in hand, and the streamed part is a 512px median against the persistent
-        /// part's 128px, which is detail the albedo average would otherwise never see.
+        /// Prefer the higher-resolution part: an offline bake has the whole PAK in hand, and the streamed part (a 512 px
+        /// median against the persistent part's 128 px) carries detail the albedo average would otherwise never see.
         /// </summary>
         private static Textures.TEX4.Texture Pick(Textures.TEX4 texture)
         {
@@ -181,10 +155,10 @@ namespace CathodeLib.Radiosity
             }
         }
 
-        /// <summary>Writes 16 RGBA quads for one 4x4 block.</summary>
+        /// <summary>Writes 16 RGBA quads for one 4x4 block; <see cref="DecodeBlocks"/> keeps the RGB.</summary>
         private delegate void BlockDecoder(byte[] src, int offset, byte[] block);
 
-        private static bool DecodeBlocks(byte[] src, int start, byte[] rgb, byte[] alpha, int width, int height,
+        private static bool DecodeBlocks(byte[] src, int start, byte[] rgb, int width, int height,
                                          int blockBytes, BlockDecoder decode)
         {
             int blocksX = Math.Max(1, (width + 3) / 4);
@@ -214,8 +188,6 @@ namespace CathodeLib.Radiosity
                             rgb[d] = block[s];
                             rgb[d + 1] = block[s + 1];
                             rgb[d + 2] = block[s + 2];
-                            if (alpha != null)
-                                alpha[y * width + x] = block[s + 3];
                         }
                     }
                 }
@@ -223,8 +195,7 @@ namespace CathodeLib.Radiosity
             return true;
         }
 
-        private static bool DecodeUncompressed(byte[] src, int start, byte[] rgb, byte[] alpha, int width, int height,
-                                               int bytesPerPixel, bool srcHasAlpha)
+        private static bool DecodeUncompressed(byte[] src, int start, byte[] rgb, int width, int height, int bytesPerPixel)
         {
             int pixels = width * height;
             if (start + pixels * bytesPerPixel > src.Length)
@@ -237,8 +208,6 @@ namespace CathodeLib.Radiosity
                 if (bytesPerPixel == 1)
                 {
                     rgb[d] = rgb[d + 1] = rgb[d + 2] = src[s];
-                    if (alpha != null)
-                        alpha[i] = srcHasAlpha ? src[s] : (byte)255;
                 }
                 else
                 {
@@ -246,8 +215,6 @@ namespace CathodeLib.Radiosity
                     rgb[d] = src[s + 2];
                     rgb[d + 1] = src[s + 1];
                     rgb[d + 2] = src[s];
-                    if (alpha != null)
-                        alpha[i] = srcHasAlpha ? src[s + 3] : (byte)255;
                 }
             }
             return true;
@@ -257,45 +224,11 @@ namespace CathodeLib.Radiosity
 
         private static void DecodeBc1Punchthrough(byte[] src, int offset, byte[] block) => DecodeBc1(src, offset, block, true);
 
-        /// <summary>BC2 (DXT3): 4-bit explicit alpha ahead of a four-colour BC1 block.</summary>
-        private static void DecodeBc2(byte[] src, int offset, byte[] block)
-        {
-            DecodeBc1(src, offset + 8, block, false);
-            for (int t = 0; t < 16; t++)
-            {
-                int nibble = (src[offset + t / 2] >> ((t & 1) * 4)) & 0xF;
-                block[t * 4 + 3] = (byte)(nibble * 17);
-            }
-        }
-
-        /// <summary>BC3 (DXT5): interpolated alpha block ahead of a four-colour BC1 block.</summary>
-        private static void DecodeBc3(byte[] src, int offset, byte[] block)
-        {
-            DecodeBc1(src, offset + 8, block, false);
-
-            int a0 = src[offset], a1 = src[offset + 1];
-            var palette = new int[8];
-            palette[0] = a0;
-            palette[1] = a1;
-            if (a0 > a1)
-            {
-                for (int i = 2; i < 8; i++)
-                    palette[i] = ((8 - i) * a0 + (i - 1) * a1) / 7;
-            }
-            else
-            {
-                for (int i = 2; i < 6; i++)
-                    palette[i] = ((6 - i) * a0 + (i - 1) * a1) / 5;
-                palette[6] = 0;
-                palette[7] = 255;
-            }
-
-            ulong indices = 0;
-            for (int i = 0; i < 6; i++)
-                indices |= (ulong)src[offset + 2 + i] << (8 * i);
-            for (int t = 0; t < 16; t++)
-                block[t * 4 + 3] = (byte)palette[(int)((indices >> (t * 3)) & 7)];
-        }
+        /// <summary>
+        /// BC2 (DXT3) and BC3 (DXT5): 8 bytes of alpha ahead of a four-colour BC1 block. Only the
+        /// colour block is decoded.
+        /// </summary>
+        private static void DecodeBc2Or3(byte[] src, int offset, byte[] block) => DecodeBc1(src, offset + 8, block, false);
 
         /// <summary>
         /// Decode a BC1 colour block. <paramref name="punchthrough"/> enables the c0 &lt;= c1
@@ -377,7 +310,7 @@ namespace CathodeLib.Radiosity
             }
             if (mode < 0)
             {
-                // Modes 8+ are reserved; the spec says decode such a block to opaque black.
+                // Modes 8+ are reserved; the spec decodes such a block to transparent black (all zero).
                 Array.Clear(block, 0, block.Length);
                 return;
             }

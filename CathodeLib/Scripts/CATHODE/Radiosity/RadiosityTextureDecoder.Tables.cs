@@ -5,7 +5,7 @@ namespace CathodeLib.Radiosity
     /// The BPTC (BC7) partition and anchor tables, verbatim from the format specification.
     /// Split out purely so the decoder itself stays readable.
     /// </summary>
-    public static partial class RadiosityTextureDecoder
+    internal static partial class RadiosityTextureDecoder
     {
         /// <summary>Subset per texel for the 64 two-subset partitions, 16 texels each.</summary>
         internal static readonly byte[] Bc7Partition2 =

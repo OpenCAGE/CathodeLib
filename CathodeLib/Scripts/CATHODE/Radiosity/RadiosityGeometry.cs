@@ -26,75 +26,46 @@ namespace CathodeLib.Radiosity
         /// One radiosity island: everything sharing a RESOURCES.BIN entry gets a single rect in
         /// the lightmap atlas, which is how retail groups them.
         /// </summary>
-        public sealed class Instance
+        internal sealed class Instance
         {
-            /// <summary>
-            /// The composite instance every resource in this island belongs to. Verified against
-            /// retail: all 1377 BSP_TORRENS instances have resources from exactly one composite.
-            /// </summary>
+            /// <summary>The composite instance every resource in this island belongs to (an island never spans composites).</summary>
             public ShortGuid CompositeInstanceID;
 
             /// <summary>
-            /// The island id retail's bake assigned this instance's movers, or -1 for geometry
-            /// retail never baked.
+            /// The island id retail's bake assigned this instance's movers, or -1 for geometry retail never baked.
             /// </summary>
             /// <remarks>
-            /// The instance index (RADIOSITY_INSTANCE_MAP's lightmap_transform) is not an
-            /// arbitrary ordinal: it is the island id the runtime state system addresses -
-            /// scripts toggling a RadiosityIsland resolve to it. Retail Solace runs 1856 islands
-            /// over 1758 composites (islands subdivide composites, never merge them), so a
-            /// per-composite renumbering permutes the state targets: powered-off sections render
-            /// lit and lit rooms go dark. Matched islands must keep retail's id and grouping.
+            /// The instance index (RADIOSITY_INSTANCE_MAP's lightmap_transform) is the island id the runtime state system
+            /// addresses (scripts toggling a RadiosityIsland), and islands subdivide composites, never merge them. A
+            /// renumbering permutes the state targets (powered-off sections render lit), so matched islands must keep
+            /// retail's id and grouping.
             /// </remarks>
             public int RetailIslandId = -1;
 
             /// <summary>Indices into <c>Level.Movers.Entries</c> that belong to this island.</summary>
             public readonly List<int> Movers = new List<int>();
 
-            /// <summary>
-            /// RESOURCES.BIN index per entry of <see cref="Movers"/>, which is what column two of
-            /// RADIOSITY_INSTANCE_MAP holds.
-            /// </summary>
-            public readonly List<int> MoverResourceIndices = new List<int>();
-
             /// <summary>Triangle indices into <see cref="Tris"/>.</summary>
             public readonly List<int> Triangles = new List<int>();
 
             /// <summary>
-            /// World surface area contributed by each entry of <see cref="Movers"/>.
+            /// World surface area contributed by each entry of <see cref="Movers"/>. Every mover of an island shares one
+            /// atlas rect (as in retail), so its texels are shared out between them.
             /// </summary>
-            /// <remarks>
-            /// Every mover of a composite shares one atlas rect - retail does the same, with an
-            /// identical rect on all movers in 1057 of Solace's 1144 multi-mover composites - so
-            /// the rect's texels have to be shared out between them rather than taken by whoever
-            /// rasterises first.
-            /// </remarks>
             public readonly List<float> MoverAreas = new List<float>();
 
             /// <summary>
-            /// Fraction of the shared 0..1 lightmap square this instance's triangles actually
-            /// occupy, between 0 and 1.
+            /// Fraction of the shared 0..1 lightmap square this instance's triangles actually occupy, between 0 and 1. The
+            /// rect covers the whole unit square, so a chart using a third of it would otherwise get a third of the probes
+            /// its area deserves (sizing from area alone left 47.8% of our Solace rects within 25% of retail's).
             /// </summary>
-            /// <remarks>
-            /// Rect size has to account for this. The atlas rect covers the whole unit square, so
-            /// if the authored UVs only use a third of it then two thirds of the rect's texels
-            /// land on nothing and the surface gets a third of the probes its area deserves.
-            /// Sizing from world area alone left only 47.8% of our Solace rects within 25% of
-            /// retail's, with a spread from 0.04x to 78x - which is what made probe coverage
-            /// clump in some composites and disappear in others.
-            /// </remarks>
             public float UvCoverage = 1.0f;
 
             /// <summary>
-            /// Width over height of the region of the unit UV square this instance's triangles
-            /// occupy, which is what the atlas rect's shape should follow.
+            /// Width over height of the region of the unit UV square this instance's triangles occupy, which the atlas
+            /// rect's shape follows (the world bounding box missed retail's rect shapes by |log| 0.77 on ChallengeMap4,
+            /// this by 0.51).
             /// </summary>
-            /// <remarks>
-            /// Scored against retail's own rects on ChallengeMap4: taking the aspect from the
-            /// instance's world bounding box instead misses by |log| 0.77 on average against 0.51
-            /// for this, and it is worst on exactly the islands that matter - retail gives the
-            /// executive lounge 41x42, a square, where the world box asks for 1.95:1.
-            /// </remarks>
             public float UvAspect = 1.0f;
 
             /// <summary>Coarse occupancy of the unit UV square, used to compute UvCoverage.</summary>
@@ -130,7 +101,7 @@ namespace CathodeLib.Radiosity
             /// <summary>
             /// World-space uniform surface samples for the probe-only path, one texel each. When
             /// set, the atlas rasteriser places these instead of rasterising the lightmap UVs -
-            /// see <c>RadiosityBakeSettings.DeltaUniformProbes</c>.
+            /// see <c>RadiosityTuning.DeltaProbeSpacing</c>.
             /// </summary>
             internal List<UniformSurfaceSample> UniformSamples;
 
@@ -147,79 +118,77 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>xyz-interleaved world-space vertex positions.</summary>
-        public float[] Verts = Array.Empty<float>();
+        internal float[] Verts = Array.Empty<float>();
 
         /// <summary>Three vertex indices per triangle.</summary>
-        public int[] Tris = Array.Empty<int>();
-
-        /// <summary>Per triangle: its material alpha-tests or alpha-blends (see-through between opaque texels).</summary>
-        public bool[] TriSeeThrough = Array.Empty<bool>();
+        internal int[] Tris = Array.Empty<int>();
 
         /// <summary>World-space vertex normals, one per vertex.</summary>
-        public Vector3[] Normals = Array.Empty<Vector3>();
+        internal Vector3[] Normals = Array.Empty<Vector3>();
 
         /// <summary>Lightmap UVs (mesh UV set 1), one per vertex, nominally in 0..1.</summary>
-        public Vector2[] LightmapUVs = Array.Empty<Vector2>();
+        internal Vector2[] LightmapUVs = Array.Empty<Vector2>();
 
         /// <summary>
         /// Diffuse UVs (mesh UV set 0), one per vertex. These tile, so they run well outside 0..1;
         /// <see cref="RadiosityMaterialSampler"/> wraps them.
         /// </summary>
-        public Vector2[] DiffuseUVs = Array.Empty<Vector2>();
+        internal Vector2[] DiffuseUVs = Array.Empty<Vector2>();
 
         /// <summary>Index into <see cref="Instances"/> for each triangle.</summary>
-        public int[] TriangleInstance = Array.Empty<int>();
+        internal int[] TriangleInstance = Array.Empty<int>();
 
         /// <summary>
         /// Material sampler slot for each triangle, or <see cref="RadiosityMaterialSampler.NoMaterial"/>.
         /// </summary>
-        public int[] TriangleMaterial = Array.Empty<int>();
+        internal int[] TriangleMaterial = Array.Empty<int>();
 
         /// <summary>
         /// Which entry of the owning instance's <see cref="Instance.Movers"/> each triangle came
         /// from, so the rasteriser can share one atlas rect out between them.
         /// </summary>
-        public int[] TriangleMoverSlot = Array.Empty<int>();
+        internal int[] TriangleMoverSlot = Array.Empty<int>();
 
         /// <summary>
         /// Average material albedo for each triangle. Used where a surface has no diffuse UVs to
         /// sample at; where it does, <see cref="RadiosityMaterialSampler.Sample"/> is what runs.
         /// </summary>
-        public Vector3[] TriangleAlbedo = Array.Empty<Vector3>();
+        internal Vector3[] TriangleAlbedo = Array.Empty<Vector3>();
 
         /// <summary>Emitted radiance for each triangle, zero for non-emissive surfaces.</summary>
-        public Vector3[] TriangleEmissive = Array.Empty<Vector3>();
+        internal Vector3[] TriangleEmissive = Array.Empty<Vector3>();
 
-        public List<Instance> Instances = new List<Instance>();
+        internal List<Instance> Instances = new List<Instance>();
 
         /// <summary>Acceleration structure over the whole soup. Built by <see cref="Build"/>.</summary>
-        public BVHAccel Bvh { get; private set; }
+        internal BVHAccel Bvh { get; private set; }
 
-        public Vector3 BoundsMin = new Vector3(float.MaxValue);
-        public Vector3 BoundsMax = new Vector3(float.MinValue);
-
-        public int TriangleCount => Tris.Length / 3;
-        public int VertexCount => Verts.Length / 3;
+        internal int TriangleCount => Tris.Length / 3;
+        internal int VertexCount => Verts.Length / 3;
 
         /// <summary>Movers skipped because they were dynamic, hidden, or had no usable mesh.</summary>
-        public int MoversSkipped;
+        internal int MoversSkipped;
 
         /// <summary>Triangles dropped by the absurd-edge filter.</summary>
-        public int TrianglesCulled;
+        internal int TrianglesCulled;
 
-        /// <summary>Movers that carry lightmap UVs, versus those falling back to planar UVs.</summary>
-        public int MoversWithLightmapUVs;
-        public int MoversWithoutLightmapUVs;
+        /// <summary>Movers that carry lightmap UVs, versus those without (their lightmap UVs are written as zero).</summary>
+        internal int MoversWithLightmapUVs;
+        internal int MoversWithoutLightmapUVs;
 
         /// <summary>Movers skipped because their composite has no static-radiosity geometry.</summary>
-        public int MoversNotLightmapped;
+        internal int MoversNotLightmapped;
 
         /// <summary>Skip-reason breakdown, for telling "retail lightmaps it and we do not" apart
         /// from "neither of us does".</summary>
-        public int SkippedNotBakeable, SkippedDynamicMaterial, SkippedNoResource, SkippedNoGeometry;
+        internal int SkippedNotBakeable, SkippedDynamicMaterial, SkippedNoResource, SkippedNoGeometry;
 
         /// <summary>Renderable elements skipped because their shader does not describe a surface.</summary>
-        public int ElementsNotSurfaces;
+        internal int ElementsNotSurfaces;
+
+        /// <summary>Islands created by splitting transparent movers out of their composite's island (see
+        /// <see cref="SplitTransparentIslands"/>).</summary>
+        internal int IslandsSplitOff;
 
         /// <summary>
         /// Ubershaders that draw something other than a light-bouncing surface. A mover carrying
@@ -227,12 +196,9 @@ namespace CathodeLib.Radiosity
         /// particle sheet, a light cone, a refraction pane, a debug box.
         /// </summary>
         /// <remarks>
-        /// The renderable-type filter in <see cref="IsBakeable"/> catches most of these, but not
-        /// all: DLC/ChallengeMap16 has several <c>SURFACEEFFECTBOX_*</c> movers on
-        /// <c>CA_EFFECT_OVERLAY</c> that type-check as bakeable geometry and then contribute albedo
-        /// at luminance 152 and chroma 109 - into a level whose retail albedo table averages 18.6
-        /// with 90% of samples below 39. Between them they supplied about a fifth of that level's
-        /// total albedo chroma.
+        /// The renderable-type filter in <see cref="IsBakeable"/> misses some: ChallengeMap16's <c>SURFACEEFFECTBOX_*</c>
+        /// movers on <c>CA_EFFECT_OVERLAY</c> type-check as bakeable and supplied about a fifth of that level's albedo
+        /// chroma.
         /// </remarks>
         private static readonly HashSet<SHADER_LIST> NonSurfaceShaders = new HashSet<SHADER_LIST>
         {
@@ -281,12 +247,6 @@ namespace CathodeLib.Radiosity
             SHADER_LIST.CA_MOTION_BLUR_HI_SPEC,
         };
 
-        /// <summary>True when an element draws something that is not a lit surface - a light volume,
-        /// a fog sphere, a debug pass. Exposed because tools that raycast the level for a camera
-        /// view need the same filter: standing inside a spot light's cone proxy fills the frame
-        /// with geometry the player never sees.</summary>
-        public static bool IsNonSurfaceElement(RenderableElements.Element element) => IsNonSurface(element);
-
         /// <summary>True when an element's shader draws something that is not a lit surface.</summary>
         private static bool IsNonSurface(RenderableElements.Element element)
         {
@@ -294,28 +254,38 @@ namespace CathodeLib.Radiosity
             return shader != null && NonSurfaceShaders.Contains(shader.Ubershader);
         }
 
-        public RadiosityMaterialSampler MaterialSampler { get; private set; }
+        internal RadiosityMaterialSampler MaterialSampler { get; private set; }
+
+        /// <summary>
+        /// Built only by <see cref="CollectFromLevel"/>. The type is public because the public
+        /// <see cref="RadiosityOccluders.TryCollect"/> takes one; callers outside the library pass null there.
+        /// </summary>
+        private RadiosityGeometry() { }
 
         /// <summary>
         /// Walk MODELS.MVR and build the soup. The level must already have been through an
         /// <see cref="Instancing"/> pass so movers, REDS and RESOURCES are in their final state.
         /// </summary>
-        public static RadiosityGeometry CollectFromLevel(Level level, RadiosityBakeSettings settings = null, Action<string> log = null)
+        /// <param name="staticCompositesOnly">Only collect composites that contain at least one mover requiring
+        /// RADIOSITY_STATIC (as retail lightmapped them). This is what keeps a full bake's slice count near retail's: without
+        /// it Solace wants 23 slices against retail's 3, because about two thirds of its composites get a lightmap rect
+        /// they have no shader to sample. The delta bakes collect without it: added content is never on the list.</param>
+        /// <param name="splitTransparentIslands">Give transparent movers islands of their own where retail has none for them
+        /// (<see cref="SplitTransparentIslands"/>). Full bakes only: the delta bakes keep one island per composite.</param>
+        internal static RadiosityGeometry CollectFromLevel(Level level, bool staticCompositesOnly, bool splitTransparentIslands,
+            Action<string> log = null)
         {
             if (level == null) throw new ArgumentNullException(nameof(level));
             if (level.Movers == null) throw new InvalidOperationException("Level has no MODELS.MVR.");
 
-            settings ??= RadiosityBakeSettings.CreateDefault();
-
             var geo = new RadiosityGeometry();
-            geo.MaterialSampler = new RadiosityMaterialSampler(settings);
+            geo.MaterialSampler = new RadiosityMaterialSampler();
 
             var verts = new List<float>();
             var normals = new List<Vector3>();
             var uvs = new List<Vector2>();
             var diffuseUvs = new List<Vector2>();
             var tris = new List<int>();
-            var triSeeThrough = new List<bool>();
             var triInstance = new List<int>();
             var triMaterial = new List<int>();
             var triMoverSlot = new List<int>();
@@ -326,27 +296,19 @@ namespace CathodeLib.Radiosity
             // A CS2 submesh is shared between movers, so cache the decode.
             var meshCache = new Dictionary<Models.CS2.Component.LOD.Submesh, cMesh>();
 
-            // Lerp-mode dirt is faded per vertex by the shader - the VS's dirt lane computes
-            // vcx = saturate(vcol.x*R0.x + vcol.y*R0.y) and the PS scales the dirt weight by
-            // (1-vcx)^2 - so the material-mean dirt fold needs that fade's expectation over the
-            // geometry that actually uses each material. Runs before any Register so the fades
-            // are in place when materials build.
-            if (settings.SampleSecondaryDiffuse)
-                CollectDirtVertexFades(level, geo.MaterialSampler, meshCache, log);
-
             // Retail's island assignment per resource, resolved from the loaded instance map.
             // Grouping follows it wherever it has an answer so islands keep retail's shape and,
             // downstream, retail's id.
             Dictionary<(uint, uint), int> retailIslands = CollectRetailIslands(level);
 
-            HashSet<ShortGuid> lightmappedComposites = settings.StaticRadiosityCompositesOnly
+            HashSet<ShortGuid> lightmappedComposites = staticCompositesOnly
                 ? CollectLightmappedComposites(level)
                 : null;
 
             for (int moverIndex = 0; moverIndex < level.Movers.Entries.Count; moverIndex++)
             {
                 Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[moverIndex];
-                if (!IsBakeable(mover, settings))
+                if (!IsBakeable(mover))
                 {
                     geo.MoversSkipped++;
                     if (RequiresDynamicRadiosity(mover)) geo.SkippedDynamicMaterial++;
@@ -360,27 +322,6 @@ namespace CathodeLib.Radiosity
                     geo.MoversSkipped++;
                     geo.MoversNotLightmapped++;
                     continue;
-                }
-
-                // Retail's own instance map is the authority on WHICH resources may carry a
-                // lightmap. CollectLightmappedComposites admits a whole composite once any one of
-                // its movers asks for RADIOSITY_STATIC, and its remark claimed the surplus was
-                // inert. It is not: on CM3 that surplus was 28 resources retail never maps
-                // (REQUIRED_ASSETS weapons, _PROPS_\PHYSICS templates, MHQ_LIGHTS_B - pickups and
-                // physics props, 22 of which DO carry RADIOSITY_STATIC themselves, so no per-mover
-                // predicate separates them). Those 28 extra rows did not just mislight those props:
-                // unrelated CEILINGS AND WALLS lost their lightmap binding and fell back to dynamic
-                // volume probes. Deleting the 28 from the shipped map restored retail's own
-                // classification exactly - cam9 38.5% -> 3.4%, cam13 47.5% -> 0%, cam1 5.8% -> 0%.
-                if (settings.RetailMappedResources != null && mover.Resource != null)
-                {
-                    ulong key = ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
-                    if (!settings.RetailMappedResources.Contains(key))
-                    {
-                        geo.MoversSkipped++;
-                        geo.MoversNotLightmapped++;
-                        continue;
-                    }
                 }
 
                 int resourceIndex = level.Resources.GetWriteIndex(mover.Resource);
@@ -411,27 +352,18 @@ namespace CathodeLib.Radiosity
                 }
                 Instance instance = geo.Instances[instanceIndex];
                 instance.Movers.Add(moverIndex);
-                instance.MoverResourceIndices.Add(resourceIndex);
                 instance.MoverAreas.Add(0.0f);
                 int moverSlot = instance.Movers.Count - 1;
 
                 bool contributedGeometry = false;
                 bool hadLightmapUVs = false;
 
-                // Every element is baked, not just the first. A mover's renderable elements are its
-                // separate submesh and material pairs, all of which draw; its LOD chain hangs off
-                // each element's own LODs list, so stopping at the first was not skipping LODs, it
-                // was skipping most of the model. On Solace 45.8% of bakeable movers carry more
-                // than one, and taking only the first discarded 15433 m2 of 26436 - including 3751
-                // of the level's 6163 m2 of floor, which is why rooms turned up with lit walls and
-                // a bare floor.
-                int elementsTaken = 0;
+                // Every element is baked, not just the first: a mover's renderable elements are its separate submesh and
+                // material pairs, all of which draw (the first alone discarded 15433 m2 of Solace's 26436).
                 foreach (RenderableElements.Element element in mover.RenderableElements)
                 {
                     if (element?.Model == null)
                         continue;
-                    if (settings.MaxElementsPerMover > 0 && elementsTaken >= settings.MaxElementsPerMover)
-                        break;
 
                     // An effect or volume shader means this element is drawn but does not bounce
                     // light, so it must not claim atlas space or contribute albedo.
@@ -449,10 +381,9 @@ namespace CathodeLib.Radiosity
                     if (mesh.Vertices.Count == 0 || mesh.Indices.Count < 3)
                         continue;
 
-                    bool seeThrough = IsSeeThroughMaterial(element);
                     int materialSlot = geo.MaterialSampler.Register(element.Material);
                     Vector3 albedo = geo.MaterialSampler.Mean(materialSlot);
-                    Vector3 emissive = ResolveEmissive(mover, element, settings);
+                    Vector3 emissive = ResolveEmissive(mover, element);
                     int lightmapChannel = FindLightmapChannel(mesh);
                     float uvScale = LightmapUvScale(mesh, lightmapChannel);
                     // Channel 0 is the tiling diffuse set. ToMesh scales every channel by 16.
@@ -477,10 +408,11 @@ namespace CathodeLib.Radiosity
                         normals.Add(len > 1e-6f ? n / len : Vector3.UnitY);
 
                         uvs.Add(lightmapChannel >= 0 ? mesh.UVs[lightmapChannel][v] * uvScale : Vector2.Zero);
-                        diffuseUvs.Add(hasDiffuseUVs ? mesh.UVs[0][v] * (settings.DiffuseUvToMeshScale ? 1.0f : 1.0f / 16.0f) : Vector2.Zero);   // x1 = the S16_2N x16 uv ToMesh returns (see DiffuseUvToMeshScale)
+                        // /16 undoes ToMesh's x16. CA's compiler samples the x16 UV (RADIOSITY_ALBEDO_SAMPLES.BIN, 23 Sep:
+                        // /16 reads only the top-left 1/16 of a whole-panel texture), but that point sample alone
+                        // overshoots retail's probe albedo.
+                        diffuseUvs.Add(hasDiffuseUVs ? mesh.UVs[0][v] * (1.0f / 16.0f) : Vector2.Zero);
 
-                        geo.BoundsMin = Vector3.Min(geo.BoundsMin, world);
-                        geo.BoundsMax = Vector3.Max(geo.BoundsMax, world);
                         instance.BoundsMin = Vector3.Min(instance.BoundsMin, world);
                         instance.BoundsMax = Vector3.Max(instance.BoundsMax, world);
                     }
@@ -498,7 +430,7 @@ namespace CathodeLib.Radiosity
                             continue;
 
                         float longestEdge = Math.Max((b - a).Length(), Math.Max((c - b).Length(), (a - c).Length()));
-                        if (longestEdge > settings.MaxTriangleEdge)
+                        if (longestEdge > RadiosityTuning.MaxTriangleEdge)
                         {
                             geo.TrianglesCulled++;
                             continue;
@@ -510,7 +442,7 @@ namespace CathodeLib.Radiosity
 
                         instance.MoverAreas[moverSlot] += area;
 
-                        MarkUvCoverage(instance, uvs, i0, i1, i2, settings.PreciseUvCoverage);
+                        MarkUvCoverage(instance, uvs, i0, i1, i2);
 
                         tris.Add(i0);
                         tris.Add(i1);
@@ -520,10 +452,8 @@ namespace CathodeLib.Radiosity
                         triMoverSlot.Add(moverSlot);
                         triAlbedo.Add(albedo);
                         triEmissive.Add(emissive);
-                        triSeeThrough.Add(seeThrough);
                         contributedGeometry = true;
                     }
-                    elementsTaken++;
                 }
 
                 if (!contributedGeometry)
@@ -537,9 +467,11 @@ namespace CathodeLib.Radiosity
                     geo.MoversWithoutLightmapUVs++;
             }
 
+            if (splitTransparentIslands)
+                SplitTransparentIslands(level, geo, verts, uvs, tris, triInstance, triMoverSlot);
+
             geo.Verts = verts.ToArray();
             geo.Tris = tris.ToArray();
-            geo.TriSeeThrough = triSeeThrough.ToArray();
             geo.Normals = normals.ToArray();
             geo.LightmapUVs = uvs.ToArray();
             geo.DiffuseUVs = diffuseUvs.ToArray();
@@ -558,6 +490,7 @@ namespace CathodeLib.Radiosity
 
             log?.Invoke("Radiosity soup: verts=" + geo.VertexCount + " tris=" + geo.TriangleCount +
                         " instances=" + geo.Instances.Count + " moversSkipped=" + geo.MoversSkipped +
+                        (geo.IslandsSplitOff > 0 ? " islandsSplitOff=" + geo.IslandsSplitOff : "") +
                         " trisCulled=" + geo.TrianglesCulled +
                         " lightmapUVs=" + geo.MoversWithLightmapUVs + "/" + (geo.MoversWithLightmapUVs + geo.MoversWithoutLightmapUVs) +
                         " nonSurfaceElements=" + geo.ElementsNotSurfaces +
@@ -573,77 +506,6 @@ namespace CathodeLib.Radiosity
 
             return geo;
         }
-
-        /// <summary>
-        /// Measure, per lerp-dirt material, the expectation of the shader's vertex-colour dirt
-        /// fade over every mesh use: E[(1 - saturate(vcol.x*R0.x + vcol.y*R0.y))^2], with R0
-        /// read from each mover's GPU constants (RInstConstants[0], the vcol multiplier - the
-        /// first float4 of the 96-byte blob). Only shaders with VERTEX_COLOUR fade; multiply-mode
-        /// dirt is excluded by design (see RadiosityMaterialSampler.SetDirtVertexFade).
-        /// </summary>
-        private static void CollectDirtVertexFades(Level level, RadiosityMaterialSampler sampler,
-            Dictionary<Models.CS2.Component.LOD.Submesh, cMesh> meshCache, Action<string> log)
-        {
-            var sums = new Dictionary<Materials.Material, (double fade, double n)>();
-            foreach (Movers.MOVER_DESCRIPTOR mover in level.Movers.Entries)
-            {
-                if (mover.RenderableElements == null)
-                    continue;
-                byte[] raw = mover.GPUConstants?.RawBytes;
-                float r0x = 1f, r0y = 1f;
-                if (raw != null && raw.Length >= 16)
-                {
-                    r0x = BitConverter.ToSingle(raw, 0);
-                    r0y = BitConverter.ToSingle(raw, 4);
-                }
-
-                foreach (RenderableElements.Element element in mover.RenderableElements)
-                {
-                    Materials.Material material = element?.Material;
-                    Shaders.Shader shader = material?.Shader;
-                    if (shader == null || element.Model == null)
-                        continue;
-
-                    bool fades;
-                    long f = shader.UbershaderFeatureFlags;
-                    if (shader.Ubershader == SHADER_LIST.CA_ENVIRONMENT)
-                        fades = Bit(f, (int)CA_ENVIRONMENT.FEATURES.DIRT_MAPPING) &&
-                                !Bit(f, (int)CA_ENVIRONMENT.FEATURES.DIRT_BLEND_MULTIPLY) &&
-                                Bit(f, (int)CA_ENVIRONMENT.FEATURES.VERTEX_COLOUR);
-                    else if (shader.Ubershader == SHADER_LIST.CA_LIGHTMAP_ENVIRONMENT)
-                        fades = Bit(f, (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.DIRT_MAPPING) &&
-                                !Bit(f, (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.DIRT_BLEND_MULTIPLY) &&
-                                Bit(f, (int)CA_LIGHTMAP_ENVIRONMENT.FEATURES.VERTEX_COLOUR);
-                    else
-                        continue;
-                    if (!fades)
-                        continue;
-
-                    if (!meshCache.TryGetValue(element.Model, out cMesh mesh))
-                        meshCache[element.Model] = mesh = element.Model.ToMesh();
-                    if (mesh.Colours.Count == 0 || mesh.Colours.Count != mesh.Vertices.Count)
-                        continue;
-
-                    double sum = 0;
-                    foreach (var c in mesh.Colours)
-                    {
-                        float x = c.R / 255f * r0x + c.G / 255f * r0y;
-                        double inv = 1.0 - (x < 0f ? 0f : x > 1f ? 1f : x);
-                        sum += inv * inv;
-                    }
-                    sums[material] = sums.TryGetValue(material, out var acc)
-                        ? (acc.fade + sum, acc.n + mesh.Colours.Count)
-                        : (sum, (double)mesh.Colours.Count);
-                }
-            }
-
-            foreach (var kv in sums)
-                sampler.SetDirtVertexFade(kv.Key, (float)(kv.Value.fade / Math.Max(1.0, kv.Value.n)));
-            if (sums.Count > 0)
-                log?.Invoke("[radiosity] lerp-dirt vertex fade measured for " + sums.Count + " materials");
-        }
-
-        private static bool Bit(long flags, int bit) => ((flags >> bit) & 1) != 0;
 
         /// <summary>
         /// Resource GUID pair to retail island id (lightmap_transform), from the loaded retail
@@ -669,23 +531,208 @@ namespace CathodeLib.Radiosity
             return islands;
         }
 
+        /// <summary>
+        /// A transparent lit surface: a CA_ENVIRONMENT material that alpha-blends (USE_ALPHA_AS_BLENDFACTOR or FORCE_TO_ALPHA),
+        /// is lit as alpha (ALPHA_LIGHTING) and is not a DECAL - window and screen glass, light cases.
+        /// </summary>
+        private static bool IsTransparentSurfaceElement(RenderableElements.Element element)
+        {
+            Shaders.Shader shader = element?.Material?.Shader;
+            if (shader == null || shader.Ubershader != SHADER_LIST.CA_ENVIRONMENT)
+                return false;
+            long f = shader.UbershaderFeatureFlags;
+            bool blends = Bit(f, (int)CA_ENVIRONMENT.FEATURES.USE_ALPHA_AS_BLENDFACTOR) || Bit(f, (int)CA_ENVIRONMENT.FEATURES.FORCE_TO_ALPHA);
+            return blends && Bit(f, (int)CA_ENVIRONMENT.FEATURES.ALPHA_LIGHTING) && !Bit(f, (int)CA_ENVIRONMENT.FEATURES.DECAL);
+        }
+
+        private static bool Bit(long flags, int bit) => ((flags >> bit) & 1) != 0;
+
+        /// <summary>Does any surface element of the mover draw a transparent lit material?</summary>
+        private static bool IsTransparentMover(Movers.MOVER_DESCRIPTOR mover)
+        {
+            if (mover?.RenderableElements == null) return false;
+            foreach (RenderableElements.Element element in mover.RenderableElements)
+                if (element?.Model != null && !IsNonSurface(element) && IsTransparentSurfaceElement(element))
+                    return true;
+            return false;
+        }
+
+        /// <summary>Side of the lightmap-UV raster <see cref="SplitTransparentIslands"/> compares charts on.</summary>
+        private const int SplitGridSize = 64;
+
+        /// <summary>
+        /// Retail's island rule, for islands retail never baked: a composite's transparent movers
+        /// (<see cref="IsTransparentSurfaceElement"/>) leave its island and share islands among themselves, first fit in mover
+        /// order - a mover joins the first island whose lightmap-UV cells (64x64 raster) overlap at most
+        /// <see cref="RadiosityTuning.IslandSplitMaxOverlap"/> of its own, else starts a new one. Everything else stays in
+        /// one island, however much its charts overlap.
+        /// </summary>
+        /// <remarks>
+        /// Over 19 levels it reproduces retail's grouping on 4,894 of the 4,955 composites retail splits (98.8%) and on
+        /// 38,515 of the 38,523 it leaves whole. Without it a composite's glass maps onto the same texels as the frame around
+        /// it (Torrens' MU-TH-UR room: seven screens shared one 14x14 rect with the console). Only islands with no retail id
+        /// are split; glass smaller than <see cref="RadiosityTuning.IslandSplitMinArea"/>, or with no triangles, stays. The
+        /// first group keeps the original instance object and the others follow it, in order of their first mover.
+        /// </remarks>
+        private static void SplitTransparentIslands(Level level, RadiosityGeometry geo, List<float> verts, List<Vector2> uvs,
+            List<int> tris, List<int> triInstance, List<int> triMoverSlot)
+        {
+            const int words = SplitGridSize * SplitGridSize / 64;
+            var result = new List<Instance>(geo.Instances.Count);
+            foreach (Instance inst in geo.Instances)
+            {
+                result.Add(inst);
+                int n = inst.Movers.Count;
+                if (inst.RetailIslandId >= 0 || n < 2)
+                    continue;
+                var transparent = new bool[n];
+                bool any = false;
+                for (int s = 0; s < n; s++)
+                    any |= transparent[s] = IsTransparentMover(level.Movers.Entries[inst.Movers[s]]) &&
+                                            inst.MoverAreas[s] >= RadiosityTuning.IslandSplitMinArea;
+                if (!any)
+                    continue;
+
+                // Each transparent mover's chart, rasterised over its triangles.
+                var grids = new ulong[n][];
+                foreach (int t in inst.Triangles)
+                {
+                    int s = triMoverSlot[t];
+                    if (!transparent[s]) continue;
+                    grids[s] ??= new ulong[words];
+                    RasterUv(grids[s], uvs[tris[t * 3]], uvs[tris[t * 3 + 1]], uvs[tris[t * 3 + 2]]);
+                }
+
+                // First fit among the transparent movers; label 0 = the composite's island.
+                var label = new int[n];
+                var islandGrids = new List<ulong[]>();
+                for (int s = 0; s < n; s++)
+                {
+                    if (!transparent[s] || grids[s] == null) continue;
+                    int cells = 0;
+                    foreach (ulong w in grids[s]) cells += PopCount(w);
+                    int k = -1;
+                    for (int j = 0; j < islandGrids.Count && k < 0; j++)
+                    {
+                        int overlap = 0;
+                        for (int w = 0; w < words; w++) overlap += PopCount(grids[s][w] & islandGrids[j][w]);
+                        if (overlap <= RadiosityTuning.IslandSplitMaxOverlap * cells) k = j;
+                    }
+                    if (k < 0) { k = islandGrids.Count; islandGrids.Add(new ulong[words]); }
+                    for (int w = 0; w < words; w++) islandGrids[k][w] |= grids[s][w];
+                    label[s] = k + 1;
+                }
+                if (islandGrids.Count == 0)
+                    continue;
+
+                // Groups in order of their first mover, each with its mover slots and triangles in their original order.
+                var order = new List<int>();
+                for (int s = 0; s < n; s++) if (!order.Contains(label[s])) order.Add(label[s]);
+                var slotsOf = order.ToDictionary(l => l, l => Enumerable.Range(0, n).Where(s => label[s] == l).ToList());
+                var trianglesOf = order.ToDictionary(l => l, l => new List<int>());
+                foreach (int t in inst.Triangles) trianglesOf[label[triMoverSlot[t]]].Add(t);
+
+                int[] movers = inst.Movers.ToArray();
+                float[] moverAreas = inst.MoverAreas.ToArray();
+                result.RemoveAt(result.Count - 1);
+                for (int g = 0; g < order.Count; g++)
+                {
+                    // The first group reuses the original object, so anything holding it keeps a valid island.
+                    Instance target = g == 0 ? inst : new Instance { CompositeInstanceID = inst.CompositeInstanceID };
+                    if (g == 0)
+                    {
+                        target.Movers.Clear(); target.MoverAreas.Clear(); target.Triangles.Clear();
+                        target.UvGrid = null;
+                        target.UvMinU = float.MaxValue; target.UvMaxU = float.MinValue; target.UvMinV = float.MaxValue; target.UvMaxV = float.MinValue;
+                        target.BoundsMin = new Vector3(float.MaxValue); target.BoundsMax = new Vector3(float.MinValue);
+                        target.SurfaceArea = 0;
+                    }
+                    else
+                        geo.IslandsSplitOff++;
+                    var newSlot = new Dictionary<int, int>();
+                    foreach (int s in slotsOf[order[g]])
+                    {
+                        newSlot[s] = target.Movers.Count;
+                        target.Movers.Add(movers[s]);
+                        target.MoverAreas.Add(moverAreas[s]);
+                        target.SurfaceArea += moverAreas[s];
+                    }
+                    foreach (int t in trianglesOf[order[g]])
+                    {
+                        target.Triangles.Add(t);
+                        triMoverSlot[t] = newSlot[triMoverSlot[t]];
+                        int i0 = tris[t * 3], i1 = tris[t * 3 + 1], i2 = tris[t * 3 + 2];
+                        foreach (int vi in new[] { i0, i1, i2 })
+                        {
+                            Vector3 p = At(verts, vi);
+                            target.BoundsMin = Vector3.Min(target.BoundsMin, p);
+                            target.BoundsMax = Vector3.Max(target.BoundsMax, p);
+                        }
+                        MarkUvCoverage(target, uvs, i0, i1, i2);
+                    }
+                    result.Add(target);
+                }
+            }
+            geo.Instances.Clear();
+            geo.Instances.AddRange(result);
+            for (int i = 0; i < geo.Instances.Count; i++)
+                foreach (int t in geo.Instances[i].Triangles)
+                    triInstance[t] = i;
+        }
+
+        /// <summary>Set bits of a word (netstandard2.0 has no BitOperations).</summary>
+        private static int PopCount(ulong v)
+        {
+            v -= (v >> 1) & 0x5555555555555555UL;
+            v = (v & 0x3333333333333333UL) + ((v >> 2) & 0x3333333333333333UL);
+            v = (v + (v >> 4)) & 0x0F0F0F0F0F0F0F0FUL;
+            return (int)((v * 0x0101010101010101UL) >> 56);
+        }
+
+        /// <summary>Mark the cells of a <see cref="SplitGridSize"/>-square raster of the raw (unwrapped) unit UV square whose
+        /// centres a triangle covers, or the cell holding its centroid when it covers none.</summary>
+        private static void RasterUv(ulong[] grid, Vector2 a, Vector2 b, Vector2 c)
+        {
+            const int g = SplitGridSize;
+            Vector2 ga = a * g, gb = b * g, gc = c * g;
+            int minX = Math.Max(0, Math.Min(g - 1, (int)Math.Floor(Math.Min(ga.X, Math.Min(gb.X, gc.X)))));
+            int maxX = Math.Max(0, Math.Min(g - 1, (int)Math.Floor(Math.Max(ga.X, Math.Max(gb.X, gc.X)))));
+            int minY = Math.Max(0, Math.Min(g - 1, (int)Math.Floor(Math.Min(ga.Y, Math.Min(gb.Y, gc.Y)))));
+            int maxY = Math.Max(0, Math.Min(g - 1, (int)Math.Floor(Math.Max(ga.Y, Math.Max(gb.Y, gc.Y)))));
+            float den = (gb.Y - gc.Y) * (ga.X - gc.X) + (gc.X - gb.X) * (ga.Y - gc.Y);
+            bool marked = false;
+            if (Math.Abs(den) > 1e-9f)
+            {
+                float inv = 1f / den, a0 = (gb.Y - gc.Y) * inv, b0 = (gc.X - gb.X) * inv, a1 = (gc.Y - ga.Y) * inv, b1 = (ga.X - gc.X) * inv;
+                for (int y = minY; y <= maxY; y++)
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        float px = x + 0.5f - gc.X, py = y + 0.5f - gc.Y, l0 = a0 * px + b0 * py, l1 = a1 * px + b1 * py;
+                        if (l0 < -1e-4f || l1 < -1e-4f || l0 + l1 > 1.0001f) continue;
+                        grid[(y * g + x) >> 6] |= 1UL << ((y * g + x) & 63);
+                        marked = true;
+                    }
+            }
+            if (!marked)
+            {
+                int cx = Math.Max(0, Math.Min(g - 1, (int)((a.X + b.X + c.X) / 3f * g)));
+                int cy = Math.Max(0, Math.Min(g - 1, (int)((a.Y + b.Y + c.Y) / 3f * g)));
+                grid[(cy * g + cx) >> 6] |= 1UL << ((cy * g + cx) & 63);
+            }
+        }
+
         /// <summary>Resolution of the per-instance UV occupancy grid.</summary>
         private const int UvGridSize = 16;
 
         /// <summary>
-        /// Mark the cells of the unit UV square a triangle actually covers.
+        /// Widen the instance's raw UV bounds by a triangle, and mark the cells of the unit UV
+        /// square that the triangle's UV bounding box covers.
         /// </summary>
         /// <remarks>
-        /// The bounding box is NOT close enough, which is what this used to use. A triangle laid
-        /// diagonally marks up to twice the cells it covers, and an instance with thousands of them
-        /// saturates the grid: ChallengeMap4's island 602 (238 m2, 14228 triangles) measured
-        /// coverage ~1.0 and so got no compensation at all, sizing its rect on world area alone -
-        /// 14x14 = 196 texels, of which its UVs reach only 80. Retail gives that island 1024.
-        /// Testing cell centres instead reports what the rasteriser will actually fill, and a
-        /// triangle smaller than a cell still marks the cell holding its centroid so fine detail is
-        /// not lost.
+        /// The bounding box over-reads diagonal triangles; cell-centre coverage was measured and left off (it raised
+        /// surface probes by 10%, and ChallengeMap4's mean rmse was a wash).
         /// </remarks>
-        private static void MarkUvCoverage(Instance instance, List<Vector2> uvs, int i0, int i1, int i2, bool precise)
+        private static void MarkUvCoverage(Instance instance, List<Vector2> uvs, int i0, int i1, int i2)
         {
             if (instance.UvGrid == null)
                 instance.UvGrid = new bool[UvGridSize * UvGridSize];
@@ -710,42 +757,9 @@ namespace CathodeLib.Radiosity
             minY = Math.Max(0, Math.Min(UvGridSize - 1, minY));
             maxY = Math.Max(0, Math.Min(UvGridSize - 1, maxY));
 
-            if (!precise)
-            {
-                for (int y = minY; y <= maxY; y++)
-                    for (int x = minX; x <= maxX; x++)
-                        instance.UvGrid[y * UvGridSize + x] = true;
-                return;
-            }
-
-            Vector2 ga = a * UvGridSize, gb = b * UvGridSize, gc = c * UvGridSize;
-            float denominator = (gb.Y - gc.Y) * (ga.X - gc.X) + (gc.X - gb.X) * (ga.Y - gc.Y);
-            bool marked = false;
-            if (Math.Abs(denominator) > 1e-9f)
-            {
-                float inv = 1.0f / denominator;
-                float a0 = (gb.Y - gc.Y) * inv, b0 = (gc.X - gb.X) * inv;
-                float a1 = (gc.Y - ga.Y) * inv, b1 = (ga.X - gc.X) * inv;
-                for (int y = minY; y <= maxY; y++)
-                    for (int x = minX; x <= maxX; x++)
-                    {
-                        float px = x + 0.5f - gc.X, py = y + 0.5f - gc.Y;
-                        float l0 = a0 * px + b0 * py;
-                        float l1 = a1 * px + b1 * py;
-                        if (l0 < 0.0f || l1 < 0.0f || l0 + l1 > 1.0f)
-                            continue;
-                        instance.UvGrid[y * UvGridSize + x] = true;
-                        marked = true;
-                    }
-            }
-
-            // A triangle smaller than a cell covers no centre; it still occupies UV space.
-            if (!marked)
-            {
-                int cx = Math.Max(0, Math.Min(UvGridSize - 1, (int)((a.X + b.X + c.X) / 3.0f * UvGridSize)));
-                int cy = Math.Max(0, Math.Min(UvGridSize - 1, (int)((a.Y + b.Y + c.Y) / 3.0f * UvGridSize)));
-                instance.UvGrid[cy * UvGridSize + cx] = true;
-            }
+            for (int y = minY; y <= maxY; y++)
+                for (int x = minX; x <= maxX; x++)
+                    instance.UvGrid[y * UvGridSize + x] = true;
         }
 
         /// <summary>
@@ -753,23 +767,14 @@ namespace CathodeLib.Radiosity
         /// mesh alone.
         /// </summary>
         /// <remarks>
-        /// <para>Measured 16 Sep 2026 over the 30,494 retail-baked islands of the ten challenge
-        /// maps: the extent of an island's lightmap UVs along U is <c>(w - 1) / (w - 0.5)</c>
-        /// where <c>w</c> is the rect width retail shipped in MODEL_PARAMS (which stores
-        /// <c>w - 0.5</c>, the same denominator), and likewise V against the height - exact on
-        /// 95.1% of islands and within one texel on 99.2%; the misses are islands whose movers do
-        /// not span their model's whole chart, which under-reads. CA's compiler chose the rect and
-        /// then wrote the chart into it with texel centres at <c>(i + 0.5) / (w - 0.5)</c>, so the
-        /// choice is baked into every shipped mesh. It is what RADIOSITY_LEVEL.BIN's "adjusted UV
-        /// bounds" (which do not ship) recorded, and it is why the area formula could never match:
-        /// retail's rects were never a function of area.</para>
-        /// <para>Only geometry authored through that compiler carries the convention. An imported
-        /// mesh whose chart fills the unit square, or was laid out by another tool, fails the
-        /// consistency test below and keeps the area formula. The rule is exact for the reason
-        /// Matt asked for parity "even if only in the models we rebake": every retail model keeps
-        /// retail's own probe density, wherever it is placed.</para>
+        /// CA's compiler chose each rect and then wrote the chart into it with texel centres at
+        /// <c>(i + 0.5) / (w - 0.5)</c>, so an island's lightmap UV extent along U is <c>(w - 1) / (w - 0.5)</c> for the rect
+        /// width <c>w</c> (MODEL_PARAMS stores <c>w - 0.5</c>), and likewise V: exact on 95.1% of the ten challenge maps'
+        /// 30,494 islands, within a texel on 99.2% (16 Sep 2026). Retail's rects were never a function of area. A chart not
+        /// written by that compiler fails the integer test and keeps the area formula; every retail model keeps retail's
+        /// probe density wherever it is placed.
         /// </remarks>
-        public static bool TryRectFromUvConvention(Instance instance, out int width, out int height)
+        internal static bool TryRectFromUvConvention(Instance instance, out int width, out int height)
         {
             width = height = 0;
             if (instance == null || instance.UvMaxU < instance.UvMinU || instance.UvMaxV < instance.UvMinV)
@@ -843,17 +848,16 @@ namespace CathodeLib.Radiosity
         /// render meshes themselves.
         /// </summary>
         /// <remarks>
-        /// Render meshes carry interior submeshes, back faces and panel detail that a probe gets
-        /// caught inside, which is why a quarter of our surface probes saw nothing in any
-        /// direction. The collision hulls are far simpler and do not have that problem.
+        /// Collision hulls avoid the interior submeshes, back faces and panel detail of render meshes that probes got
+        /// caught inside.
         /// </remarks>
-        public BVHAccel OccluderBvh { get; private set; }
+        internal BVHAccel OccluderBvh { get; private set; }
 
         /// <summary>Triangle count of the occluder soup, or 0 when occluding against render meshes.</summary>
-        public int OccluderTriangleCount { get; private set; }
+        internal int OccluderTriangleCount { get; private set; }
 
         /// <summary>Build the BVH. Separated from collection so callers can log the timings.</summary>
-        public void Build(Action<string> log = null)
+        internal void Build(Action<string> log = null)
         {
             Bvh = new BVHAccel();
             Bvh.Build(Verts, Tris);
@@ -869,20 +873,16 @@ namespace CathodeLib.Radiosity
         /// How far to pull a visibility ray in at each end when occluding against the proxy.
         /// </summary>
         /// <remarks>
-        /// Neither endpoint of a visibility ray lies on the proxy surface - both are points on the
-        /// render meshes - so without this the shell around the target blocks the ray just before
-        /// it arrives. It is the whole reason occluding against collision first measured worse than
-        /// occluding against the render meshes: of facing surface point pairs on Solace, 4.1% are
-        /// mutually visible through the render meshes but only 1.3% through collision with the ray
-        /// run end to end. Pulling both ends in by 0.2 m restores 4.0%.
+        /// Neither endpoint of a visibility ray lies on the proxy surface (both are on the render meshes), so without it
+        /// the shell around the target blocks the ray just before it arrives.
         /// </remarks>
-        public float OccluderEndpointSlack { get; set; }
+        internal float OccluderEndpointSlack { get; set; }
 
         /// <summary>Largest share of a link, per end, that <see cref="OccluderEndpointSlack"/> may skip.</summary>
-        public float OccluderSlackFraction { get; set; } = 0.15f;
+        internal float OccluderSlackFraction { get; set; } = 0.15f;
 
         /// <summary>Build the occluder BVH from a separate triangle soup.</summary>
-        public void BuildOccluders(float[] verts, int[] tris, Action<string> log = null)
+        internal void BuildOccluders(float[] verts, int[] tris, Action<string> log = null)
         {
             if (verts == null || tris == null || tris.Length < 3)
                 return;
@@ -903,16 +903,12 @@ namespace CathodeLib.Radiosity
         /// than inside it.
         /// </summary>
         /// <remarks>
-        /// <para>A collision hull is a coarse shell built <em>around</em> its object, so a point on
-        /// the render surface is normally inside it. Occluding against the shell without moving the
-        /// ray origin therefore blocks everything immediately - it took our probes with no influence
-        /// from 26% to 59%, worse than occluding against the render meshes.</para>
-        /// <para>So the origin is moved onto the shell: cast along the surface normal, and if the
-        /// first thing hit is the back of a triangle, we started inside a shell and the origin
-        /// belongs just beyond where the ray leaves it. A front-facing hit means the shell is not
-        /// around us but in front of us - a real occluder - and the origin stays put.</para>
+        /// A collision hull is a coarse shell built <em>around</em> its object, so a point on the render surface is
+        /// normally inside it, and an unmoved origin is blocked at once (probes with no influence went from 26% to 59%).
+        /// Cast along the normal: a back-face hit means we started inside a shell, so the origin goes just past where the
+        /// ray leaves it; a front-face hit is a real occluder, and the origin stays put.
         /// </remarks>
-        public Vector3 VisibilityOrigin(Vector3 position, Vector3 normal, float range, float offset)
+        internal Vector3 VisibilityOrigin(Vector3 position, Vector3 normal, float range, float offset)
         {
             Vector3 fallback = position + normal * offset;
             if (OccluderBvh == null || range <= 0.0f)
@@ -941,20 +937,15 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>True when nothing blocks the straight line between two points.</summary>
-        public bool Visible(Vector3 from, Vector3 to, float epsilon)
+        internal bool Visible(Vector3 from, Vector3 to, float epsilon)
         {
             BVHAccel bvh = OccluderBvh ?? Bvh;
 
             Vector3 delta = to - from;
             float distance = delta.Length();
 
-            // The slack is capped as a fraction of the link, so a short ray is not left effectively
-            // untested. A flat 0.35 m at each end leaves only the middle 0.30 m of a 1 m link
-            // examined, and that is what let light through walls: re-tested against the render
-            // meshes, 68.1% of our 0-1 m links passed through geometry against retail's 34.2%, and
-            // the excess was worst at short range rather than long. Capping at 15% per end holds
-            // the untested portion to 30% at any distance while keeping the full slack on the long
-            // links it was introduced for.
+            // The slack is capped at a fraction of the link per end, so a short ray is not left effectively untested (a
+            // flat 0.35 m let 68.1% of our 0-1 m links pass through render geometry, against retail's 34.2%).
             float slack = epsilon;
             if (OccluderBvh != null)
                 slack += Math.Min(OccluderEndpointSlack, distance * OccluderSlackFraction);
@@ -971,10 +962,9 @@ namespace CathodeLib.Radiosity
         /// <see cref="Visible"/> against the RENDER meshes (never the collision occluder set), with a plain epsilon at each end,
         /// optionally softened: the line counts as visible when the centre ray or any of <paramref name="softRays"/> rays, both
         /// ends jittered up to <paramref name="jitter"/> metres across the line, is unblocked. The jitter is seeded from the
-        /// endpoints so a bake is deterministic. This is the cut's "soft render" test (27-28 Sep: on Solace it scores 10.5
-        /// where collision occluders score 11.5).
+        /// endpoints, so a bake is deterministic. The retail-rule cut's visibility test.
         /// </summary>
-        public bool VisibleRenderSoft(Vector3 from, Vector3 to, float epsilon, int softRays, float jitter)
+        internal bool VisibleRenderSoft(Vector3 from, Vector3 to, float epsilon, int softRays, float jitter)
         {
             bool Clear(Vector3 a, Vector3 b)
             {
@@ -999,24 +989,7 @@ namespace CathodeLib.Radiosity
             return false;
         }
 
-        /// <summary>
-        /// Closest render-mesh hit along a ray, or -1 when nothing is hit within maxDist.
-        /// Uses the full render BVH (not the occluder set): the hemisphere influence solve asks
-        /// "what surface does this probe actually see", which is a render-mesh question.
-        /// </summary>
-        public float TraceClosest(Vector3 from, Vector3 direction, float maxDist, out Vector3 hitPos)
-        {
-            var ray = new Ray(from, direction, 0.0f, maxDist);
-            if (!Bvh.Traverse(ref ray, out Hit hit))
-            {
-                hitPos = default;
-                return -1.0f;
-            }
-            hitPos = from + direction * hit.T;
-            return hit.T;
-        }
-
-        public Vector3 TriangleCentroid(int tri)
+        internal Vector3 TriangleCentroid(int tri)
         {
             Vector3 a = At(Tris[tri * 3 + 0]);
             Vector3 b = At(Tris[tri * 3 + 1]);
@@ -1024,7 +997,7 @@ namespace CathodeLib.Radiosity
             return (a + b + c) * (1.0f / 3.0f);
         }
 
-        public float TriangleArea(int tri)
+        internal float TriangleArea(int tri)
         {
             Vector3 a = At(Tris[tri * 3 + 0]);
             Vector3 b = At(Tris[tri * 3 + 1]);
@@ -1033,7 +1006,7 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Geometric normal, flipped towards the interpolated vertex normals.</summary>
-        public Vector3 TriangleNormal(int tri)
+        internal Vector3 TriangleNormal(int tri)
         {
             int i0 = Tris[tri * 3 + 0], i1 = Tris[tri * 3 + 1], i2 = Tris[tri * 3 + 2];
             Vector3 n = Vector3.Cross(At(i1) - At(i0), At(i2) - At(i0));
@@ -1046,14 +1019,9 @@ namespace CathodeLib.Radiosity
             return Vector3.Dot(n, shading) < 0 ? -n : n;
         }
 
-        /// <summary>Barycentric point on a triangle, plus its interpolated normal and lightmap UV.</summary>
-        public void SamplePoint(int tri, float u, float v, out Vector3 position, out Vector3 normal, out Vector2 uv)
-        {
-            SamplePoint(tri, u, v, out position, out normal, out uv, out _);
-        }
-
-        /// <summary>As above, and also the interpolated diffuse UV for albedo sampling.</summary>
-        public void SamplePoint(int tri, float u, float v, out Vector3 position, out Vector3 normal,
+        /// <summary>Barycentric point on a triangle, plus its interpolated normal, lightmap UV and
+        /// diffuse UV (for albedo sampling).</summary>
+        internal void SamplePoint(int tri, float u, float v, out Vector3 position, out Vector3 normal,
                                 out Vector2 uv, out Vector2 diffuseUv)
         {
             int i0 = Tris[tri * 3 + 0], i1 = Tris[tri * 3 + 1], i2 = Tris[tri * 3 + 2];
@@ -1070,7 +1038,7 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Interpolated diffuse UV alone, for extra albedo taps that need nothing else.</summary>
-        public Vector2 DiffuseUvAt(int tri, float u, float v)
+        internal Vector2 DiffuseUvAt(int tri, float u, float v)
         {
             int i0 = Tris[tri * 3 + 0], i1 = Tris[tri * 3 + 1], i2 = Tris[tri * 3 + 2];
             return DiffuseUVs[i0] * (1.0f - u - v) + DiffuseUVs[i1] * u + DiffuseUVs[i2] * v;
@@ -1080,7 +1048,7 @@ namespace CathodeLib.Radiosity
         /// Albedo at a barycentric point: sampled from the material's diffuse map where the
         /// surface has diffuse UVs, and the material's mean colour where it does not.
         /// </summary>
-        public Vector3 SampleAlbedo(int tri, Vector2 diffuseUv)
+        internal Vector3 SampleAlbedo(int tri, Vector2 diffuseUv)
         {
             int slot = TriangleMaterial[tri];
             return slot == RadiosityMaterialSampler.NoMaterial
@@ -1088,7 +1056,7 @@ namespace CathodeLib.Radiosity
                 : MaterialSampler.Sample(slot, diffuseUv);
         }
 
-        public Vector3 At(int vertexIndex) => new Vector3(Verts[vertexIndex * 3], Verts[vertexIndex * 3 + 1], Verts[vertexIndex * 3 + 2]);
+        internal Vector3 At(int vertexIndex) => new Vector3(Verts[vertexIndex * 3], Verts[vertexIndex * 3 + 1], Verts[vertexIndex * 3 + 2]);
 
         private static Vector3 At(List<float> verts, int vertexIndex) =>
             new Vector3(verts[vertexIndex * 3], verts[vertexIndex * 3 + 1], verts[vertexIndex * 3 + 2]);
@@ -1144,16 +1112,14 @@ namespace CathodeLib.Radiosity
         /// Composite instances that own at least one mover asking for <c>RADIOSITY_STATIC</c>.
         /// </summary>
         /// <remarks>
-        /// <para>This is what decides whether anything in a composite gets a lightmap rect, and it
-        /// is the single biggest factor in how many slices a level needs. Measured against retail:
-        /// selecting composites this way gives 1260 / 1763 / 7838 for BSP_TORRENS / Solace /
-        /// Tech_Hub against retail's 1243 / 1758 / 7825. Taking every renderable static mover
-        /// instead - which is what the baker used to do - gives 1522 / 4980 / 11078, and Solace
-        /// then needs 23 slices where retail needs 3.</para>
-        /// <para>The whole composite comes along once it qualifies, not just its static movers:
-        /// that is the rule that reproduces 100% of the resources retail lists on all three levels.
-        /// The surplus it admits is inert, since a mover whose shader lacks the static requirement
-        /// never samples the atlas, whereas leaving one out costs it its lighting.</para>
+        /// <para>This decides whether anything in a composite gets a lightmap rect, and so how many slices a level needs:
+        /// it selects 1260 / 1763 / 7838 composites on BSP_TORRENS / Solace / Tech_Hub against retail's 1243 / 1758 / 7825
+        /// (every renderable static mover gave 1522 / 4980 / 11078, and Solace 23 slices against retail's 3). The whole
+        /// composite comes along once it qualifies: that reproduces 100% of the resources retail lists.</para>
+        /// <para>The surplus it admits is NOT inert (open parity item): on CM3, 28 resources retail never maps (weapons,
+        /// physics templates, light fittings; no per-mover predicate separates them), whose extra instance-map rows cost
+        /// unrelated ceilings and walls their lightmap binding. A product fix needs the pristine instance-map keys
+        /// harvested in Instancing.</para>
         /// </remarks>
         private static HashSet<ShortGuid> CollectLightmappedComposites(Level level)
         {
@@ -1183,15 +1149,14 @@ namespace CathodeLib.Radiosity
             return false;
         }
 
-        internal static bool IsBakeable(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        private static bool IsBakeable(Movers.MOVER_DESCRIPTOR mover)
         {
             if (mover?.RenderableElements == null || mover.RenderableElements.Count == 0)
                 return false;
-            if (settings.SkipNonRendered && mover.CullFlags.HasFlag(Movers.CullFlag.NO_RENDER))
+            if (mover.CullFlags.HasFlag(Movers.CullFlag.NO_RENDER))
                 return false;
-            if (settings.StaticGeometryOnly && mover.Flags != null && !mover.Flags.Stationary)
-                return false;
-            if (settings.SkipInvisibleMovers && mover.Flags != null && !mover.Flags.Visible)
+            // Radiosity is a static bake; moving geometry is lit through the volume probes instead.
+            if (mover.Flags != null && !mover.Flags.Stationary)
                 return false;
 
             switch (mover.GetRenderableType())
@@ -1213,17 +1178,11 @@ namespace CathodeLib.Radiosity
         /// True when any element of the mover asks for RADIOSITY_DYNAMIC.
         /// </summary>
         /// <remarks>
-        /// <para>Dynamic instances are lit from the volume probes, not from the lightmap atlas, and
-        /// retail never puts one in RADIOSITY_INSTANCE_MAP - 0 of the 3171 movers it maps in
-        /// BSP_TORRENS require the dynamic bit. Giving one a rect also makes the engine see both a
-        /// static allocation and a dynamic requirement on one instance, which asserts with "mixing
-        /// static and dynamic radiosity in the same instance"
-        /// (renderable_environment_instance.cpp:154).</para>
-        /// <para>Deliberately <i>not</i> requiring RADIOSITY_STATIC to be present: retail maps 93
-        /// movers that carry neither bit, so demanding the static bit drops geometry that should be
-        /// baked. Only the dynamic bit disqualifies a mover.</para>
+        /// Dynamic instances are lit from the volume probes, and retail never maps one (0 of BSP_TORRENS' 3171 mapped
+        /// movers); a rect on one makes the engine assert "mixing static and dynamic radiosity in the same instance".
+        /// RADIOSITY_STATIC is deliberately not required: retail maps movers that carry neither bit.
         /// </remarks>
-        public static bool RequiresDynamicRadiosity(Movers.MOVER_DESCRIPTOR mover)
+        internal static bool RequiresDynamicRadiosity(Movers.MOVER_DESCRIPTOR mover)
         {
             const long dynamicBit = 1L << (int)SHADER_REQUIREMENTS.RADIOSITY_DYNAMIC;
 
@@ -1248,52 +1207,36 @@ namespace CathodeLib.Radiosity
         /// Whether this element emits, and how strongly, as radiance injected into the probe set.
         /// </summary>
         /// <remarks>
-        /// <para>An element emits because its <em>material</em> compiles the environment
-        /// ubershader's EMISSIVE feature, not because the mover carries an emissive multiplier.
-        /// Retail's own data settles it: joining every surface light slice back through
-        /// RESOURCES.BIN to the mover that emits it, the material feature flag picks out all 1639
-        /// entities retail lights across Solace and BSP_TORRENS with 52 extras, where
-        /// <c>EmissiveRadiosityMultiplier &gt; 0</c> finds only 41.5% of them. That field is zero on
-        /// most of retail's emitters.</para>
-        /// <para>It also has to be resolved per element rather than per mover: a mover's elements
-        /// are separate submesh and material pairs, so a lamp whose housing and glass are two
-        /// elements should emit only from the glass.</para>
-        /// <para>Strength falls back to 1.0 where the multiplier is zero, which is what retail
-        /// stores: of its lights on emitters with no radiosity multiplier, 69.2% carry Scale 15 -
-        /// the encoding of exactly 1.0 - and it is the mode of the distribution overall.</para>
+        /// An element emits because its <em>material</em> compiles the environment ubershader's EMISSIVE feature, not
+        /// because the mover carries an emissive multiplier: the feature flag picks out all 1639 entities retail lights on
+        /// Solace and BSP_TORRENS, the multiplier only 41.5%. Resolved per element, so a lamp's glass emits and its
+        /// housing does not.
         /// </remarks>
         private static Vector3 ResolveEmissive(
-            Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element, RadiosityBakeSettings settings)
+            Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element)
         {
             if (mover.EmissiveFlags.HasFlag(Movers.EmissiveFlag.MasterOff))
                 return Vector3.Zero;
-            // The material feature alone decides emission. A positive EmissiveRadiosityMultiplier
-            // used to qualify a mover too, but 101 of SCI_Hub's movers carry a multiplier on a
-            // non-emissive material and retail lights none of them - the field evidently scales
-            // emission where it exists rather than creating it.
+            // The material feature alone decides emission: 101 of SCI_Hub's movers carry a multiplier on a non-emissive
+            // material and retail lights none of them.
             if (!IsEmissiveMaterial(element))
                 return Vector3.Zero;
 
-            float multiplier = ResolveEmissiveStrength(mover, element, settings);
+            float multiplier = ResolveEmissiveStrength(mover, element);
             Vector3 tint = mover.EmissiveTint / 255.0f;
-            return tint * (multiplier * settings.EmissiveScale);
+            return tint * multiplier;
         }
 
         /// <summary>
         /// An emissive element's strength: the material's own EMISSIVE_MULT constant.
         /// </summary>
         /// <remarks>
-        /// <para>This is retail's Scale source, decoded on BSP_TORRENS by joining each light slice
-        /// back to its mover's material: EMISSIVE_MULT 0.5 maps to Scale 7 on 118 of 118 emitters,
-        /// 1.0 to Scale 15 on 513 of 517, 1.5-2 to Scale 23 on 78 of 81, and the sub-0.15 group to
-        /// Scale 0-1 on all 158 - exactly <c>EmissiveScaleByte(EMISSIVE_MULT)</c>. The mover's
-        /// EmissiveRadiosityMultiplier, which this replaced, scatters against retail in both
-        /// directions and forced a clamp that flattened every fixture to one strength.</para>
-        /// <para>The mover multiplier and the old clamp remain only as the fallback for a material
-        /// whose shader does not remap the constant.</para>
+        /// Retail's Scale source: on BSP_TORRENS each light slice's Scale is <c>EmissiveScaleByte(EMISSIVE_MULT)</c> of its
+        /// mover's material (0.5 -> 7 on 118 of 118, 1.0 -> 15 on 513 of 517). The clamped mover multiplier is only the
+        /// fallback for a material whose shader does not remap the constant.
         /// </remarks>
-        public static float ResolveEmissiveStrength(
-            Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element, RadiosityBakeSettings settings)
+        internal static float ResolveEmissiveStrength(
+            Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element)
         {
             Materials.Material material = element?.Material;
             if (material?.Shader != null &&
@@ -1306,9 +1249,9 @@ namespace CathodeLib.Radiosity
 
             float multiplier = mover.EmissiveRadiosityMultiplier > 0.0f
                 ? mover.EmissiveRadiosityMultiplier
-                : settings.DefaultEmissiveMultiplier;
-            return Math.Max(settings.EmissiveMultiplierFloor,
-                   Math.Min(settings.EmissiveMultiplierCeiling, multiplier));
+                : RadiosityTuning.DefaultEmissiveMultiplier;
+            return Math.Max(RadiosityTuning.EmissiveMultiplierFloor,
+                   Math.Min(RadiosityTuning.EmissiveMultiplierCeiling, multiplier));
         }
 
         /// <summary>
@@ -1316,17 +1259,12 @@ namespace CathodeLib.Radiosity
         /// gives the emitter its colour.
         /// </summary>
         /// <remarks>
-        /// CA_ENVIRONMENT has no emissive texture sampler at all (EMISSIVE is a shader FEATURE
-        /// bit), so an emissive surface is lit from its DIFFUSE map. Decoded 2026-08-25 against
-        /// RADIOSITY_LEVEL.BIN's authored colours: the tint-graded linear mean of that map IS the
-        /// colour CA's compiler recorded - STRIP_05M_DISPLAY's mean is (0.929,0.839,0.643) to
-        /// three places, exactly retail's authored value across all 569 of its instances, and
-        /// BASE_DISPLAY's is (0.439,0,0) likewise. It is shared per fixture family because the
-        /// texture is, which is why retail records ONE colour per family where our per-mover
-        /// EmissiveTint varies instance to instance.
+        /// CA_ENVIRONMENT has no emissive texture sampler (EMISSIVE is a feature bit), so an emissive surface is lit from
+        /// its DIFFUSE map, shared per fixture family. The emitter colour itself is the material's DIFFUSE_TINT where it
+        /// has one (RadiosityBaker.EmissiveLightColour).
         /// </remarks>
-        public static Materials.Material ResolveMoverEmissiveMaterial(
-            Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        internal static Materials.Material ResolveMoverEmissiveMaterial(
+            Movers.MOVER_DESCRIPTOR mover)
         {
             if (mover?.RenderableElements == null)
                 return null;
@@ -1336,7 +1274,7 @@ namespace CathodeLib.Radiosity
             {
                 if (!IsEmissiveMaterial(element) || element.Material == null)
                     continue;
-                float s = ResolveEmissiveStrength(mover, element, settings);
+                float s = ResolveEmissiveStrength(mover, element);
                 if (best != null && s <= bestStrength)
                     continue;
                 bestStrength = s;
@@ -1346,7 +1284,7 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Strongest emissive element's strength, for the mover-level light passes.</summary>
-        public static float ResolveMoverEmissiveStrength(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        internal static float ResolveMoverEmissiveStrength(Movers.MOVER_DESCRIPTOR mover)
         {
             if (mover?.RenderableElements == null)
                 return 0.0f;
@@ -1355,7 +1293,7 @@ namespace CathodeLib.Radiosity
             {
                 if (!IsEmissiveMaterial(element))
                     continue;
-                float s = ResolveEmissiveStrength(mover, element, settings);
+                float s = ResolveEmissiveStrength(mover, element);
                 if (s > best) best = s;
             }
             return best;
@@ -1367,7 +1305,7 @@ namespace CathodeLib.Radiosity
         /// never claimed a live atlas texel - the mesh is then the only record of where it is.
         /// Returns false when the mover has no emissive geometry at all.
         /// </summary>
-        public static bool TryMeasureEmissiveCentroid(
+        internal static bool TryMeasureEmissiveCentroid(
             Movers.MOVER_DESCRIPTOR mover, Dictionary<Models.CS2.Component.LOD.Submesh, cMesh> meshCache,
             out Vector3 centroid, out float area)
         {
@@ -1404,7 +1342,7 @@ namespace CathodeLib.Radiosity
         /// World-space area of a mover's emissive elements, measured from the meshes. For movers
         /// outside the bake geometry, whose area the triangle soup never recorded.
         /// </summary>
-        public static float MeasureEmissiveArea(
+        internal static float MeasureEmissiveArea(
             Movers.MOVER_DESCRIPTOR mover, Dictionary<Models.CS2.Component.LOD.Submesh, cMesh> meshCache)
         {
             if (mover?.RenderableElements == null)
@@ -1430,12 +1368,11 @@ namespace CathodeLib.Radiosity
             return area;
         }
 
-        /// <summary>Resolve a material parameter index to its first constant slot, or false.</summary>
-        /// <summary>Diagnostic-visible form of <see cref="TryMaterialConstant"/> for external tooling.</summary>
-        public static bool TryMaterialConstantPublic(Materials.Material material, int parameter, int components, out int remap) =>
-            TryMaterialConstant(material, parameter, components, out remap);
-
-        private static bool TryMaterialConstant(Materials.Material material, int parameter, int components, out int remap)
+        /// <summary>
+        /// Resolve a material parameter index to its first constant slot, checking room for its
+        /// <paramref name="components"/>; false when the shader does not remap it.
+        /// </summary>
+        internal static bool TryMaterialConstant(Materials.Material material, int parameter, int components, out int remap)
         {
             remap = -1;
             Shaders.Shader shader = material.Shader;
@@ -1450,11 +1387,10 @@ namespace CathodeLib.Radiosity
         /// geometry. Zero when nothing about it emits.
         /// </summary>
         /// <remarks>
-        /// Exists for the unbaked-emitter light pass: 532 of the 544 emitters retail lights on
-        /// SCI_Hub that we did not are RADIOSITY_DYNAMIC movers - excluded from the lightmap
-        /// geometry, correctly, but their emission still lands on the static world around them.
+        /// For the unbaked-emitter pass: RADIOSITY_DYNAMIC emitters are outside the lightmap geometry, but their emission
+        /// still lands on the static world around them.
         /// </remarks>
-        public static Vector3 ResolveMoverEmissive(Movers.MOVER_DESCRIPTOR mover, RadiosityBakeSettings settings)
+        internal static Vector3 ResolveMoverEmissive(Movers.MOVER_DESCRIPTOR mover)
         {
             if (mover?.RenderableElements == null)
                 return Vector3.Zero;
@@ -1462,7 +1398,7 @@ namespace CathodeLib.Radiosity
             float bestPeak = 0;
             foreach (RenderableElements.Element element in mover.RenderableElements)
             {
-                Vector3 e = ResolveEmissive(mover, element, settings);
+                Vector3 e = ResolveEmissive(mover, element);
                 float peak = Math.Max(e.X, Math.Max(e.Y, e.Z));
                 if (peak > bestPeak) { bestPeak = peak; best = e; }
             }
@@ -1477,22 +1413,6 @@ namespace CathodeLib.Radiosity
                 return false;
             return (shader.UbershaderFeatureFlags & (1L << (int)CA_ENVIRONMENT.FEATURES.EMISSIVE)) != 0;
         }
-
-        /// <summary>Does this element's material alpha-test or alpha-blend (a grate, fence, mesh panel or decal that light
-        /// passes through between its opaque texels)? CA_ENVIRONMENT ALPHA_TEST / FORCE_TO_ALPHA / USE_ALPHA_AS_BLENDFACTOR.</summary>
-        private static bool IsSeeThroughMaterial(RenderableElements.Element element)
-        {
-            Shaders.Shader shader = element?.Material?.Shader;
-            if (shader == null || shader.Ubershader != SHADER_LIST.CA_ENVIRONMENT)
-                return false;
-            long f = shader.UbershaderFeatureFlags;
-            return (f & (1L << (int)CA_ENVIRONMENT.FEATURES.ALPHA_TEST)) != 0 ||
-                   (f & (1L << (int)CA_ENVIRONMENT.FEATURES.FORCE_TO_ALPHA)) != 0 ||
-                   (f & (1L << (int)CA_ENVIRONMENT.FEATURES.USE_ALPHA_AS_BLENDFACTOR)) != 0;
-        }
-
-        /// <summary>Diagnostic-visible form of <see cref="IsEmissiveMaterial"/> for external tooling.</summary>
-        public static bool IsEmissiveMaterialPublic(RenderableElements.Element element) => IsEmissiveMaterial(element);
 
         /// <summary>Inverse-transpose of the upper 3x3, so non-uniform scales keep normals correct.</summary>
         private static Matrix4x4 NormalMatrix(Matrix4x4 transform)
