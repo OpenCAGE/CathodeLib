@@ -3793,6 +3793,9 @@ namespace CathodeLib
                 zones.Add(entity);
             }
 
+            //Aliases and proxies of a Zone that carry 'composites' links of their own, which fill the Zone they point at
+            _zoneLinkCarriers = FindLinkCarriers(FunctionType.Zone, ShortGuids.composites);
+
             //SEQUENTIAL on purpose. AssignZone is a first-arrival state machine (first zone to reach an
             //entity becomes primary, later arrivals fight for secondary), so running the zones in
             //Parallel.ForEach made arrival order a thread race - two runs disagreed on ~800 movers, and
@@ -3843,7 +3846,13 @@ namespace CathodeLib
                 maps.Add((entity, tex, priority));
             }
 
-            maps = maps.OrderByDescending(m => m.Priority).ToList();
+            //Where maps overlap the LOWEST Priority value wins: TECH_Comms' priority-80 map over a whole wing gives way to the
+            //priority-10 maps of the rooms in it (4,302 retail rows), and every one of the 6,707 rows two or more maps claim
+            //over six levels agrees. Stable, so equal priorities keep AllEntities order, as retail does (issue 696).
+            maps = maps.OrderBy(m => m.Priority).ToList();
+
+            //Aliases and proxies of an EnvironmentMap that carry 'Entities' links of their own, which the map they point at claims
+            _envMapLinkCarriers = FindLinkCarriers(FunctionType.EnvironmentMap, ShortGuids.Entities);
 
             foreach (var map in maps)
                 ApplyEnvironmentMapLinks(map.Entity, map.Texture, variablePinsOnly: false);
@@ -3853,14 +3862,29 @@ namespace CathodeLib
 
         private void ApplyEnvironmentMapLinks(InstancedEntity entity, Textures.TEX4 texture, bool variablePinsOnly)
         {
-            FunctionEntity function = (FunctionEntity)entity.Entity;
+            ApplyEnvironmentMapLinksOf(entity, texture, variablePinsOnly);
 
+            //As for zones, 'Entities' links on an alias (or proxy) of this map are the map's own, read where they are written:
+            //TECH_RnD_HzdLab's eight reach 1,629 drawn instances retail writes a row for, and every row is the map they point at
+            if (_envMapLinkCarriers != null && _envMapLinkCarriers.TryGetValue(entity, out List<InstancedEntity> carriers))
+            {
+                foreach (InstancedEntity carrier in carriers)
+                    ApplyEnvironmentMapLinksOf(carrier, texture, variablePinsOnly);
+            }
+        }
+
+        //Aliases and proxies of an EnvironmentMap that carry 'Entities' links, by the map instance they point at (CalculateEnvironmentMaps)
+        private Dictionary<InstancedEntity, List<InstancedEntity>> _envMapLinkCarriers;
+
+        //The 'Entities' links on one entity - the EnvironmentMap, or an alias or proxy of it - applied with the map's texture
+        private void ApplyEnvironmentMapLinksOf(InstancedEntity holder, Textures.TEX4 texture, bool variablePinsOnly)
+        {
             Dictionary<ShortGuid, InstancedEntity> siblings = null;
             InstancedEntity FindSibling(ShortGuid id)
             {
                 if (siblings == null)
                 {
-                    List<InstancedEntity> list = entity.ThisCompositeInstance.Entities;
+                    List<InstancedEntity> list = holder.ThisCompositeInstance.Entities;
                     siblings = new Dictionary<ShortGuid, InstancedEntity>(list.Count);
                     foreach (InstancedEntity sibling in list)
                         siblings[sibling.Entity.shortGUID] = sibling;
@@ -3869,7 +3893,7 @@ namespace CathodeLib
                 return found;
             }
 
-            foreach (EntityConnector link in function.childLinks)
+            foreach (EntityConnector link in holder.Entity.childLinks)
             {
                 if (link.thisParamID != ShortGuids.Entities)
                     continue;
@@ -3886,7 +3910,7 @@ namespace CathodeLib
                 {
                     foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
                     {
-                        InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
+                        InstancedEntity target = FollowPointer(ResolvePathInComposite(holder.ThisCompositeInstance, entry.connectedEntity));
                         if (target == null)
                             continue;
 
@@ -3896,8 +3920,8 @@ namespace CathodeLib
                 }
                 else if (linkedEnt.Entity is VariableEntity varEnt)
                 {
-                    InstancedEntity hostPlacement = entity.ParentCompositeInstanceEntity;
-                    InstancedComposite parentInst = entity.ParentCompositeInstance;
+                    InstancedEntity hostPlacement = holder.ParentCompositeInstanceEntity;
+                    InstancedComposite parentInst = holder.ParentCompositeInstance;
                     if (hostPlacement?.Entity == null || parentInst?.Entities == null)
                         continue;
 
@@ -3918,6 +3942,7 @@ namespace CathodeLib
                                 break;
                             }
                         }
+                        target = FollowPointer(target);
                         if (target == null)
                             continue;
 
@@ -3927,8 +3952,9 @@ namespace CathodeLib
                 }
                 else
                 {
-                    AssignEnvironmentMap(linkedEnt, texture);
-                    AssignEnvironmentMapIntoChildComposite(linkedEnt, texture, descendIntoShared: false);
+                    InstancedEntity target = FollowPointer(linkedEnt);
+                    AssignEnvironmentMap(target, texture);
+                    AssignEnvironmentMapIntoChildComposite(target, texture, descendIntoShared: false);
                 }
             }
         }
@@ -3981,17 +4007,34 @@ namespace CathodeLib
 
         private void ApplyZoneLinks(InstancedEntity entity, bool variablePinsOnly)
         {
-            FunctionEntity function = (FunctionEntity)entity.Entity;
             ShortGuid zoneId = ResolveZoneId(entity);
             if (zoneId == ShortGuid.Invalid)
                 return;
 
+            ShortGuid zoneSourceInstance = entity.ThisCompositeInstance.InstanceID;
+            ApplyZoneLinksOf(entity, zoneId, zoneSourceInstance, variablePinsOnly);
+
+            //CATHODE adds an alias's links to the entity it points at, so 'composites' links on an alias (or proxy) of this
+            //Zone fill it too - read where they are written, in the alias's own composite instance
+            if (_zoneLinkCarriers != null && _zoneLinkCarriers.TryGetValue(entity, out List<InstancedEntity> carriers))
+            {
+                foreach (InstancedEntity carrier in carriers)
+                    ApplyZoneLinksOf(carrier, zoneId, zoneSourceInstance, variablePinsOnly);
+            }
+        }
+
+        //Aliases and proxies of a Zone that carry 'composites' links, by the Zone instance they point at (CalculateZones)
+        private Dictionary<InstancedEntity, List<InstancedEntity>> _zoneLinkCarriers;
+
+        //The 'composites' links on one entity - the Zone, or an alias or proxy of it - applied to the zone
+        private void ApplyZoneLinksOf(InstancedEntity holder, ShortGuid zoneId, ShortGuid zoneSourceInstance, bool variablePinsOnly)
+        {
             Dictionary<ShortGuid, InstancedEntity> siblings = null;
             InstancedEntity FindSibling(ShortGuid id)
             {
                 if (siblings == null)
                 {
-                    List<InstancedEntity> list = entity.ThisCompositeInstance.Entities;
+                    List<InstancedEntity> list = holder.ThisCompositeInstance.Entities;
                     siblings = new Dictionary<ShortGuid, InstancedEntity>(list.Count);
                     foreach (InstancedEntity sibling in list)
                         siblings[sibling.Entity.shortGUID] = sibling;
@@ -4000,9 +4043,7 @@ namespace CathodeLib
                 return found;
             }
 
-            ShortGuid zoneSourceInstance = entity.ThisCompositeInstance.InstanceID;
-
-            foreach (EntityConnector link in function.childLinks)
+            foreach (EntityConnector link in holder.Entity.childLinks)
             {
                 if (link.thisParamID != ShortGuids.composites)
                     continue;
@@ -4019,7 +4060,7 @@ namespace CathodeLib
                 {
                     foreach (TriggerSequence.SequenceEntry entry in trig.sequence)
                     {
-                        InstancedEntity target = ResolvePathInComposite(entity.ThisCompositeInstance, entry.connectedEntity);
+                        InstancedEntity target = FollowPointer(ResolvePathInComposite(holder.ThisCompositeInstance, entry.connectedEntity));
                         if (target == null)
                             continue;
 
@@ -4029,8 +4070,8 @@ namespace CathodeLib
                 }
                 else if (linkedEnt.Entity is VariableEntity varEnt)
                 {
-                    InstancedEntity hostPlacement = entity.ParentCompositeInstanceEntity;
-                    InstancedComposite parentInst = entity.ParentCompositeInstance;
+                    InstancedEntity hostPlacement = holder.ParentCompositeInstanceEntity;
+                    InstancedComposite parentInst = holder.ParentCompositeInstance;
                     if (hostPlacement?.Entity == null || parentInst?.Entities == null)
                         continue;
 
@@ -4051,6 +4092,7 @@ namespace CathodeLib
                                 break;
                             }
                         }
+                        target = FollowPointer(target);
                         if (target == null)
                             continue;
 
@@ -4060,10 +4102,80 @@ namespace CathodeLib
                 }
                 else
                 {
-                    AssignZone(linkedEnt, zoneId, zoneSourceInstance, isDirect: true, descentRoot: ShortGuid.Invalid);
-                    AssignZoneIntoChildComposite(linkedEnt, zoneId, zoneSourceInstance, descendIntoShared: false);
+                    InstancedEntity target = FollowPointer(linkedEnt);
+                    AssignZone(target, zoneId, zoneSourceInstance, isDirect: true, descentRoot: ShortGuid.Invalid);
+                    AssignZoneIntoChildComposite(target, zoneId, zoneSourceInstance, descendIntoShared: false);
                 }
             }
+        }
+
+        //Aliases and proxies of a 'type' entity carrying 'param' links of their own, by the instance they point at: CATHODE adds
+        //an alias's links to the entity it points at, so those are that entity's links too
+        private Dictionary<InstancedEntity, List<InstancedEntity>> FindLinkCarriers(FunctionType type, ShortGuid param)
+        {
+            Dictionary<InstancedEntity, List<InstancedEntity>> carriersOf = new Dictionary<InstancedEntity, List<InstancedEntity>>();
+            foreach (InstancedEntity entity in AllEntities)
+            {
+                if (!(entity.Entity is AliasEntity || entity.Entity is ProxyEntity) || entity.ThisCompositeInstance == null)
+                    continue;
+                if (!entity.Entity.childLinks.Any(link => link.thisParamID == param))
+                    continue;
+
+                InstancedEntity target = FollowPointer(entity);
+                if (target == entity || target.ThisCompositeInstance == null || !(target.Entity is FunctionEntity function)
+                    || !function.function.IsFunctionType || function.function.AsFunctionType != type)
+                    continue;
+
+                if (!carriersOf.TryGetValue(target, out List<InstancedEntity> carriers))
+                {
+                    carriers = new List<InstancedEntity>();
+                    carriersOf[target] = carriers;
+                }
+                carriers.Add(entity);
+            }
+            return carriersOf;
+        }
+
+        /* An alias or proxy stands in for the entity it names, and that entity is what a zone holds: retail's movers for an
+           alias's target carry the zone the alias is listed in (HAB_Airport: 132 of 132 over 26 Zone.composites links to
+           aliases), and the alias itself draws nothing. An EnvironmentMap claims the same way. Followed as they are applied -
+           an alias's path from its own composite instance, a proxy's from the level root - and handed back unchanged when it
+           is neither or names nothing here. */
+        private InstancedEntity FollowPointer(InstancedEntity entity)
+        {
+            InstancedEntity current = entity;
+            for (int hop = 0; hop < 8 && current != null; hop++)
+            {
+                InstancedEntity next;
+                if (current.Entity is AliasEntity alias)
+                    next = ResolvePathInComposite(current.ThisCompositeInstance, alias.alias);
+                else if (current.Entity is ProxyEntity proxy)
+                    next = ResolveProxyInstance(proxy);
+                else
+                    return current;
+                if (next == null)
+                    return current;
+                current = next;
+            }
+            return current;
+        }
+
+        //A proxy's path names the instance from the level root (its first step is a composite id; a step written twice in a
+        //row is one step, as CommandsUtils.ResolveProxy reads it)
+        private InstancedEntity ResolveProxyInstance(ProxyEntity proxy)
+        {
+            ShortGuid[] hierarchy = proxy?.proxy?.path;
+            if (Root == null || hierarchy == null || hierarchy.Length <= 2)
+                return null;
+
+            List<ShortGuid> steps = new List<ShortGuid>(hierarchy.Length);
+            for (int i = 1; i < hierarchy.Length; i++)
+            {
+                if (hierarchy[i] == ShortGuid.Invalid || hierarchy[i] == hierarchy[i - 1])
+                    continue;
+                steps.Add(hierarchy[i]);
+            }
+            return steps.Count == 0 ? null : ResolvePathInComposite(Root, new EntityPath(steps.ToArray()));
         }
 
         private static ShortGuid ResolveZoneId(InstancedEntity zoneEntity)
