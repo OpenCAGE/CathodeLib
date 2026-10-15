@@ -41,6 +41,8 @@ namespace CATHODE.Scripting.Refactor
 
         private readonly Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> _pinsBefore = new Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>>();
         private readonly Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> _pinsAfter = new Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>>();
+        private readonly Dictionary<ShortGuid, HashSet<ShortGuid>> _coloursBefore = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+        private readonly Dictionary<ShortGuid, HashSet<ShortGuid>> _coloursAfter = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
 
         private List<Composite> _entriesBefore = null;
         private List<Composite> _entriesAfter = null;
@@ -70,12 +72,13 @@ namespace CATHODE.Scripting.Refactor
             _compositeOrder.Add(composite);
         }
 
-        /// <summary>Snapshot a composite's pin types before a pin is added, removed or retyped.</summary>
+        /// <summary>Snapshot a composite's pin types (and which of its pins are shown as colours) before a pin is added, removed or retyped.</summary>
         public void TouchPins(Composite composite)
         {
             if (composite == null || Committed || _pinsBefore.ContainsKey(composite.shortGUID))
                 return;
             _pinsBefore.Add(composite.shortGUID, CopyPins(_commands.Utils.GetAllCustomPinInfo(composite.shortGUID)));
+            _coloursBefore.Add(composite.shortGUID, _commands.Utils.GetColourParameters(composite.shortGUID));
         }
 
         /// <summary>Snapshot the level's composite list before a composite is added or removed.</summary>
@@ -97,6 +100,8 @@ namespace CATHODE.Scripting.Refactor
                 _compositesAfter[composite] = CompositeContents.Capture(composite);
             foreach (ShortGuid composite in _pinsBefore.Keys)
                 _pinsAfter[composite] = CopyPins(_commands.Utils.GetAllCustomPinInfo(composite));
+            foreach (ShortGuid composite in _coloursBefore.Keys)
+                _coloursAfter[composite] = _commands.Utils.GetColourParameters(composite);
             if (_entriesBefore != null)
                 _entriesAfter = new List<Composite>(_commands.Entries);
             Committed = true;
@@ -105,7 +110,7 @@ namespace CATHODE.Scripting.Refactor
         /// <summary>Put everything touched back the way it was before the refactor.</summary>
         public void Revert()
         {
-            Restore(_entitiesBefore, _compositesBefore, _pinsBefore, _entriesBefore, _entriesAfter);
+            Restore(_entitiesBefore, _compositesBefore, _pinsBefore, _coloursBefore, _entriesBefore, _entriesAfter);
         }
 
         /// <summary>Put everything touched back the way the refactor left it.</summary>
@@ -113,10 +118,10 @@ namespace CATHODE.Scripting.Refactor
         {
             if (!Committed)
                 throw new InvalidOperationException("A transaction has to be committed before it can be reapplied");
-            Restore(_entitiesAfter, _compositesAfter, _pinsAfter, _entriesAfter, _entriesBefore);
+            Restore(_entitiesAfter, _compositesAfter, _pinsAfter, _coloursAfter, _entriesAfter, _entriesBefore);
         }
 
-        private void Restore(Dictionary<Entity, EntityState> entities, Dictionary<Composite, CompositeContents> composites, Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> pins, List<Composite> entries, List<Composite> otherEntries)
+        private void Restore(Dictionary<Entity, EntityState> entities, Dictionary<Composite, CompositeContents> composites, Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> pins, Dictionary<ShortGuid, HashSet<ShortGuid>> colours, List<Composite> entries, List<Composite> otherEntries)
         {
             if (entries != null)
             {
@@ -160,6 +165,8 @@ namespace CATHODE.Scripting.Refactor
             }
             foreach (KeyValuePair<ShortGuid, List<CompositePinInfoTable.PinInfo>> row in pins)
                 _commands.Utils.ReplaceCustomPinInfos(row.Key, CopyPins(row.Value));
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> row in colours)
+                _commands.Utils.ReplaceColourParameters(row.Key, row.Value);
         }
 
         private static List<CompositePinInfoTable.PinInfo> CopyPins(List<CompositePinInfoTable.PinInfo> pins)

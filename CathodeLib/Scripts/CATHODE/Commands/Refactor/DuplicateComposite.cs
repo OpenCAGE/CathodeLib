@@ -146,6 +146,8 @@ namespace CATHODE.Scripting.Refactor
                         });
                 }
                 _ctx.Utils.AddCustomPinInfos(copy, pins);
+                //...and which of its vector parameters the editor shows as colours (the variables keep their ids)
+                _ctx.Utils.ReplaceColourParameters(copy.shortGUID, _ctx.Utils.GetColourParameters(Source));
 
                 foreach ((Composite holder, FunctionEntity instance) in Switch)
                 {

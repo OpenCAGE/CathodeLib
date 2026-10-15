@@ -238,6 +238,9 @@ namespace CathodeLib
                             case CustomTableType.COMPOSITE_PREVIEWS:
                                 ((CompositePreviewTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.COLOUR_PARAMETERS:
+                                ((ColourParameterTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -348,6 +351,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.COMPOSITE_PREVIEWS:
                         data = new CompositePreviewTable(reader);
+                        break;
+                    case CustomTableType.COLOUR_PARAMETERS:
+                        data = new ColourParameterTable(reader);
                         break;
                 }
             }
@@ -1959,6 +1965,60 @@ namespace CathodeLib
             {
                 gzip.CopyTo(output);
                 return output.ToArray();
+            }
+        }
+    }
+    /// <summary>
+    /// Vector composite parameters (VariableEntities) the editor shows as colours rather than vectors: by composite
+    /// ShortGuid, the ids (shortGUID) of its parameter entities chosen to be shown that way. Editor-only, the game
+    /// never reads it.
+    /// </summary>
+    public class ColourParameterTable : CustomTable.Table
+    {
+        public ColourParameterTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COLOUR_PARAMETERS;
+        }
+
+        public Dictionary<ShortGuid, HashSet<ShortGuid>> colour_parameters = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            colour_parameters.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ShortGuid composite = Utilities.Consume<ShortGuid>(reader);
+                HashSet<ShortGuid> parameters = new HashSet<ShortGuid>();
+                int parameterCount = reader.ReadInt32();
+                for (int x = 0; x < parameterCount; x++)
+                    parameters.Add(Utilities.Consume<ShortGuid>(reader));
+                if (parameters.Count != 0)
+                    colour_parameters[composite] = parameters;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            List<KeyValuePair<ShortGuid, HashSet<ShortGuid>>> rows = colour_parameters.Where(o => o.Value != null && o.Value.Count != 0).ToList();
+            writer.Write(rows.Count);
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> row in rows)
+            {
+                Utilities.Write<ShortGuid>(writer, row.Key);
+                writer.Write(row.Value.Count);
+                foreach (ShortGuid parameter in row.Value)
+                    Utilities.Write<ShortGuid>(writer, parameter);
             }
         }
     }

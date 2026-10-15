@@ -349,6 +349,15 @@ namespace CathodeLib
             if (added.Count != 0)
                 _porter.PortEntityResources(added);
 
+            //Which vector parameters the editor shows as colours, as this copy has them where it differs from the original
+            //(editor-only, so it is not a change to the composite)
+            foreach (VariableEntity mv in mc.variables)
+            {
+                bool colour = _mod.Commands.Utils.IsColourParameter(mc, mv);
+                if (colour != _vanilla.Commands.Utils.IsColourParameter(vc.shortGUID, mv.shortGUID))
+                    _dest.Commands.Utils.SetColourParameter(dc, mv, colour);
+            }
+
             if (touched)
             {
                 Touched(dc);

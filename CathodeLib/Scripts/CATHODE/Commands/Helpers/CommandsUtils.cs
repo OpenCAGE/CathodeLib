@@ -39,6 +39,7 @@ namespace CATHODE.Scripting
         private EntityNameTable _entityNames = new EntityNameTable();
         private CompositeModificationInfoTable _modificationInfo = new CompositeModificationInfoTable();
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
+        private ColourParameterTable _colourParameters = new ColourParameterTable();
 
         public FlagTable Flags => _flagTable;
         private FlagTable _flagTable = new FlagTable();
@@ -1966,6 +1967,82 @@ namespace CATHODE.Scripting
         }
         #endregion
 
+        #region Colour Parameters
+        /// <summary>
+        /// Whether a vector composite parameter (a VariableEntity of the composite) is shown as a colour in the editor
+        /// </summary>
+        public bool IsColourParameter(Composite composite, VariableEntity variableEnt) => IsColourParameter(composite.shortGUID, variableEnt.shortGUID);
+        public bool IsColourParameter(ShortGuid composite, ShortGuid variableEnt)
+        {
+            return _colourParameters.colour_parameters.TryGetValue(composite, out HashSet<ShortGuid> parameters) && parameters.Contains(variableEnt);
+        }
+
+        /// <summary>
+        /// Show a vector composite parameter as a colour in the editor (true), or as a vector again (false)
+        /// </summary>
+        public void SetColourParameter(Composite composite, VariableEntity variableEnt, bool colour) => SetColourParameter(composite.shortGUID, variableEnt.shortGUID, colour);
+        public void SetColourParameter(ShortGuid composite, ShortGuid variableEnt, bool colour)
+        {
+            if (!_colourParameters.colour_parameters.TryGetValue(composite, out HashSet<ShortGuid> parameters))
+            {
+                if (!colour) return;
+                parameters = new HashSet<ShortGuid>();
+                _colourParameters.colour_parameters.Add(composite, parameters);
+            }
+            if (colour)
+                parameters.Add(variableEnt);
+            else
+            {
+                parameters.Remove(variableEnt);
+                if (parameters.Count == 0)
+                    _colourParameters.colour_parameters.Remove(composite);
+            }
+        }
+
+        /// <summary>
+        /// The composite parameters (VariableEntity ids) of a composite that are shown as colours - a copy, empty when there are none
+        /// </summary>
+        public HashSet<ShortGuid> GetColourParameters(Composite composite) => GetColourParameters(composite.shortGUID);
+        public HashSet<ShortGuid> GetColourParameters(ShortGuid composite)
+        {
+            if (_colourParameters.colour_parameters.TryGetValue(composite, out HashSet<ShortGuid> parameters))
+                return new HashSet<ShortGuid>(parameters);
+            return new HashSet<ShortGuid>();
+        }
+
+        /// <summary>
+        /// Replace the colour parameters of a composite with the given set - an empty set removes them all. For a ported
+        /// composite (which arrives whole, replacing any the destination had) or a snapshot being put back.
+        /// </summary>
+        public void ReplaceColourParameters(ShortGuid composite, IEnumerable<ShortGuid> parameters)
+        {
+            HashSet<ShortGuid> set = parameters == null ? new HashSet<ShortGuid>() : new HashSet<ShortGuid>(parameters);
+            if (set.Count == 0)
+                _colourParameters.colour_parameters.Remove(composite);
+            else
+                _colourParameters.colour_parameters[composite] = set;
+        }
+
+        /// <summary>
+        /// The table as it is saved: without rows for composites and parameters that are gone, or are no longer vectors. The live
+        /// table keeps them, so an undone delete brings its parameter back as it was.
+        /// </summary>
+        private ColourParameterTable PrunedColourParameters()
+        {
+            ColourParameterTable pruned = new ColourParameterTable();
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> row in _colourParameters.colour_parameters)
+            {
+                Composite composite = _commands.GetComposite(row.Key);
+                if (composite == null)
+                    continue;
+                HashSet<ShortGuid> parameters = new HashSet<ShortGuid>(row.Value.Where(o => composite.GetEntityByID(o) is VariableEntity variable && variable.type == DataType.VECTOR));
+                if (parameters.Count != 0)
+                    pruned.colour_parameters.Add(row.Key, parameters);
+            }
+            return pruned;
+        }
+        #endregion
+
         #region Table Management
         /// <summary>
         /// Tell ShortGuidUtils about every id this script graph already uses, so a newly generated
@@ -2038,6 +2115,12 @@ namespace CATHODE.Scripting
                 _pinInfo = new CompositePinInfoTable();
             else
                 Console.WriteLine("Loaded custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            _colourParameters = (ColourParameterTable)CustomTable.ReadTable(filepath, CustomTableType.COLOUR_PARAMETERS);
+            if (_colourParameters == null)
+                _colourParameters = new ColourParameterTable();
+            else
+                Console.WriteLine("Loaded colour parameters for " + _colourParameters.colour_parameters.Count + " composites!");
 
             _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
             if (_flagTable == null) _flagTable = new FlagTable();
@@ -2229,6 +2312,10 @@ namespace CATHODE.Scripting
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PIN_INFO, _pinInfo);
             Console.WriteLine("Saved custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            ColourParameterTable colourParameters = PrunedColourParameters();
+            CustomTable.WriteTable(filepath, CustomTableType.COLOUR_PARAMETERS, colourParameters);
+            Console.WriteLine("Saved colour parameters for " + colourParameters.colour_parameters.Count + " composites!");
 
             CustomTable.WriteTable(filepath, CustomTableType.FLAGS, _flagTable);
         }

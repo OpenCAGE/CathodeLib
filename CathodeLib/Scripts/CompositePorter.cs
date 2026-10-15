@@ -322,6 +322,7 @@ namespace CathodeLib
                 //Bring over generic metadata
                 //NOTE: entity names travel with the entities themselves (as a 'name' parameter)
                 Destination.Commands.Utils.AddCustomPinInfos(copiedComp, Source.Commands.Utils.GetAllCustomPinInfo(composite));
+                Destination.Commands.Utils.ReplaceColourParameters(copiedComp.shortGUID, Source.Commands.Utils.GetColourParameters(composite));
                 Destination.Commands.Utils.SetModificationInfo(Source.Commands.Utils.GetModificationInfo(composite));
                 Destination.Commands.Utils.PurgedComposites.purged.Remove(copiedComp.shortGUID); //mark for re-purge
 
