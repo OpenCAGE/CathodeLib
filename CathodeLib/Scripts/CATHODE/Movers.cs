@@ -219,6 +219,21 @@ namespace CATHODE
                 if (Entries[i].RuntimeIndex != -1 || (Entries[i].EnvironmentMap != null && SamplesEnvironmentMap(Entries[i])))
                     envMapRows.Add(i);
 
+            /* RuntimeIndex IS the mover's handle into these rows: the game's environment, environment-extra and misc
+               instances read it (as a ushort, 0xFFFF = none) and look up row [handle] with no bounds check. Retail numbers
+               them in row order, but an instanced build carries each handle over from the level it loaded while the rows
+               are written in the rebuilt mover order - so a row answered for another mover (most environment movers drew
+               someone else's cubemap), and once a handle-carrying mover was gone (a model deleted, or moved to another
+               composite) the survivors' handles ran past the end of the rows and the game crashed opening the level.
+               Numbering each row's mover with its own position makes handle == row by construction, and gives a new mover
+               that samples a cubemap a handle it never had. */
+            if (envMapRows.Count > 0xFFFF)
+                throw new InvalidOperationException("The level has " + envMapRows.Count + " environment-mapped movers; the game's handles stop at 65,534.");
+            for (int i = 0; i < Entries.Count; i++)
+                Entries[i].RuntimeIndex = -1;
+            for (int r = 0; r < envMapRows.Count; r++)
+                Entries[envMapRows[r]].RuntimeIndex = r;
+
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(GetEnvMapPath())))
             {
                 writer.BaseStream.SetLength(0);

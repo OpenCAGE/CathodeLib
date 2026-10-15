@@ -302,15 +302,14 @@ namespace CATHODE
         /// </summary>
         public PreviewMesh BuildPreviewMesh(StaticCompoundShape compound)
         {
-            // Preview solidifies open authored shells via convex hulls so colliders read as volumes.
+            // The authored triangles, capped for the UI, with a box standing in for anything that does not decode
             return BuildTriangleMesh(compound, PreviewShapeCap, PreviewTriangleCap, capRootInstances: true,
-                skipInstances: null, convexHullOpenShells: true);
+                skipInstances: null, placeholders: true);
         }
 
         /// <summary>
-        /// Full uncapped triangle extract for navmesh baking.
-        /// Uses authored BvCompressed primitives (not convex-hull solidification) so Recast
-        /// sees real floors/walls instead of invented hull tops on open shells.
+        /// Full uncapped triangle extract for navmesh baking: the authored BvCompressed primitives, and no
+        /// placeholder boxes - an invented solid would give Recast floors and walls that are not there.
         /// </summary>
         /// <param name="skipInstances">
         /// Optional instances to omit (e.g. PATH_CLOSED NavMeshBarrier boxes stamped as area ids instead).
@@ -323,7 +322,7 @@ namespace CATHODE
                                          bool trackInstances = false)
         {
             return BuildTriangleMesh(compound, int.MaxValue, int.MaxValue, capRootInstances: false,
-                skipInstances, convexHullOpenShells: false, trackInstances);
+                skipInstances, placeholders: false, trackInstances);
         }
 
         PreviewMesh BuildTriangleMesh(
@@ -332,7 +331,7 @@ namespace CATHODE
             int triCap,
             bool capRootInstances,
             ISet<CompoundInstance> skipInstances = null,
-            bool convexHullOpenShells = true,
+            bool placeholders = true,
             bool trackInstances = false)
         {
             var mesh = new PreviewMesh { ShapeCapLimit = shapeCap, TriangleCapLimit = triCap };
@@ -361,7 +360,7 @@ namespace CATHODE
                 triCap,
                 capRootInstances,
                 skipInstances,
-                convexHullOpenShells);
+                placeholders);
             return mesh;
         }
 
@@ -543,7 +542,7 @@ namespace CATHODE
             int triCap = PreviewTriangleCap,
             bool capRootInstances = true,
             ISet<CompoundInstance> skipInstances = null,
-            bool convexHullOpenShells = true)
+            bool placeholders = true)
         {
             if (compound == null || mesh.ShapeCount >= shapeCap || mesh.TriangleCount >= triCap || depth > 12)
                 return;
@@ -552,7 +551,7 @@ namespace CATHODE
             if (instances == null || instances.Count == 0)
             {
                 // Preview-only domain AABB when a compound has no instances.
-                if (convexHullOpenShells && HasValidDomain(compound))
+                if (placeholders && HasValidDomain(compound))
                 {
                     AppendBox(mesh,
                         new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z),
@@ -585,14 +584,14 @@ namespace CATHODE
                     mesh.InstanceRanges.Add(new KeyValuePair<int, CompoundInstance>(mesh.TriangleCount, inst));
 
                 if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
-                    EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, convexHullOpenShells);
+                    EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, placeholders);
                 else
-                    AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, convexHullOpenShells);
+                    AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, placeholders);
             }
 
             // Preview only: fall back to compound domain AABB when nothing decoded.
             // Bake skips this — huge domains invent walkable floors that blow Recast bounds.
-            if (convexHullOpenShells
+            if (placeholders
                 && mesh.ShapeCount == beforeShapes && mesh.TriangleCount == beforeTris && HasValidDomain(compound))
             {
                 AppendBox(mesh,
@@ -611,14 +610,14 @@ namespace CATHODE
             Vector3 scale,
             int shapeCap = PreviewShapeCap,
             int triCap = PreviewTriangleCap,
-            bool convexHullOpenShells = true)
+            bool placeholders = true)
         {
             if (mesh.ShapeCount >= shapeCap || mesh.TriangleCount >= triCap)
                 return;
 
             if (string.Equals(shapeClass, "hkpBvCompressedMeshShape", StringComparison.Ordinal))
             {
-                if (TryAppendBvCompressedMesh(mesh, shapeDataOffset, translation, rotation, scale, convexHullOpenShells))
+                if (TryAppendBvCompressedMesh(mesh, shapeDataOffset, translation, rotation, scale))
                     return;
             }
             else if (string.Equals(shapeClass, "hkpBoxShape", StringComparison.Ordinal))
@@ -636,13 +635,13 @@ namespace CATHODE
             }
             else if (string.Equals(shapeClass, "hkpListShape", StringComparison.Ordinal))
             {
-                if (TryAppendListShape(mesh, shapeDataOffset, translation, rotation, scale, convexHullOpenShells))
+                if (TryAppendListShape(mesh, shapeDataOffset, translation, rotation, scale, placeholders))
                     return;
             }
             else if (string.Equals(shapeClass, "hkpConvexTranslateShape", StringComparison.Ordinal)
                 || string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
             {
-                if (TryAppendConvexWrapper(mesh, shapeDataOffset, shapeClass, translation, rotation, scale, shapeCap, triCap, convexHullOpenShells))
+                if (TryAppendConvexWrapper(mesh, shapeDataOffset, shapeClass, translation, rotation, scale, shapeCap, triCap, placeholders))
                     return;
             }
             else if (string.Equals(shapeClass, "hkpCylinderShape", StringComparison.Ordinal)
@@ -663,7 +662,7 @@ namespace CATHODE
                     for (int o = 0; o < Objects.Count && childClass == null; o++)
                         if (Objects[o].DataOffset == child) childClass = Objects[o].ClassName;
                     int before = mesh.ShapeCount;
-                    AppendShapePreview(mesh, child, childClass ?? "", translation, rotation, scale, shapeCap, triCap, convexHullOpenShells);
+                    AppendShapePreview(mesh, child, childClass ?? "", translation, rotation, scale, shapeCap, triCap, placeholders);
                     if (mesh.ShapeCount > before)
                         return;
                     break;
@@ -671,23 +670,21 @@ namespace CATHODE
             }
 
             // Preview-only AABB placeholder for undecoded shapes (bake must not invent solids).
-            if (convexHullOpenShells
+            if (placeholders
                 && TryGetPreviewLocalAabb(shapeDataOffset, shapeClass, out Vector3 amin, out Vector3 amax))
                 AppendBox(mesh, amin, amax, translation, rotation, scale);
         }
 
         /// <summary>
         /// Decode <c>hkpBvCompressedMeshShape</c> leaf geometry from the embedded
-        /// <c>hkcdStaticMeshTree&lt;..., 11, 21&gt;</c>.
-        /// Preview may solidify open shells as convex hulls; bake keeps authored primitives.
+        /// <c>hkcdStaticMeshTree&lt;..., 11, 21&gt;</c>: the authored primitives, for a preview as for a bake.
         /// </summary>
         bool TryAppendBvCompressedMesh(
             PreviewMesh mesh,
             uint shapeOffset,
             Vector3 translation,
             Quaternion rotation,
-            Vector3 scale,
-            bool convexHullOpenShells = true)
+            Vector3 scale)
         {
             if (!TryGetBvMeshArrays(shapeOffset,
                     out uint treeBase,
@@ -790,11 +787,11 @@ namespace CATHODE
                 if (!sectionOk)
                     continue;
 
-                // Preview: solidify open shells as convex hulls so colliders read as volumes.
-                // Bake: keep authored triangles/quads — hull tops invent false walkable floors.
-                if (convexHullOpenShells && TryAppendConvexHull(mesh, local, translation, rotation, scale))
-                    continue;
-
+                /* The authored triangles, for a preview as for a bake. A preview used to draw each section as the convex
+                   hull of its vertices so open shells read as volumes, but a section is only a chunk of up to 127
+                   primitives the encoder cut, not a part of the shape: a concave mesh came out as a patchwork of blobs
+                   with faces across gaps it does not have - an imported collision mesh changed shape the moment it was
+                   written (the Collision Editor previews what was written). */
                 int baseIndex = mesh.Positions.Count;
                 for (int i = 0; i < local.Length; i++)
                     mesh.Positions.Add(translation + Vector3.Transform(local[i] * scale, rotation));
@@ -987,193 +984,6 @@ namespace CATHODE
                 || float.IsInfinity(v.X) || float.IsInfinity(v.Y) || float.IsInfinity(v.Z));
         }
 
-        /// <summary>
-        /// Build a convex hull from section vertices and append it for collision preview.
-        /// Open authored shells become solid volumes this way.
-        /// </summary>
-        static bool TryAppendConvexHull(
-            PreviewMesh mesh,
-            Vector3[] localVerts,
-            Vector3 translation,
-            Quaternion rotation,
-            Vector3 scale)
-        {
-            if (localVerts == null || localVerts.Length < 3)
-                return false;
-
-            // Dedup nearly-identical verts (quantization siblings).
-            var pts = new List<Vector3>(localVerts.Length);
-            for (int i = 0; i < localVerts.Length; i++)
-            {
-                Vector3 p = localVerts[i];
-                bool dup = false;
-                for (int j = 0; j < pts.Count; j++)
-                {
-                    if ((pts[j] - p).LengthSquared() < 1e-12f) { dup = true; break; }
-                }
-                if (!dup)
-                    pts.Add(p);
-            }
-            if (pts.Count < 3)
-                return false;
-
-            if (!TryBuildConvexHullTriangles(pts, out List<int> hullTris))
-                return false;
-            if (hullTris.Count < 3)
-                return false;
-
-            int baseIndex = mesh.Positions.Count;
-            for (int i = 0; i < pts.Count; i++)
-                mesh.Positions.Add(translation + Vector3.Transform(pts[i] * scale, rotation));
-
-            for (int i = 0; i + 2 < hullTris.Count && mesh.TriangleCount < mesh.TriangleCapLimit; i += 3)
-            {
-                mesh.Indices.Add(baseIndex + hullTris[i]);
-                mesh.Indices.Add(baseIndex + hullTris[i + 1]);
-                mesh.Indices.Add(baseIndex + hullTris[i + 2]);
-            }
-            return true;
-        }
-
-        /// <summary>
-        /// Incremental 3D convex hull. Returns triangle indices into <paramref name="pts"/>.
-        /// </summary>
-        static bool TryBuildConvexHullTriangles(List<Vector3> pts, out List<int> tris)
-        {
-            tris = new List<int>();
-            int n = pts.Count;
-            if (n < 3)
-                return false;
-
-            // Find initial tetrahedron (or flat triangle).
-            int i0 = 0, i1 = -1, i2 = -1, i3 = -1;
-            float best = 0f;
-            for (int i = 1; i < n; i++)
-            {
-                float d = (pts[i] - pts[i0]).LengthSquared();
-                if (d > best) { best = d; i1 = i; }
-            }
-            if (i1 < 0 || best < 1e-16f)
-                return false;
-
-            best = 0f;
-            Vector3 e01 = pts[i1] - pts[i0];
-            for (int i = 0; i < n; i++)
-            {
-                if (i == i0 || i == i1) continue;
-                float a = Vector3.Cross(e01, pts[i] - pts[i0]).LengthSquared();
-                if (a > best) { best = a; i2 = i; }
-            }
-            if (i2 < 0 || best < 1e-20f)
-                return false;
-
-            best = 0f;
-            Vector3 nrm = Vector3.Cross(pts[i1] - pts[i0], pts[i2] - pts[i0]);
-            for (int i = 0; i < n; i++)
-            {
-                if (i == i0 || i == i1 || i == i2) continue;
-                float d = Math.Abs(Vector3.Dot(nrm, pts[i] - pts[i0]));
-                if (d > best) { best = d; i3 = i; }
-            }
-
-            var faces = new List<(int a, int b, int c)>();
-            if (i3 < 0 || best < 1e-8f)
-            {
-                // Degenerate flat cloud — emit both sides of the triangle fan on the plane.
-                faces.Add((i0, i1, i2));
-                faces.Add((i0, i2, i1));
-            }
-            else
-            {
-                // Orient tetra so volume is positive.
-                if (Vector3.Dot(nrm, pts[i3] - pts[i0]) > 0f)
-                {
-                    int t = i2; i2 = i3; i3 = t;
-                    nrm = Vector3.Cross(pts[i1] - pts[i0], pts[i2] - pts[i0]);
-                }
-                faces.Add((i0, i1, i2));
-                faces.Add((i0, i2, i3));
-                faces.Add((i0, i3, i1));
-                faces.Add((i1, i3, i2));
-            }
-
-            var used = new bool[n];
-            used[i0] = used[i1] = used[i2] = true;
-            if (i3 >= 0) used[i3] = true;
-
-            for (int pi = 0; pi < n; pi++)
-            {
-                if (used[pi]) continue;
-                Vector3 p = pts[pi];
-
-                var visible = new List<int>();
-                for (int f = 0; f < faces.Count; f++)
-                {
-                    var face = faces[f];
-                    Vector3 fn = Vector3.Cross(pts[face.b] - pts[face.a], pts[face.c] - pts[face.a]);
-                    if (Vector3.Dot(fn, p - pts[face.a]) > 1e-8f)
-                        visible.Add(f);
-                }
-                if (visible.Count == 0)
-                    continue; // inside
-
-                // Horizon edges: edges of visible faces used exactly once.
-                var edgeUse = new Dictionary<long, (int a, int b, int count)>();
-                for (int vi = 0; vi < visible.Count; vi++)
-                {
-                    var face = faces[visible[vi]];
-                    AccHullEdge(edgeUse, face.a, face.b);
-                    AccHullEdge(edgeUse, face.b, face.c);
-                    AccHullEdge(edgeUse, face.c, face.a);
-                }
-
-                // Remove visible faces (highest index first).
-                visible.Sort();
-                for (int vi = visible.Count - 1; vi >= 0; vi--)
-                    faces.RemoveAt(visible[vi]);
-
-                foreach (var kv in edgeUse)
-                {
-                    if (kv.Value.count != 1) continue;
-                    int a = kv.Value.a, b = kv.Value.b;
-                    // Outward face: a,b from original winding; new apex pi.
-                    Vector3 fn = Vector3.Cross(pts[b] - pts[a], p - pts[a]);
-                    // Ensure outward relative to hull centroid of remaining? Use cross with inside test:
-                    // horizon edge directed so face (a,b,pi) has outward normal.
-                    faces.Add((a, b, pi));
-                }
-                used[pi] = true;
-            }
-
-            // Fix winding: ensure normals point away from centroid.
-            Vector3 centroid = Vector3.Zero;
-            for (int i = 0; i < n; i++) centroid += pts[i];
-            centroid /= n;
-
-            for (int f = 0; f < faces.Count; f++)
-            {
-                int a = faces[f].a, b = faces[f].b, c = faces[f].c;
-                Vector3 fn = Vector3.Cross(pts[b] - pts[a], pts[c] - pts[a]);
-                if (Vector3.Dot(fn, centroid - pts[a]) > 0f)
-                {
-                    int tmp = b; b = c; c = tmp;
-                }
-                tris.Add(a);
-                tris.Add(b);
-                tris.Add(c);
-            }
-            return tris.Count >= 3;
-        }
-
-        static void AccHullEdge(Dictionary<long, (int a, int b, int count)> edgeUse, int a, int b)
-        {
-            long key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
-            if (edgeUse.TryGetValue(key, out var e))
-                edgeUse[key] = (e.a, e.b, e.count + 1);
-            else
-                edgeUse[key] = (a, b, 1);
-        }
-
         bool TryAppendConvexVertices(
             PreviewMesh mesh,
             uint shapeOffset,
@@ -1252,7 +1062,7 @@ namespace CATHODE
         /// the child drawn where the wrapper puts it. Retail wraps 1,962 boxes and cylinders this way.
         /// </summary>
         bool TryAppendConvexWrapper(PreviewMesh mesh, uint shapeOffset, string shapeClass, Vector3 translation, Quaternion rotation, Vector3 scale,
-            int shapeCap, int triCap, bool convexHullOpenShells)
+            int shapeCap, int triCap, bool placeholders)
         {
             bool is64 = Header.PointerSize == 8;
             uint childField = shapeOffset + (is64 ? 48u : 24u);
@@ -1285,7 +1095,7 @@ namespace CATHODE
                 translation + Vector3.Transform(localTranslation * scale, rotation),
                 rotation * localRotation,
                 scale * localScale,
-                shapeCap, triCap, convexHullOpenShells);
+                shapeCap, triCap, placeholders);
             return mesh.ShapeCount > before;
         }
 
@@ -1356,7 +1166,7 @@ namespace CATHODE
             Vector3 translation,
             Quaternion rotation,
             Vector3 scale,
-            bool convexHullOpenShells = true)
+            bool placeholders = true)
         {
             // childInfo hkArray at +48 (64-bit) / +24 (32-bit), as ListChildArrayField.
             uint childField = shapeOffset + (Header.PointerSize == 8 ? (uint)Layout.ListChildInfo : 24u);
@@ -1380,7 +1190,7 @@ namespace CATHODE
                     continue;
                 classAtOffset.TryGetValue(childShape, out string childClass);
                 AppendShapePreview(mesh, childShape, childClass ?? "", translation, rotation, scale,
-                    mesh.ShapeCapLimit, mesh.TriangleCapLimit, convexHullOpenShells);
+                    mesh.ShapeCapLimit, mesh.TriangleCapLimit, placeholders);
             }
             return mesh.ShapeCount > before;
         }
@@ -1502,7 +1312,7 @@ namespace CATHODE
 
             PreviewMesh mesh = new PreviewMesh();
             AppendShapePreview(mesh, shapeDataOffset, shapeClass, Vector3.Zero, Quaternion.Identity, Vector3.One,
-                int.MaxValue, int.MaxValue, convexHullOpenShells: false);
+                int.MaxValue, int.MaxValue, placeholders: false);
             if (mesh.Positions.Count == 0)
             {
                 min = max = default;

@@ -371,6 +371,80 @@ namespace CathodeLib.Havok
                 throw new InvalidOperationException("The new physics system reads back wrongly.");
         }
 
+        // ------------------------------------------------------------------ changing a body
+
+        /// <summary>
+        /// Change a rigid body's mass, surface, damping or gravity factor where it stands, in a 2012 packfile (a PC
+        /// level's PHYSICS.HKX or .HKX64). Only the values <paramref name="change"/> gives are written. A new mass keeps
+        /// the body's shape and how its mass is spread: the inverse inertia scales by old mass / new mass, which is the
+        /// tensor the body would have had if it were built at the new mass. Throws, having changed nothing, for a body
+        /// with no mass to change (keyframed or fixed: an inverse mass of 0), a value out of range, or a tagfile.
+        /// </summary>
+        public static void SetRigidBodyProperties(this HavokPackfile packfile, PhysicsSystem system, int bodyIndex, RigidBodyChange change)
+        {
+            if (packfile == null) throw new ArgumentNullException(nameof(packfile));
+            if (change == null) throw new ArgumentNullException(nameof(change));
+            if (packfile.Tagfile != null)
+                throw new NotSupportedException("Physics bodies can only be changed in a PC level's packfiles, not in a mobile or Switch level's tagfile.");
+            if (system == null || !packfile.TryGetRigidBodyOffsets(system, out List<uint> bodies) || bodyIndex < 0 || bodyIndex >= bodies.Count)
+                throw new ArgumentOutOfRangeException(nameof(bodyIndex), "The physics system has no rigid body " + bodyIndex + ".");
+            change.Validate();
+
+            PhysicsLayout L = PhysicsLayout.For(packfile.Header.PointerSize == 8);
+            byte[] d = packfile.DataPayload;
+            int body = (int)bodies[bodyIndex];
+            int R = body + L.MotionState;
+            //hkMotionState's damping halves, then the motion's gravity factor after savedMotion and savedQualityTypeIndex - as GetRigidBodies reads them
+            int linearDamping = R + 164, angularDamping = R + 166, gravity = R + 264 + packfile.Header.PointerSize + 2;
+            if (gravity + 2 > d.Length)
+                throw new InvalidOperationException("The rigid body runs past the end of the file.");
+
+            Vector4 inertiaAndMassInv = new Vector4(BitConverter.ToSingle(d, R + 176), BitConverter.ToSingle(d, R + 180), BitConverter.ToSingle(d, R + 184), BitConverter.ToSingle(d, R + 188));
+            if (change.Mass.HasValue && !(inertiaAndMassInv.W > 0f && !float.IsInfinity(inertiaAndMassInv.W)))
+                throw new InvalidOperationException("This body has no mass to change: it is keyframed or fixed, so the game moves it rather than physics.");
+
+            //Everything checked: write, and put the body back as it was if it does not read back as asked
+            byte[] before = new byte[gravity + 2 - body];
+            Buffer.BlockCopy(d, body, before, 0, before.Length);
+            if (change.Mass.HasValue)
+            {
+                float newMassInv = 1f / change.Mass.Value;
+                float ratio = newMassInv / inertiaAndMassInv.W; //old mass / new mass
+                WriteVector4(d, R + 176, new Vector4(inertiaAndMassInv.X * ratio, inertiaAndMassInv.Y * ratio, inertiaAndMassInv.Z * ratio, newMassInv));
+            }
+            if (change.Friction.HasValue) WriteSingle(d, body + L.BodyFriction, change.Friction.Value);
+            if (change.Restitution.HasValue) WriteSingle(d, body + L.BodyRestitution, change.Restitution.Value);
+            if (change.LinearDamping.HasValue) WriteHalf2012(d, linearDamping, change.LinearDamping.Value);
+            if (change.AngularDamping.HasValue) WriteHalf2012(d, angularDamping, change.AngularDamping.Value);
+            if (change.GravityFactor.HasValue) WriteHalf2012(d, gravity, change.GravityFactor.Value);
+
+            RigidBodyInfo now = packfile.GetRigidBodies(system).ElementAtOrDefault(bodyIndex);
+            bool readsBack = now != null
+                && (!change.Mass.HasValue || Math.Abs(now.Mass - change.Mass.Value) <= 1e-4f * change.Mass.Value)
+                && (!change.Friction.HasValue || now.Friction == change.Friction.Value)
+                && (!change.Restitution.HasValue || now.Restitution == change.Restitution.Value)
+                && (!change.LinearDamping.HasValue || Math.Abs(now.LinearDamping - change.LinearDamping.Value) <= HalfStep(change.LinearDamping.Value))
+                && (!change.AngularDamping.HasValue || Math.Abs(now.AngularDamping - change.AngularDamping.Value) <= HalfStep(change.AngularDamping.Value))
+                && (!change.GravityFactor.HasValue || Math.Abs(now.GravityFactor - change.GravityFactor.Value) <= HalfStep(change.GravityFactor.Value));
+            if (!readsBack)
+            {
+                Buffer.BlockCopy(before, 0, d, body, before.Length);
+                throw new InvalidOperationException("The rigid body did not read back as changed, so it was put back as it was.");
+            }
+        }
+
+        /// <summary>A 2012 hkHalf is a float's top sixteen bits; rounded to the nearest, as the bits below them are dropped.</summary>
+        static void WriteHalf2012(byte[] d, int at, float value)
+        {
+            uint bits = BitConverter.ToUInt32(BitConverter.GetBytes(value), 0);
+            uint rounded = (bits + 0x7FFFu + ((bits >> 16) & 1u)) >> 16;
+            d[at] = (byte)rounded;
+            d[at + 1] = (byte)(rounded >> 8);
+        }
+
+        //An hkHalf keeps 7 bits of mantissa: what one step is worth at this value
+        static float HalfStep(float value) => Math.Max(Math.Abs(value) / 128f, 1e-6f);
+
         static void AddObject(HavokPackfile packfile, int offset, PackfileObject template, ObjectClass cls)
         {
             packfile.VirtualFixups.Add(new VirtualFixup { Src = (uint)offset, SectionIndex = 0, NameOffset = template.ClassNameOffset });
@@ -973,6 +1047,46 @@ namespace CathodeLib.Havok
         /// <summary>Where the body sits in the system's space: retail uses the position of the model it drives in its composite.</summary>
         public Vector3 Position = Vector3.Zero;
         public Quaternion Rotation = Quaternion.Identity;
+    }
+
+    /// <summary>
+    /// What <see cref="PhysicsSystemWriter.SetRigidBodyProperties"/> changes on a body: each value left null stays as it is.
+    /// The ranges are what Havok accepts and the game was seen to use, not limits of the file.
+    /// </summary>
+    public sealed class RigidBodyChange
+    {
+        /// <summary>Kilograms. Retail props run from 0.1 (debris) to about 50.</summary>
+        public float? Mass;
+        /// <summary>0 for none; retail's props are mostly 0.5 to 1 (a few run up to 255).</summary>
+        public float? Friction;
+        /// <summary>Bounciness, 0 (none) to 1 (keeps all its speed).</summary>
+        public float? Restitution;
+        /// <summary>How quickly the body's movement and spin die away on their own; 0 for none.</summary>
+        public float? LinearDamping;
+        public float? AngularDamping;
+        /// <summary>How strongly gravity pulls the body: 1 as normal, 0 to float.</summary>
+        public float? GravityFactor;
+
+        public bool IsEmpty => !Mass.HasValue && !Friction.HasValue && !Restitution.HasValue && !LinearDamping.HasValue && !AngularDamping.HasValue && !GravityFactor.HasValue;
+
+        /// <summary>Throws <see cref="ArgumentException"/> naming the first value out of range, in words fit to show.</summary>
+        public void Validate()
+        {
+            Check(Mass, 0.001f, 100000f, "Mass");
+            Check(Friction, 0f, 255f, "Friction"); //retail's highest, on a handful of bodies
+            Check(Restitution, 0f, 1f, "Restitution");
+            Check(LinearDamping, 0f, 1000f, "Linear damping");
+            Check(AngularDamping, 0f, 1000f, "Angular damping");
+            Check(GravityFactor, -100f, 100f, "Gravity factor");
+        }
+
+        static void Check(float? value, float min, float max, string name)
+        {
+            if (!value.HasValue) return;
+            float v = value.Value;
+            if (float.IsNaN(v) || float.IsInfinity(v) || v < min || v > max)
+                throw new ArgumentException(name + " must be between " + min.ToString(System.Globalization.CultureInfo.InvariantCulture) + " and " + max.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
+        }
     }
 
     /// <summary>

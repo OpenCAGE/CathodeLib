@@ -4355,9 +4355,11 @@ namespace CathodeLib
                 if (m.Flags != null && !_retailRequiresScript.ContainsKey(key))
                     _retailRequiresScript[key] = m.Flags.RequiresScript;
 
-                // The undecoded runtime words (RuntimeRefs at +256, RuntimeIndex at +280):
-                // retail fills the refs on EVERY mover and hands ~40% a unique sequential
-                // RuntimeIndex; we used to zero one and write a bogus mover index for the other.
+                // The runtime words (RuntimeRefs at +256, RuntimeIndex at +280): retail fills the
+                // refs on EVERY mover and hands ~40% a unique sequential RuntimeIndex; we used to zero
+                // one and write a bogus mover index for the other. RuntimeIndex is the mover's row in
+                // ENVIRONMENTMAP.BIN, and Movers renumbers it from the rows it writes - carrying it only
+                // decides which movers keep a row.
                 if (!_retailRuntimeRefs.ContainsKey(key))
                     _retailRuntimeRefs[key] = (m.RuntimeRefs, m.RuntimeIndex);
 
