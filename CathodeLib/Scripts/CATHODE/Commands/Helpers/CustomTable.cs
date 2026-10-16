@@ -259,6 +259,9 @@ namespace CathodeLib
                             case CustomTableType.COLOUR_PARAMETERS:
                                 ((ColourParameterTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.ASSET_MODIFICATION_INFO:
+                                ((AssetModificationInfoTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -372,6 +375,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.COLOUR_PARAMETERS:
                         data = new ColourParameterTable(reader);
+                        break;
+                    case CustomTableType.ASSET_MODIFICATION_INFO:
+                        data = new AssetModificationInfoTable(reader);
                         break;
                 }
             }
@@ -632,6 +638,80 @@ namespace CathodeLib
         {
             public ShortGuid composite_id;
             public int editor_version; //use this to store a unique identifier for whatever tool version modified the composite
+            public int modification_date; //unix timecode
+        }
+    }
+    /// <summary>
+    /// When the user last changed each of a level's assets - a model, a texture, a material, the level's galaxy... - by
+    /// kind and name: the asset half of a level's edit history (the composites' is <see cref="CompositeModificationInfoTable"/>).
+    /// </summary>
+    public class AssetModificationInfoTable : CustomTable.Table
+    {
+        public AssetModificationInfoTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.ASSET_MODIFICATION_INFO;
+        }
+
+        //NOTE: stored by number - only ever append
+        public enum AssetKind
+        {
+            TEXTURE,
+            MODEL,
+            MATERIAL,
+            MATERIAL_MAPPING,
+            COLLISION,
+            PHYSICS_SYSTEM,
+            CHARACTER_ACCESSORIES,
+            GALAXY,
+            SOUND,
+            TEXT,
+        }
+
+        public List<ModificationInfo> modification_info = new List<ModificationInfo>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            modification_info.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ModificationInfo info = new ModificationInfo();
+                info.kind = (AssetKind)reader.ReadInt32();
+                info.name = reader.ReadString();
+                info.editor_version = reader.ReadInt32();
+                info.modification_date = reader.ReadInt32();
+                modification_info.Add(info);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            writer.Write(modification_info.Count);
+            for (int i = 0; i < modification_info.Count; i++)
+            {
+                writer.Write((int)modification_info[i].kind);
+                writer.Write(modification_info[i].name ?? "");
+                writer.Write(modification_info[i].editor_version);
+                writer.Write(modification_info[i].modification_date);
+            }
+        }
+
+        public class ModificationInfo
+        {
+            public AssetKind kind;
+            public string name; //the asset's own name: a texture's or model's name, a material's - or for data the level has one of (its galaxy), what it is
+            public int editor_version;
             public int modification_date; //unix timecode
         }
     }

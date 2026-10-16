@@ -1208,6 +1208,7 @@ namespace CATHODE.Scripting.Internal
         ENTITY_CATEGORIES,                      // Entity categories for filtering in the editor  
         COMPOSITE_PREVIEWS,                     // Rendered previews (PNGs) of composites, by composite GUID
         COLOUR_PARAMETERS,                      // Vector composite parameters (VariableEntities) the editor shows as colours
+        ASSET_MODIFICATION_INFO,                // When the user last changed each of the level's assets (models, textures, materials...), by kind and name
 
         //Add new entries here
 

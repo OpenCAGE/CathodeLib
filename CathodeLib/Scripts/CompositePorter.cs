@@ -55,6 +55,12 @@ namespace CathodeLib
         public HashSet<ShortGuid> DoNotDescendInto = new HashSet<ShortGuid>();
 
         /// <summary>
+        /// Copy a ported composite's edit history (when it was last changed) along with it. Off for mods: their
+        /// author's history isn't the history of the level they go into.
+        /// </summary>
+        public bool CarryEditHistory = true;
+
+        /// <summary>
         /// Raised for each composite actually copied into the destination, with the source composite
         /// and its copy. OpenCAGE uses it to carry flowgraph layouts across, which live outside CathodeLib.
         /// </summary>
@@ -177,6 +183,26 @@ namespace CathodeLib
                     PortMappingsAndNamedMaterials(entity);
                 }
                 ApplyProxyIndexRemap();
+            }
+        }
+
+        /// <summary>
+        /// Bring over what an entity names rather than references - the material mappings it selects, the materials its
+        /// strings name, an environment map's cubemap, a colour grade's LUTs - for an entity whose parameters changed
+        /// but whose resources didn't. Its resources aren't touched: they may already point at the destination's objects.
+        /// </summary>
+        public void PortNamedAssets(Entity entity)
+        {
+            if (entity == null)
+                return;
+            using (new ImportMemoScope(Source, Destination))
+            {
+                if (entity is FunctionEntity function)
+                {
+                    PortEnvironmentMapTexture(function);
+                    PortColourLutTextures(function);
+                }
+                PortMappingsAndNamedMaterials(entity);
             }
         }
 
@@ -323,7 +349,8 @@ namespace CathodeLib
                 //NOTE: entity names travel with the entities themselves (as a 'name' parameter)
                 Destination.Commands.Utils.AddCustomPinInfos(copiedComp, Source.Commands.Utils.GetAllCustomPinInfo(composite));
                 Destination.Commands.Utils.ReplaceColourParameters(copiedComp.shortGUID, Source.Commands.Utils.GetColourParameters(composite));
-                Destination.Commands.Utils.SetModificationInfo(Source.Commands.Utils.GetModificationInfo(composite));
+                if (CarryEditHistory)
+                    Destination.Commands.Utils.SetModificationInfo(Source.Commands.Utils.GetModificationInfo(composite));
                 Destination.Commands.Utils.PurgedComposites.purged.Remove(copiedComp.shortGUID); //mark for re-purge
 
                 _ported.Add(copiedComp);

@@ -40,6 +40,38 @@ namespace CathodeLib
         /// <summary>Each composite a copy changed, with the copies that changed it in order - for merging editor data kept beside the scripts.</summary>
         public Dictionary<ShortGuid, List<string>> ChangedComposites { get; } = new Dictionary<ShortGuid, List<string>>();
 
+        /// <summary>
+        /// The textures, models and materials taken where the copies changed them ("texture NAME", "model NAME", "material
+        /// NAME"), and the level's own data (named as <see cref="StandaloneData"/> names it).
+        /// </summary>
+        public HashSet<string> TakenAssets { get; } = new HashSet<string>();
+
+        /// <summary>
+        /// Take only these composites' changes from a copy (null: every composite's) - for packaging part of a level. What
+        /// the chosen ones use that the destination lacks still comes over: a new composite one of them instances, say.
+        /// </summary>
+        public ISet<ShortGuid> OnlyComposites;
+
+        /// <summary>Take only the textures, the models and the materials of these names where a copy changed them (null: all of them).</summary>
+        public ISet<string> OnlyTextures, OnlyModels, OnlyMaterials;
+
+        /// <summary>
+        /// Take only these of the level's standalone data where a copy changed it (null: all of it) - named as
+        /// <see cref="StandaloneData"/> names them.
+        /// </summary>
+        public ISet<string> OnlyStandaloneData;
+
+        /// <summary>The level's standalone data, by the names <see cref="OnlyStandaloneData"/> takes and changes are reported with.</summary>
+        public static readonly IReadOnlyList<string> StandaloneData = new[] {
+            "the level's sound banks", "the level's dialogue lookups", "the level's sound environments", "the level's sound events",
+            "the level's character accessories", "the galaxy", "the galaxy definition" };
+
+        /// <summary>
+        /// Carry a copy's edit history (when each of its composites was last changed) along with its changes. For the
+        /// level owner's own copy, not a mod: its author's history isn't the history of the level it goes into.
+        /// </summary>
+        public bool CarryEditHistory = false;
+
         private readonly Level _vanilla;
         private readonly Level _dest;
 
@@ -62,12 +94,18 @@ namespace CathodeLib
             if (mod?.Commands == null) throw new ArgumentException("The copy must be loaded.");
             _mod = mod;
             _modName = modName;
-            _porter = new CompositePorter(mod, _dest) { OverwriteComposites = false, OverwriteAssets = false, Recurse = false };
+            _porter = new CompositePorter(mod, _dest) { OverwriteComposites = false, OverwriteAssets = false, Recurse = false, CarryEditHistory = CarryEditHistory };
 
             MergeTextures();
             MergeModels();
+            MergeMaterials();
             MergeComposites();
             MergeStandaloneData();
+
+            //The owner's own copy brings its asset history with it, as its composites bring theirs
+            if (CarryEditHistory)
+                foreach (AssetModificationInfoTable.ModificationInfo info in mod.Commands.Utils.AllAssetModificationInfo)
+                    _dest.Commands.Utils.SetAssetModificationInfo(info.kind, info.name, info.editor_version, info.modification_date);
         }
 
         /// <summary>
@@ -171,6 +209,7 @@ namespace CathodeLib
             {
                 if (mc == null) continue;
                 inMod.Add(mc.shortGUID);
+                if (OnlyComposites != null && !OnlyComposites.Contains(mc.shortGUID)) continue;
                 Composite dc = _dest.Commands.GetComposite(mc.shortGUID);
                 if (!vanilla.TryGetValue(mc.shortGUID, out Composite vc))
                 {
@@ -226,6 +265,7 @@ namespace CathodeLib
             foreach (Composite vc in vanilla.Values)
             {
                 if (inMod.Contains(vc.shortGUID)) continue;
+                if (OnlyComposites != null && !OnlyComposites.Contains(vc.shortGUID)) continue;
                 Composite dc = _dest.Commands.GetComposite(vc.shortGUID);
                 if (dc == null) continue;
                 if (_dest.Commands.EntryPoints.Contains(dc))
@@ -361,7 +401,7 @@ namespace CathodeLib
             if (touched)
             {
                 Touched(dc);
-                CompositeModificationInfoTable.ModificationInfo info = _mod.Commands.Utils.GetModificationInfo(mc);
+                CompositeModificationInfoTable.ModificationInfo info = CarryEditHistory ? _mod.Commands.Utils.GetModificationInfo(mc) : null;
                 if (info != null)
                     _dest.Commands.Utils.SetModificationInfo(info);
             }
@@ -426,6 +466,7 @@ namespace CathodeLib
 
             //Parameters, one by one
             HashSet<ShortGuid> ids = new HashSet<ShortGuid>(ve.parameters.Select(o => o.name).Concat(me.parameters.Select(o => o.name)));
+            bool parametersTaken = false;
             foreach (ShortGuid id in ids)
             {
                 Parameter vp = ve.GetParameter(id), mp = me.GetParameter(id), dp = de.GetParameter(id);
@@ -455,7 +496,11 @@ namespace CathodeLib
                 }
                 else
                     de.parameters.Add(new Parameter(mp.name, content, mp.variant));
+                parametersTaken = true;
             }
+            //What the taken values name rather than reference - a material mapping, a material, a cubemap - comes over too
+            if (parametersTaken)
+                _porter.PortNamedAssets(de);
 
             //Links, as a set
             HashSet<(ShortGuid, ShortGuid, ShortGuid)> vLinks = Links(ve, vc), mLinks = Links(me, mc);
@@ -602,6 +647,8 @@ namespace CathodeLib
             return true;
         }
 
+        private static readonly ShortGuid _mappingParameter = ShortGuidUtils.Generate("mapping");
+
         private bool SameParameter(Parameter a, Level la, Parameter b, Level lb)
         {
             if (a == null || b == null) return a == b;
@@ -612,6 +659,9 @@ namespace CathodeLib
             switch (x.dataType)
             {
                 case DataType.RESOURCE:
+                    //A material mapping is a resource with no references: the id is the mapping it picks
+                    if (a.name == _mappingParameter)
+                        return ((cResource)x).shortGUID == ((cResource)y).shortGUID;
                     return ResourcesSignature(((cResource)x).value, la) == ResourcesSignature(((cResource)y).value, lb);
                 case DataType.SPLINE:
                     {
@@ -771,11 +821,13 @@ namespace CathodeLib
             if (_mod.Textures == null || _vanilla.Textures == null || _dest.Textures == null) return;
             foreach (Textures.TEX4 mt in _mod.Textures.Entries)
             {
+                if (OnlyTextures != null && !OnlyTextures.Contains(mt.Name)) continue;
                 Textures.TEX4 vt = _vanilla.Textures.FindByName(mt.Name);
                 if (vt == null || SameTexture(vt, mt)) continue;
                 Textures.TEX4 dt = _dest.Textures.FindByName(mt.Name);
                 Claim(Named("texture " + mt.Name), dt != null && !SameTexture(dt, vt) && !SameTexture(dt, mt));
                 _dest.Textures.ImportEntry(mt, true);
+                TakenAssets.Add("texture " + mt.Name);
             }
         }
 
@@ -802,11 +854,70 @@ namespace CathodeLib
                 if (m?.Name != null && !vanilla.ContainsKey(m.Name)) vanilla[m.Name] = m;
             foreach (Models.CS2 mm in _mod.Models.Entries)
             {
-                if (mm?.Name == null || !vanilla.TryGetValue(mm.Name, out Models.CS2 vm) || SameGeometry(vm, mm)) continue;
+                if (mm?.Name == null || (OnlyModels != null && !OnlyModels.Contains(mm.Name))) continue;
+                if (!vanilla.TryGetValue(mm.Name, out Models.CS2 vm) || SameGeometry(vm, mm)) continue;
                 Models.CS2 dm = _dest.Models.Entries.FirstOrDefault(o => o.Name == mm.Name);
                 Claim(Named("model " + mm.Name), dm != null && !SameGeometry(dm, vm) && !SameGeometry(dm, mm));
                 _dest.Models.ImportEntry(mm, true);
+                TakenAssets.Add("model " + mm.Name);
             }
+        }
+
+        /* A material of the unmodified level the copy changed in place - the same one (same place in the list, same name)
+           with other textures, constants or shader: changed in place in the destination too, so everything drawn with it
+           is drawn with the change. Materials are an identity by place, not by name: names repeat. */
+        private void MergeMaterials()
+        {
+            if (_mod.Materials == null || _vanilla.Materials == null || _dest.Materials == null) return;
+            int count = Math.Min(_vanilla.Materials.Entries.Count, Math.Min(_mod.Materials.Entries.Count, _dest.Materials.Entries.Count));
+            for (int i = 0; i < count; i++)
+            {
+                Materials.Material vm = _vanilla.Materials.Entries[i], mm = _mod.Materials.Entries[i], dm = _dest.Materials.Entries[i];
+                if (vm == null || mm == null || dm == null || vm.Name != mm.Name || dm.Name != vm.Name) continue;
+                if (OnlyMaterials != null && !OnlyMaterials.Contains(mm.Name)) continue;
+                string vs = MaterialSignature(vm), ms = MaterialSignature(mm);
+                if (vs == ms) continue;
+                string ds = MaterialSignature(dm);
+                Claim(Named("material " + mm.Name + " (#" + i + ")"), ds != vs && ds != ms);
+
+                //Its textures and shader brought over as an import would, then the destination's entry made the same
+                int before = _dest.Materials.Entries.Count;
+                Materials.Material imported = _dest.Materials.ImportEntry(mm, false);
+                if (imported == null) continue;
+                if (_dest.Materials.Entries.Count != before && ReferenceEquals(_dest.Materials.Entries[_dest.Materials.Entries.Count - 1], imported))
+                    _dest.Materials.Entries.RemoveAt(_dest.Materials.Entries.Count - 1);
+                Materials.Material copy = imported.Copy();
+                dm.Name = copy.Name;
+                dm.TextureReferences = copy.TextureReferences;
+                dm.EngineConstants = copy.EngineConstants;
+                dm.VertexShaderConstants = copy.VertexShaderConstants;
+                dm.PixelShaderConstants = copy.PixelShaderConstants;
+                dm.HullShaderConstants = copy.HullShaderConstants;
+                dm.DomainShaderConstants = copy.DomainShaderConstants;
+                dm.OfflineLightFeatures = copy.OfflineLightFeatures;
+                dm.Shader = copy.Shader;
+                dm.PhysicalMaterialIndex = copy.PhysicalMaterialIndex;
+                dm.EnvironmentMapIndex = copy.EnvironmentMapIndex;
+                dm.Priority = copy.Priority;
+                TakenAssets.Add("material " + mm.Name);
+            }
+        }
+
+        /* A material as it reads from either level: its textures by name, its shader by ubershader and features */
+        private static string MaterialSignature(Materials.Material m)
+        {
+            StringBuilder sig = new StringBuilder(m.Name ?? "");
+            sig.Append('|').Append(m.Shader?.Ubershader).Append(':').Append(m.Shader?.UbershaderFeatureFlags);
+            foreach (TexturePtr texture in m.TextureReferences ?? new List<TexturePtr>())
+                sig.Append('/').Append(texture == null ? "-" : texture.Location + ":" + texture.Texture?.Name);
+            foreach (List<float> constants in new[] { m.EngineConstants, m.VertexShaderConstants, m.PixelShaderConstants, m.HullShaderConstants, m.DomainShaderConstants })
+            {
+                sig.Append('#');
+                foreach (float value in constants ?? new List<float>())
+                    sig.Append(value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)).Append(',');
+            }
+            sig.Append('|').Append(m.PhysicalMaterialIndex).Append('|').Append(m.EnvironmentMapIndex).Append('|').Append(m.Priority);
+            return sig.ToString();
         }
 
         private static bool SameGeometry(Models.CS2 a, Models.CS2 b)
@@ -837,17 +948,18 @@ namespace CathodeLib
            taken for a change. */
         private void MergeStandaloneData()
         {
-            Swap("the level's sound banks", l => l.SoundBankData, (l, o) => l.SoundBankData = (SoundBankData)o);
-            Swap("the level's dialogue lookups", l => l.SoundDialogueLookups, (l, o) => l.SoundDialogueLookups = (SoundDialogueLookups)o);
-            Swap("the level's sound environments", l => l.SoundEnvironmentData, (l, o) => l.SoundEnvironmentData = (SoundEnvironmentData)o);
-            Swap("the level's sound events", l => l.SoundEventData, (l, o) => l.SoundEventData = (SoundEventData)o);
-            Swap("the level's character accessories", l => l.AccessorySets, (l, o) => l.AccessorySets = (CharacterAccessorySets)o);
-            Swap("the galaxy", l => l.GalaxyItems, (l, o) => l.GalaxyItems = (GalaxyItems)o);
-            Swap("the galaxy definition", l => l.GalaxyDefinition, (l, o) => l.GalaxyDefinition = (GalaxyDefinition)o);
+            Swap(StandaloneData[0], l => l.SoundBankData, (l, o) => l.SoundBankData = (SoundBankData)o);
+            Swap(StandaloneData[1], l => l.SoundDialogueLookups, (l, o) => l.SoundDialogueLookups = (SoundDialogueLookups)o);
+            Swap(StandaloneData[2], l => l.SoundEnvironmentData, (l, o) => l.SoundEnvironmentData = (SoundEnvironmentData)o);
+            Swap(StandaloneData[3], l => l.SoundEventData, (l, o) => l.SoundEventData = (SoundEventData)o);
+            Swap(StandaloneData[4], l => l.AccessorySets, (l, o) => l.AccessorySets = (CharacterAccessorySets)o);
+            Swap(StandaloneData[5], l => l.GalaxyItems, (l, o) => l.GalaxyItems = (GalaxyItems)o);
+            Swap(StandaloneData[6], l => l.GalaxyDefinition, (l, o) => l.GalaxyDefinition = (GalaxyDefinition)o);
         }
 
         private void Swap(string what, Func<Level, CathodeFile> get, Action<Level, CathodeFile> set)
         {
+            if (OnlyStandaloneData != null && !OnlyStandaloneData.Contains(what)) return;
             CathodeFile v = get(_vanilla), m = get(_mod), d = get(_dest);
             if (v == null || m == null || d == null) return;
             byte[] vb = Written(v), mb = Written(m);
@@ -857,6 +969,7 @@ namespace CathodeLib
             string destPath = d.Filepath;
             m.Save(destPath);
             set(_dest, m);
+            TakenAssets.Add(what);
         }
 
         private static byte[] Written(CathodeFile file)

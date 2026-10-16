@@ -61,15 +61,16 @@ namespace CathodeLib
         /// from, so on an unedited level a real drift means per-instance work the parameter
         /// conversions cannot reproduce - and the copy detaches the mover from the material the
         /// Commands resource points at, which the engine refuses to draw (CM9 poison gas,
-        /// SCI_AndroidLab fog carpet). Defaults to true only while the level carries no
-        /// OpenCAGE modification metadata; an edited level keeps rebuild-wins so edits land.
+        /// SCI_AndroidLab fog carpet). On by default. It once turned off for levels carrying OpenCAGE's
+        /// modification metadata, but nothing wrote any until that became the editor's edit history
+        /// (which composites the user changed, when) - so on is how every level has always built, and
+        /// recording edits must not change what a build makes.
         /// </summary>
-        public bool PreferShippedOnConstantDrift;
+        public bool PreferShippedOnConstantDrift = true;
 
         public MaterialFactory(Level level)
         {
             _level = level;
-            PreferShippedOnConstantDrift = !(_level?.Commands?.Utils?.HasAnyModificationInfo ?? false);
             if (_level?.Materials?.Entries == null)
                 return;
 

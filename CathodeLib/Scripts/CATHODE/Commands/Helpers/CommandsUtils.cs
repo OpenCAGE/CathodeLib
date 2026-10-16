@@ -38,6 +38,7 @@ namespace CATHODE.Scripting
         private CompositePurgeTable _compPurges = new CompositePurgeTable();
         private EntityNameTable _entityNames = new EntityNameTable();
         private CompositeModificationInfoTable _modificationInfo = new CompositeModificationInfoTable();
+        private AssetModificationInfoTable _assetModificationInfo = new AssetModificationInfoTable();
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
         private ColourParameterTable _colourParameters = new ColourParameterTable();
 
@@ -2043,11 +2044,40 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
-        /// True when any composite carries OpenCAGE modification metadata - i.e. this level has
-        /// been edited by the tool at some point, so shipped compiler outputs can no longer be
-        /// assumed to reflect the current Commands.
+        /// True when any composite carries OpenCAGE modification metadata - i.e. the user has changed it in OpenCAGE.
         /// </summary>
         public bool HasAnyModificationInfo => _modificationInfo?.modification_info?.Count > 0;
+
+        /// <summary>Every composite's modification metadata: when the user last changed it.</summary>
+        public IReadOnlyList<CompositeModificationInfoTable.ModificationInfo> AllModificationInfo => _modificationInfo.modification_info;
+
+        /// <summary>Forget every composite's and asset's modification metadata - for a copy of the level going elsewhere.</summary>
+        public void ClearModificationInfo()
+        {
+            _modificationInfo.modification_info.Clear();
+            _assetModificationInfo.modification_info.Clear();
+        }
+
+        /// <summary>
+        /// Record that the user changed one of the level's assets - a model, a texture, a material, its galaxy... - now
+        /// (or at the given unix time).
+        /// </summary>
+        public void SetAssetModificationInfo(AssetModificationInfoTable.AssetKind kind, string name, int editorVersion, int? when = null)
+        {
+            if (string.IsNullOrEmpty(name))
+                return;
+            _assetModificationInfo.modification_info.RemoveAll(o => o.kind == kind && o.name == name);
+            _assetModificationInfo.modification_info.Add(new AssetModificationInfoTable.ModificationInfo()
+            {
+                kind = kind,
+                name = name,
+                editor_version = editorVersion,
+                modification_date = when ?? (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            });
+        }
+
+        /// <summary>Every asset's modification metadata: when the user last changed it.</summary>
+        public IReadOnlyList<AssetModificationInfoTable.ModificationInfo> AllAssetModificationInfo => _assetModificationInfo.modification_info;
 
         /// <summary>
         /// Get the modification metadata for a composite (if it exists)
@@ -2341,6 +2371,10 @@ namespace CATHODE.Scripting
             else
                 Console.WriteLine("Loaded modification info for " + _modificationInfo.modification_info.Count + " composites!");
 
+            _assetModificationInfo = (AssetModificationInfoTable)CustomTable.ReadTable(filepath, CustomTableType.ASSET_MODIFICATION_INFO);
+            if (_assetModificationInfo == null)
+                _assetModificationInfo = new AssetModificationInfoTable();
+
             _pinInfo = (CompositePinInfoTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PIN_INFO);
             if (_pinInfo == null) 
                 _pinInfo = new CompositePinInfoTable();
@@ -2543,6 +2577,9 @@ namespace CATHODE.Scripting
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_MODIFICATION_INFO, _modificationInfo);
             Console.WriteLine("Saved modification info for " + _modificationInfo.modification_info.Count + " composites!");
+
+            CustomTable.WriteTable(filepath, CustomTableType.ASSET_MODIFICATION_INFO, _assetModificationInfo);
+            Console.WriteLine("Saved modification info for " + _assetModificationInfo.modification_info.Count + " assets!");
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PIN_INFO, _pinInfo);
             Console.WriteLine("Saved custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
