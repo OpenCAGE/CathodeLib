@@ -171,8 +171,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(DYNAMIC_PHYSICS_SYSTEM envAnim)
         {
-            if (!_writeList.Contains(envAnim)) return -1;
-            return _writeList.IndexOf(envAnim);
+            return _writeList.IndexOf(envAnim); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>

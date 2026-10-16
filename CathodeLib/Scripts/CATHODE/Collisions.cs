@@ -234,8 +234,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(WeightedCollision collision)
         {
-            if (!_writeList.Contains(collision)) return -1;
-            return _writeList.IndexOf(collision);
+            return _writeList.IndexOf(collision); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>

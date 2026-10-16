@@ -377,8 +377,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(TEX4 texture)
         {
-            if (!_writeList.Contains(texture)) return -1;
-            return _writeList.IndexOf(texture);
+            return _writeList.IndexOf(texture); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>

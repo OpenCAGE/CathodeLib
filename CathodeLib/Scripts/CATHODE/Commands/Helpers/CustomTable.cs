@@ -788,8 +788,43 @@ namespace CathodeLib
                 return 249714186 + EqualityComparer<List<NodeMeta>>.Default.GetHashCode(Nodes);
             }
 
+            /// <summary>
+            /// A deep copy, sharing nothing with this one: what ObjectExtensions.Copy makes of it, without the reflection (which
+            /// made copying the bundled layouts into a level's own a fifth of opening the level). A list or class added to these
+            /// types needs copying here too; fields of plain values come with MemberwiseClone.
+            /// </summary>
+            public FlowgraphMeta Clone()
+            {
+                FlowgraphMeta copy = (FlowgraphMeta)MemberwiseClone();
+                if (Nodes != null)
+                {
+                    copy.Nodes = new List<NodeMeta>(Nodes.Count);
+                    foreach (NodeMeta node in Nodes)
+                        copy.Nodes.Add(node?.Clone());
+                }
+                return copy;
+            }
+
             public class NodeMeta
             {
+                public NodeMeta Clone()
+                {
+                    NodeMeta copy = (NodeMeta)MemberwiseClone();
+                    if (ConnectionsOut != null)
+                    {
+                        copy.ConnectionsOut = new List<ConnectionMeta>(ConnectionsOut.Count);
+                        foreach (ConnectionMeta connection in ConnectionsOut)
+                            copy.ConnectionsOut.Add(connection?.Clone());
+                    }
+                    if (UnlinkedPins != null)
+                    {
+                        copy.UnlinkedPins = new List<UnlinkedPinMeta>(UnlinkedPins.Count);
+                        foreach (UnlinkedPinMeta pin in UnlinkedPins)
+                            copy.UnlinkedPins.Add(pin?.Clone());
+                    }
+                    return copy;
+                }
+
                 public ShortGuid EntityGUID;
                 public int NodeID;
                 public Point Position;
@@ -827,6 +862,8 @@ namespace CathodeLib
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;
 
+                    public ConnectionMeta Clone() => (ConnectionMeta)MemberwiseClone();
+
                     public bool Equals(ConnectionMeta other)
                     {
                         if (other is null) return false;
@@ -856,6 +893,8 @@ namespace CathodeLib
                     public ShortGuid ParameterGUID;
                     public byte PinLocation;
                     public byte PinStyle;
+
+                    public UnlinkedPinMeta Clone() => (UnlinkedPinMeta)MemberwiseClone();
                 }
             }
 

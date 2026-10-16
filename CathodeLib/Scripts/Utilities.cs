@@ -65,9 +65,115 @@ namespace CathodeLib
         }
         public static T[] ConsumeArray<T>(BinaryReader reader, int count)
         {
+            //Read in one go where the bytes are the values as they sit in memory (see BlockCopy): the same array, without
+            //a buffer, a pin and a marshal per element - which, for the radiosity, model and texture tables, is a lot
+            if (count > 0 && BlockCopy<T>.Supported)
+            {
+                long total = (long)BlockCopy<T>.Size * count;
+                if (total <= int.MaxValue)
+                {
+                    byte[] bytes = reader.ReadBytes((int)total);
+                    if (bytes.Length == total)
+                    {
+                        T[] block = new T[count];
+                        GCHandle handle = GCHandle.Alloc(block, GCHandleType.Pinned);
+                        try { Marshal.Copy(bytes, 0, handle.AddrOfPinnedObject(), bytes.Length); }
+                        finally { handle.Free(); }
+                        return block;
+                    }
+                    //Short of the end: as it always was, element by element, from where it started
+                    reader.BaseStream.Position -= bytes.Length;
+                }
+            }
+            else if (count > 0)
+            {
+                //Marshalled still (a class laid out sequentially, or a struct a byte copy wouldn't match), but read in one go and
+                //pinned once: each element is marshalled from where it lies, rather than read into a buffer of its own and pinned
+                int size = Marshal.SizeOf(typeof(T));
+                long total = (long)size * count;
+                if (size > 0 && total <= int.MaxValue)
+                {
+                    byte[] bytes = reader.ReadBytes((int)total);
+                    if (bytes.Length == total)
+                    {
+                        T[] marshalled = new T[count];
+                        GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                        try
+                        {
+                            IntPtr start = handle.AddrOfPinnedObject();
+                            for (int i = 0; i < count; i++)
+                                marshalled[i] = (T)Marshal.PtrToStructure(start + i * size, typeof(T));
+                        }
+                        finally
+                        {
+                            handle.Free();
+                        }
+                        return marshalled;
+                    }
+                    reader.BaseStream.Position -= bytes.Length;
+                }
+            }
+
             T[] toReturn = new T[count];
             for (int i = 0; i < count; i++) toReturn[i] = Consume<T>(reader);
             return toReturn;
+        }
+
+        /// <summary>
+        /// Whether whole arrays of T can be copied as bytes, in one go, instead of marshalled an element at a time - giving
+        /// exactly what the marshaller would. That needs a struct of plain numbers with its fields laid out back to back:
+        /// pinnable (no references, bool or char, which marshal differently to how they sit in memory), its array stride
+        /// what Marshal.SizeOf says, and no padding (the marshaller leaves a struct's padding zeroed on a read, where a copy
+        /// would bring the file's bytes into it, and those would then be written back out).
+        /// </summary>
+        private static class BlockCopy<T>
+        {
+            public static readonly bool Supported;
+            public static readonly int Size;
+
+            static BlockCopy()
+            {
+                try
+                {
+                    Type type = typeof(T);
+                    if (!type.IsValueType || type.IsEnum || type == typeof(bool) || type == typeof(char) || type.IsGenericType)
+                        return;
+                    Size = Marshal.SizeOf(type);
+                    T[] probe = new T[2];
+                    GCHandle handle = GCHandle.Alloc(probe, GCHandleType.Pinned);
+                    try
+                    {
+                        long stride = Marshal.UnsafeAddrOfPinnedArrayElement(probe, 1).ToInt64() - Marshal.UnsafeAddrOfPinnedArrayElement(probe, 0).ToInt64();
+                        Supported = stride == Size && Size > 0 && FieldBytes(type) == Size;
+                    }
+                    finally
+                    {
+                        handle.Free();
+                    }
+                }
+                catch
+                {
+                    Supported = false;
+                }
+            }
+
+            //The bytes of a value's fields alone, without padding: -1 for anything but plain numbers and structs of them
+            private static long FieldBytes(Type type)
+            {
+                if (type.IsPrimitive)
+                    return type == typeof(bool) || type == typeof(char) || type == typeof(IntPtr) || type == typeof(UIntPtr) ? -1 : Marshal.SizeOf(type);
+                if (!type.IsValueType || type.IsEnum)
+                    return -1;
+                long total = 0;
+                foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    long bytes = FieldBytes(field.FieldType);
+                    if (bytes < 0)
+                        return -1;
+                    total += bytes;
+                }
+                return total;
+            }
         }
         public static T[] ConsumeArray<T>(byte[] bytes, int count)
         {
@@ -206,7 +312,46 @@ namespace CathodeLib
         }
         public static void Write<T>(BinaryWriter stream, T[] aux)
         {
+            //In one go where the marshaller would only copy the bytes anyway (see BlockCopy)
+            if (aux.Length > 0 && BlockCopy<T>.Supported && (long)BlockCopy<T>.Size * aux.Length <= int.MaxValue)
+            {
+                byte[] bytes = new byte[BlockCopy<T>.Size * aux.Length];
+                GCHandle handle = GCHandle.Alloc(aux, GCHandleType.Pinned);
+                try { Marshal.Copy(handle.AddrOfPinnedObject(), bytes, 0, bytes.Length); }
+                finally { handle.Free(); }
+                stream.Write(bytes);
+                return;
+            }
+            //Marshalled still, but into one buffer, pinned once - not an unmanaged block, a buffer and a copy for each element.
+            //Only when every element is exactly a T: each is otherwise sized as whatever it is
+            if (aux.Length > 0 && (long)Marshal.SizeOf(typeof(T)) * aux.Length <= int.MaxValue && AllExactly(aux))
+            {
+                int size = Marshal.SizeOf(typeof(T));
+                byte[] bytes = new byte[size * aux.Length];
+                GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                try
+                {
+                    IntPtr start = handle.AddrOfPinnedObject();
+                    for (int i = 0; i < aux.Length; i++)
+                        Marshal.StructureToPtr(aux[i], start + i * size, true);
+                }
+                finally
+                {
+                    handle.Free();
+                }
+                stream.Write(bytes);
+                return;
+            }
             for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
+        }
+        private static bool AllExactly<T>(T[] items)
+        {
+            if (typeof(T).IsValueType)
+                return true;
+            for (int i = 0; i < items.Length; i++)
+                if (items[i] == null || items[i].GetType() != typeof(T))
+                    return false;
+            return true;
         }
         public static void Write<T>(BinaryWriter stream, List<T> aux)
         {
@@ -610,10 +755,17 @@ namespace CathodeLib
 
 #if GODOT
         /// <summary>
-        /// Loads lookup tables from streaming_assets/ (or data/) beside the exported exe, .NET output folder, or Godot project root.
+        /// Loads a lookup table: the copy compiled into the build, else one in streaming_assets/ (or data/) beside the exported exe,
+        /// .NET output folder, or Godot project root.
         /// </summary>
         internal static byte[] ReadStreamingAsset(string fileName)
         {
+            //The copy compiled into this build is the current one: a file of the same name on disk (an older export's
+            //streaming_assets, say, which once shipped a July info.dat that won over the embedded one) is only looked for
+            //when the build has none
+            if (TryReadEmbeddedStreamingAsset(fileName, out byte[] embedded))
+                return embedded;
+
             List<string> searchedPaths = new List<string>();
             foreach (string directory in GetStreamingAssetSearchDirectories())
             {
@@ -622,9 +774,6 @@ namespace CathodeLib
                 if (File.Exists(path))
                     return File.ReadAllBytes(path);
             }
-
-            if (TryReadEmbeddedStreamingAsset(fileName, out byte[] embedded))
-                return embedded;
 
             throw new FileNotFoundException(
                 $"Streaming asset '{fileName}' was not found on disk or as an embedded resource. Checked:\n{string.Join(System.Environment.NewLine, searchedPaths)}");

@@ -592,9 +592,11 @@ namespace CATHODE
                     Composite comp = Entries[c];
                     if (comp?.functions == null) continue;
                     List<(int texture, int function, FunctionEntity entity, Textures.TEX4 tex)> maps = new List<(int, int, FunctionEntity, Textures.TEX4)>();
-                    for (int f = 0; f < comp.functions.Count; f++)
+                    //Copied out once (each read of comp.functions copies them all): it was two copies for each function
+                    ReadOnlyEntityCollection<FunctionEntity> functions = comp.functions;
+                    for (int f = 0; f < functions.Count; f++)
                     {
-                        FunctionEntity function = comp.functions[f];
+                        FunctionEntity function = functions[f];
                         if (function == null || function.function != FunctionType.EnvironmentMap)
                             continue;
                         ResolveEnvironmentMapTexture(function, _textures, _globalTextures, out Textures.TEX4 tex, out Textures db);

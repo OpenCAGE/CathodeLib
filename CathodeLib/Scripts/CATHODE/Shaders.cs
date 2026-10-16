@@ -445,8 +445,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(Shader shader)
         {
-            if (!_writeList.Contains(shader)) return -1;
-            return _writeList.IndexOf(shader);
+            return _writeList.IndexOf(shader); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>

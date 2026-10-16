@@ -1064,6 +1064,14 @@ namespace CATHODE.Scripting
         /// </summary>
         public List<(ShortGuid, ParameterVariant, DataType)> GetAllParameters(FunctionType function)
         {
+            //Decoded from the vanilla table once per function type (it doesn't change): a copy of that each time, as the caller may add to it
+            return new List<(ShortGuid, ParameterVariant, DataType)>(_functionParameters.GetOrAdd(function, o => ReadAllParameters(o).ToArray()));
+        }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<FunctionType, (ShortGuid, ParameterVariant, DataType)[]> _functionParameters
+            = new System.Collections.Concurrent.ConcurrentDictionary<FunctionType, (ShortGuid, ParameterVariant, DataType)[]>();
+
+        private static List<(ShortGuid, ParameterVariant, DataType)> ReadAllParameters(FunctionType function)
+        {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
             {
@@ -1621,19 +1629,28 @@ namespace CATHODE.Scripting
         /// </summary>
         public ShortGuid GetRelay(ShortGuid guid)
         {
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
+            //The vanilla relay table, read once into a lookup (each method's first entry, as the scan found): it was read through
+            //from the start on every call, which a flowgraph page made per pin
+            Dictionary<uint, uint> relays = _relays;
+            if (relays == null)
             {
-                reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item1;
-                for (int i = 0; i < CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item2; i++)
+                relays = new Dictionary<uint, uint>();
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
                 {
-                    UInt32 method = reader.ReadUInt32();
-                    UInt32 relay = reader.ReadUInt32();
-                    if (method == guid.AsUInt32)
-                        return new ShortGuid(relay);
+                    reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item1;
+                    for (int i = 0; i < CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item2; i++)
+                    {
+                        UInt32 method = reader.ReadUInt32();
+                        UInt32 relay = reader.ReadUInt32();
+                        if (!relays.ContainsKey(method))
+                            relays.Add(method, relay);
+                    }
                 }
+                _relays = relays;
             }
-            return ShortGuid.Invalid;
+            return relays.TryGetValue(guid.AsUInt32, out uint found) ? new ShortGuid(found) : ShortGuid.Invalid;
         }
+        private static Dictionary<uint, uint> _relays = null;
         #endregion
 
         #region Enum Utils
@@ -2251,9 +2268,12 @@ namespace CATHODE.Scripting
                 if (composite?.functions == null)
                     continue;
 
-                for (int x = 0; x < composite.functions.Count; x++)
+                //The functions copied out once: every read of composite.functions makes a new copy of them all, and this was
+                //two of those for each function
+                ReadOnlyEntityCollection<FunctionEntity> functions = composite.functions;
+                for (int x = 0; x < functions.Count; x++)
                 {
-                    FunctionEntity function = composite.functions[x];
+                    FunctionEntity function = functions[x];
                     if (function == null)
                         continue;
 

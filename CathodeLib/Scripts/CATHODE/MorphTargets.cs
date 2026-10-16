@@ -142,8 +142,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(MorphTarget morphTarget)
         {
-            if (!_writeList.Contains(morphTarget)) return -1;
-            return _writeList.IndexOf(morphTarget);
+            return _writeList.IndexOf(morphTarget); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>

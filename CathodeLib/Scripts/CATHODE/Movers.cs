@@ -338,8 +338,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(MOVER_DESCRIPTOR mover)
         {
-            if (!_writeList.Contains(mover)) return -1;
-            return _writeList.IndexOf(mover);
+            return _writeList.IndexOf(mover); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>
