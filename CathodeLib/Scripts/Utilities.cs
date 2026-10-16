@@ -65,53 +65,64 @@ namespace CathodeLib
         }
         public static T[] ConsumeArray<T>(BinaryReader reader, int count)
         {
-            //Read in one go where the bytes are the values as they sit in memory (see BlockCopy): the same array, without
-            //a buffer, a pin and a marshal per element - which, for the radiosity, model and texture tables, is a lot
-            if (count > 0 && BlockCopy<T>.Supported)
+            //Read in one go, where the stream can be put back if that doesn't work out: anything else (short of the end, a type
+            //the marshaller refuses part-way) is read as it always was, element by element from where it started, so what
+            //comes back, where the stream is left and what is thrown are all as they were
+            if (count > 0 && reader.BaseStream.CanSeek)
             {
-                long total = (long)BlockCopy<T>.Size * count;
-                if (total <= int.MaxValue)
+                long start = reader.BaseStream.Position;
+                try
                 {
-                    byte[] bytes = reader.ReadBytes((int)total);
-                    if (bytes.Length == total)
+                    //Where the bytes are the values as they sit in memory (see BlockCopy): the same array, without a buffer, a
+                    //pin and a marshal per element - which, for the radiosity, model and texture tables, is a lot
+                    if (BlockCopy<T>.Supported)
                     {
-                        T[] block = new T[count];
-                        GCHandle handle = GCHandle.Alloc(block, GCHandleType.Pinned);
-                        try { Marshal.Copy(bytes, 0, handle.AddrOfPinnedObject(), bytes.Length); }
-                        finally { handle.Free(); }
-                        return block;
+                        long total = (long)BlockCopy<T>.Size * count;
+                        if (total <= int.MaxValue)
+                        {
+                            byte[] bytes = reader.ReadBytes((int)total);
+                            if (bytes.Length == total)
+                            {
+                                T[] block = new T[count];
+                                GCHandle handle = GCHandle.Alloc(block, GCHandleType.Pinned);
+                                try { Marshal.Copy(bytes, 0, handle.AddrOfPinnedObject(), bytes.Length); }
+                                finally { handle.Free(); }
+                                return block;
+                            }
+                        }
                     }
-                    //Short of the end: as it always was, element by element, from where it started
-                    reader.BaseStream.Position -= bytes.Length;
+                    //Marshalled still (a class laid out sequentially, or a struct a byte copy wouldn't match), but read in one go
+                    //and pinned once: each element is marshalled from where it lies, not read into a buffer of its own and pinned
+                    else
+                    {
+                        int size = Marshal.SizeOf(typeof(T));
+                        long total = (long)size * count;
+                        if (size > 0 && total <= int.MaxValue)
+                        {
+                            byte[] bytes = reader.ReadBytes((int)total);
+                            if (bytes.Length == total)
+                            {
+                                T[] marshalled = new T[count];
+                                GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                                try
+                                {
+                                    IntPtr first = handle.AddrOfPinnedObject();
+                                    for (int i = 0; i < count; i++)
+                                        marshalled[i] = (T)Marshal.PtrToStructure(first + i * size, typeof(T));
+                                }
+                                finally
+                                {
+                                    handle.Free();
+                                }
+                                return marshalled;
+                            }
+                        }
+                    }
                 }
-            }
-            else if (count > 0)
-            {
-                //Marshalled still (a class laid out sequentially, or a struct a byte copy wouldn't match), but read in one go and
-                //pinned once: each element is marshalled from where it lies, rather than read into a buffer of its own and pinned
-                int size = Marshal.SizeOf(typeof(T));
-                long total = (long)size * count;
-                if (size > 0 && total <= int.MaxValue)
+                catch
                 {
-                    byte[] bytes = reader.ReadBytes((int)total);
-                    if (bytes.Length == total)
-                    {
-                        T[] marshalled = new T[count];
-                        GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-                        try
-                        {
-                            IntPtr start = handle.AddrOfPinnedObject();
-                            for (int i = 0; i < count; i++)
-                                marshalled[i] = (T)Marshal.PtrToStructure(start + i * size, typeof(T));
-                        }
-                        finally
-                        {
-                            handle.Free();
-                        }
-                        return marshalled;
-                    }
-                    reader.BaseStream.Position -= bytes.Length;
                 }
+                reader.BaseStream.Position = start;
             }
 
             T[] toReturn = new T[count];
@@ -323,24 +334,41 @@ namespace CathodeLib
                 return;
             }
             //Marshalled still, but into one buffer, pinned once - not an unmanaged block, a buffer and a copy for each element.
-            //Only when every element is exactly a T: each is otherwise sized as whatever it is
-            if (aux.Length > 0 && (long)Marshal.SizeOf(typeof(T)) * aux.Length <= int.MaxValue && AllExactly(aux))
+            //Only when every element is exactly a T (each is otherwise sized as whatever it is), and nothing is written unless
+            //all of them marshal: one the marshaller refuses goes element by element as before, writing what it always wrote
+            //ahead of the same exception
+            if (aux.Length > 0 && AllExactly(aux))
             {
-                int size = Marshal.SizeOf(typeof(T));
-                byte[] bytes = new byte[size * aux.Length];
-                GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                byte[] bytes = null;
                 try
                 {
-                    IntPtr start = handle.AddrOfPinnedObject();
-                    for (int i = 0; i < aux.Length; i++)
-                        Marshal.StructureToPtr(aux[i], start + i * size, true);
+                    int size = Marshal.SizeOf(typeof(T));
+                    if ((long)size * aux.Length <= int.MaxValue)
+                    {
+                        byte[] buffer = new byte[size * aux.Length];
+                        GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                        try
+                        {
+                            IntPtr start = handle.AddrOfPinnedObject();
+                            for (int i = 0; i < aux.Length; i++)
+                                Marshal.StructureToPtr(aux[i], start + i * size, true);
+                        }
+                        finally
+                        {
+                            handle.Free();
+                        }
+                        bytes = buffer;
+                    }
                 }
-                finally
+                catch
                 {
-                    handle.Free();
+                    bytes = null;
                 }
-                stream.Write(bytes);
-                return;
+                if (bytes != null)
+                {
+                    stream.Write(bytes);
+                    return;
+                }
             }
             for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
         }
@@ -795,8 +823,35 @@ namespace CathodeLib
             {
                 content = null;
             }
+            if (content != null && content.Length > 0)
+                return true;
 
-            return content != null && content.Length > 0;
+            /* Not under the name the Resources class asks for: a host project that compiles these sources embeds the resx
+               under its own namespace unless told otherwise (the viewer once did, so this copy was never found and the
+               build only worked while a loose copy sat beside the exe). Found by the end of its name instead. */
+            if (fileName == "info.dat")
+            {
+                string[] resources;
+                try { resources = typeof(Utilities).Assembly.GetManifestResourceNames(); }
+                catch { resources = new string[0]; }
+                foreach (string resource in resources)
+                {
+                    if (!resource.EndsWith("Properties.Resources.resources", StringComparison.Ordinal))
+                        continue;
+                    try
+                    {
+                        System.Resources.ResourceManager manager = new System.Resources.ResourceManager(resource.Substring(0, resource.Length - ".resources".Length), typeof(Utilities).Assembly);
+                        content = manager.GetObject("info") as byte[];
+                        if (content != null && content.Length > 0)
+                            return true;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            content = null;
+            return false;
         }
 
         private static IEnumerable<string> GetStreamingAssetSearchDirectories()
