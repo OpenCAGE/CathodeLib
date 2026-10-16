@@ -20,12 +20,34 @@ namespace CATHODE
         /// </summary>
         public System.Action<long, long> OnSaveProgress;
 
-        public PAK2(string path) : base(path) { }
-        public PAK2(MemoryStream stream, string path = "") : base(stream, path) { }
-        public PAK2(byte[] data, string path = "") : base(data, path) { }
+        /* Read from the file where it is (LoadFromFile): ANIMATION.PAK is 470 MB, and reading all of it into memory first only for
+           each entry to be copied out of it left a 470 MB copy behind, gone again once loaded but kept as a hole in the large object
+           heap. A stream or bytes given are loaded just as before. */
+        protected override bool HandlesLoadingManually => true;
+
+        public PAK2(string path) : base(path)
+        {
+            _loaded = LoadFromFile(Read, 1 << 16);
+        }
+        public PAK2(MemoryStream stream, string path = "") : base(stream, path)
+        {
+            _loaded = Load(stream);
+        }
+        public PAK2(byte[] data, string path = "") : base(data, path)
+        {
+            using (var stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
+        {
+            return Read(stream);
+        }
+
+        private bool Read(Stream stream)
         {
             using (BinaryReader reader = new BinaryReader(stream))
             {

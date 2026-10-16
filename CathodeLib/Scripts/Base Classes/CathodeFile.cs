@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.ExceptionServices;
 using System.Text;
 
 namespace CathodeLib
@@ -60,6 +61,93 @@ namespace CathodeLib
         protected bool Load()
         {
             return Load(File.Exists(_filepath) ? new MemoryStream(File.ReadAllBytes(_filepath)) : null);
+        }
+
+        /// <summary>
+        /// Load as <see cref="Load()"/> does, but from the file where it is rather than a copy of all of it in memory: for a format
+        /// whose file runs to hundreds of MB and is only read through once (each entry copied out), so it is never in memory twice.
+        /// It is opened as Load opens it to read it all, so what failed to open before fails the same way - and what fails in
+        /// reading the file itself (a drive gone, a bad sector) is still thrown, as it was from Load's read of all of it, rather
+        /// than taken for the file failing to load. <paramref name="read"/> is given it in LoadInternal's place.
+        /// </summary>
+        protected bool LoadFromFile(Func<Stream, bool> read, int bufferSize)
+        {
+            if (!File.Exists(_filepath))
+                return Load(null);
+
+            using (FileStream stream = new FileStream(_filepath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize))
+            {
+                OnLoadBegin?.Invoke(_filepath);
+                if (stream.Length == 0) return false;
+
+                try
+                {
+#if !CATHODE_FAIL_HARD
+                    try
+                    {
+#endif
+                        if (read(new MarkedReads(stream)))
+                        {
+                            OnLoadSuccess?.Invoke(_filepath);
+                            return true;
+                        }
+                        else return false;
+#if !CATHODE_FAIL_HARD
+                    }
+                    catch (Exception e) when (!(e is FileReadFailure))
+                    {
+                        return false;
+                    }
+#endif
+                }
+                catch (FileReadFailure failure)
+                {
+                    ExceptionDispatchInfo.Capture(failure.InnerException).Throw();
+                    throw;
+                }
+            }
+        }
+
+        //What the file itself failed to give, as LoadFromFile's read met it (see there)
+        private sealed class FileReadFailure : Exception
+        {
+            public FileReadFailure(Exception inner) : base(inner.Message, inner) { }
+        }
+
+        //The file for LoadFromFile's read: its reads' own failures marked as such. Seeks are left as they are - one before the
+        //start is the parse going wrong, and was as much a failure to load when it was a seek in a copy of the file.
+        private sealed class MarkedReads : Stream
+        {
+            private readonly Stream _file;
+            public MarkedReads(Stream file) { _file = file; }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                try { return _file.Read(buffer, offset, count); }
+                catch (Exception e) { throw new FileReadFailure(e); }
+            }
+            public override int ReadByte()
+            {
+                try { return _file.ReadByte(); }
+                catch (Exception e) { throw new FileReadFailure(e); }
+            }
+#if GODOT
+            //.NET's BinaryReader reads into spans: straight through, rather than Stream's copy by way of a rented array
+            public override int Read(Span<byte> buffer)
+            {
+                try { return _file.Read(buffer); }
+                catch (Exception e) { throw new FileReadFailure(e); }
+            }
+#endif
+            public override bool CanRead => _file.CanRead;
+            public override bool CanSeek => _file.CanSeek;
+            public override bool CanWrite => false;
+            public override long Length => _file.Length;
+            public override long Position { get => _file.Position; set => _file.Position = value; }
+            public override long Seek(long offset, SeekOrigin origin) => _file.Seek(offset, origin);
+            public override void Flush() { }
+            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
 
         /// <summary>

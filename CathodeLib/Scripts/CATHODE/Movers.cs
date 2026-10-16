@@ -93,6 +93,9 @@ namespace CATHODE
                 {
                     envMapReader.BaseStream.Position += 8;
                     int envMapEntryCount = envMapReader.ReadInt32();
+                    //The cube maps in write order, gathered for the first row that wants one: GetAtWriteIndexForEnvMap
+                    //counts through every texture for each row, and a level has thousands of rows
+                    List<Textures.TEX4> cubes = null;
                     for (int i = 0; i < envMapEntryCount; i++)
                     {
                         int mover = envMapReader.ReadInt32();
@@ -103,7 +106,9 @@ namespace CATHODE
                         //Placeholder until SetEnvironmentMapIndexing resolves the row properly: the
                         //cube ordinal only coincides with the entity index while no two entities
                         //share a cubemap.
-                        environmentMaps[mover] = _textures.GetAtWriteIndexForEnvMap(index);
+                        if (cubes == null)
+                            cubes = _textures.GetEnvMapsInWriteOrder();
+                        environmentMaps[mover] = index >= 0 && index < cubes.Count ? cubes[index] : null;
                     }
                 }
                 _loadedEnvMapIndices = environmentMapIndices;

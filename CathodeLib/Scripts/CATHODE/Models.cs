@@ -89,7 +89,10 @@ namespace CATHODE
             _collisions = weightedCollisions;
             _morphTargets = morphTargets;
 
-            _loaded = Load();
+            /* Read from the file where it is (LoadFromFile): a level's PAK runs to 200 MB and more, and it was read into memory whole
+               twice - by Load, then again below, that first copy never used. A small buffer: the reads go back to the headers after
+               every component's content. */
+            _loaded = LoadFromFile(Read, 4096);
         }
 
         public void ClearReferences()
@@ -105,13 +108,19 @@ namespace CATHODE
         /// </summary>
         override protected bool LoadInternal(MemoryStream stream)
         {
+            return Read(stream);
+        }
+
+        //The PAK from the stream given - the file, open - or decompressed from the file when it is compressed
+        private bool Read(Stream file)
+        {
             //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
             if (_filepath == "")
                 return false;
 
             _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
 
-            if (!File.Exists(GetBinPath())) 
+            if (!File.Exists(GetBinPath()))
                 return false;
 
             Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
@@ -217,7 +226,7 @@ namespace CATHODE
                 }
             }
 
-            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : file)
             using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
@@ -226,6 +235,14 @@ namespace CATHODE
                 pak.BaseStream.Position += 12;
 
                 int endOfHeaders = 32 + (entryCount * 48);
+                //Each model by name, the first in the list with it - the one Entries.FirstOrDefault found, a search of every model
+                //so far for each component
+                Dictionary<string, CS2> modelsByName = new Dictionary<string, CS2>();
+                foreach (CS2 existing in Entries)
+                {
+                    if (existing.Name != null && !modelsByName.ContainsKey(existing.Name))
+                        modelsByName.Add(existing.Name, existing);
+                }
                 for (int i = 0; i < entryCount; i++)
                 {
                     //Read component header info
@@ -242,11 +259,14 @@ namespace CATHODE
                     if (binIndex == -1)
                         continue;
 
-                    CS2 cs2 = Entries.FirstOrDefault(o => o.Name == submeshMetadata[binIndex].cs2Name);
+                    string cs2Name = submeshMetadata[binIndex].cs2Name;
+                    CS2 cs2 = cs2Name == null ? Entries.FirstOrDefault(o => o.Name == null) : (modelsByName.TryGetValue(cs2Name, out CS2 found) ? found : null);
                     if (cs2 == null)
                     {
-                        cs2 = new CS2() { Name = submeshMetadata[binIndex].cs2Name };
+                        cs2 = new CS2() { Name = cs2Name };
                         Entries.Add(cs2);
+                        if (cs2Name != null)
+                            modelsByName.Add(cs2Name, cs2);
                     }
                     CS2.Component component = new CS2.Component();
                     cs2.Components.Add(component);

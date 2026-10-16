@@ -106,10 +106,24 @@ namespace CATHODE
             return false;
         }
 
-        public Textures(string path) : base(path) { }
+        /* Read from the file where it is (LoadFromFile). A level's PAK runs to 400 MB and more, and it was read into memory whole
+           twice - by CathodeFile, then again below, that first copy never used - only for each texture to be copied out of it. A
+           small buffer: the reads go back to the headers after every texture's content. */
+        protected override bool HandlesLoadingManually => true;
+
+        public Textures(string path) : base(path)
+        {
+            _loaded = LoadFromFile(Read, 4096);
+        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
+        {
+            return Read(stream);
+        }
+
+        //The PAK from the stream given - the file, open - or decompressed from the file when it is compressed
+        private bool Read(Stream file)
         {
             //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
             if (_filepath == "")
@@ -165,7 +179,7 @@ namespace CATHODE
                 }
             }
 
-            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : file)
             using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
@@ -397,6 +411,21 @@ namespace CATHODE
                 i++;
             }
             return -1;
+        }
+
+        /// <summary>
+        /// Every environment map (cubemap) in write order: the one at [i] is what <see cref="GetAtWriteIndexForEnvMap"/> gives for i,
+        /// for looking many up without counting through all the textures for each
+        /// </summary>
+        public List<TEX4> GetEnvMapsInWriteOrder()
+        {
+            List<TEX4> cubes = new List<TEX4>();
+            foreach (TEX4 tex in _writeList)
+            {
+                if (tex.StateFlags.HasFlag(TextureStateFlag.CUBE))
+                    cubes.Add(tex);
+            }
+            return cubes;
         }
 
         /// <summary>
