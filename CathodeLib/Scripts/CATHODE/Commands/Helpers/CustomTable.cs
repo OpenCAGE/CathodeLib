@@ -131,14 +131,32 @@ namespace CathodeLib
                 }
             }
 
+            //Every other table comes from the same file, which nothing writes until below: it is read once, as
+            //ReadTable(filepath, ...) reads it (.META first), rather than once per table - a level save writes six tables,
+            //and each of those read the whole COMMANDS.PAK twenty times over
             Dictionary<CustomTableType, Table> toWrite = new Dictionary<CustomTableType, Table>();
+            bool hostRead = false;
+            byte[] hostContent = null;
+            CustomTableFileType hostType = CustomTableFileType.STANDALONE;
             for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
             {
                 CustomTableType tableType = (CustomTableType)i;
                 if (tableType == table)
                     toWrite.Add(tableType, content);
                 else
-                    toWrite.Add(tableType, ReadTable(filepath, tableType));
+                {
+                    if (!hostRead)
+                    {
+                        hostRead = true;
+                        string readPath = File.Exists(filepath + ".META") ? filepath + ".META" : filepath;
+                        if (File.Exists(readPath))
+                        {
+                            hostContent = File.ReadAllBytes(readPath);
+                            hostType = GetFileType(readPath);
+                        }
+                    }
+                    toWrite.Add(tableType, hostContent == null ? null : ReadTable(hostContent, tableType, hostType));
+                }
             }
 
             int endPos;

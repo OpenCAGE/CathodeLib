@@ -478,6 +478,132 @@ namespace CathodeLib
 
         private static IEnumerable<Materials.Material> MatchesByName(Materials materials, string name)
         {
+            NameIndex index = _nameIndex;
+            if (index != null && index.Covers(materials))
+                return index.Matches(name);
+            return MatchesByNameScan(materials, name);
+        }
+
+        /// <summary>
+        /// Index the table's names on this thread until the result is disposed - for the instancing walk, which asks
+        /// for materials by name tens of thousands of times.
+        /// </summary>
+        /// <remarks>
+        /// Each ask was three passes over the whole table, normalising every name in it. While the walk runs the table
+        /// only grows at the end (MaterialFactory appends what it builds; nothing renames, removes or reorders), so the
+        /// three names MatchesByName compares are worked out once per entry, and entries appended since are indexed on
+        /// the next ask. Every bucket holds table positions in table order, so the matches come out in exactly the
+        /// order the passes found them.
+        /// </remarks>
+        internal static IDisposable IndexNamesWhileWalking(Materials materials)
+        {
+            NameIndex previous = _nameIndex;
+            _nameIndex = materials?.Entries == null ? null : new NameIndex(materials);
+            return new NameIndexScope(previous);
+        }
+
+        [ThreadStatic] private static NameIndex _nameIndex;
+
+        private sealed class NameIndexScope : IDisposable
+        {
+            private readonly NameIndex _previous;
+            public NameIndexScope(NameIndex previous) { _previous = previous; }
+            public void Dispose() { _nameIndex = _previous; }
+        }
+
+        private sealed class NameIndex
+        {
+            private readonly Materials _materials;
+            private List<Materials.Material> _list;
+            private int _indexed;
+            private Materials.Material _lastIndexed;
+
+            //Table position -> the entry's normalised name, for the third tier's "not already a second-tier match" test
+            private readonly List<string> _normalizedAt = new List<string>();
+            private readonly Dictionary<string, List<int>> _exact = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            private readonly Dictionary<string, List<int>> _normalized = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            private readonly Dictionary<string, List<int>> _stripped = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+
+            public NameIndex(Materials materials)
+            {
+                _materials = materials;
+            }
+
+            //Whether this index answers for the table (catching up on anything appended); anything else - another table,
+            //a replaced list, a shorter one - and it starts over, so it is never wrong about what is there now
+            public bool Covers(Materials materials)
+            {
+                if (!ReferenceEquals(materials, _materials) || materials.Entries == null)
+                    return false;
+                List<Materials.Material> list = materials.Entries;
+                if (!ReferenceEquals(list, _list) || list.Count < _indexed || (_indexed != 0 && !ReferenceEquals(list[_indexed - 1], _lastIndexed)))
+                    Reset(list);
+                for (int i = _indexed; i < list.Count; i++)
+                    Add(i, list[i]);
+                _indexed = list.Count;
+                _lastIndexed = _indexed != 0 ? list[_indexed - 1] : null;
+                return true;
+            }
+
+            private void Reset(List<Materials.Material> list)
+            {
+                _list = list;
+                _indexed = 0;
+                _lastIndexed = null;
+                _normalizedAt.Clear();
+                _exact.Clear();
+                _normalized.Clear();
+                _stripped.Clear();
+            }
+
+            private void Add(int position, Materials.Material material)
+            {
+                string name = material?.Name;
+                if (string.IsNullOrEmpty(name))
+                {
+                    _normalizedAt.Add(null);
+                    if (name != null)
+                        Bucket(_exact, name).Add(position);
+                    return;
+                }
+                string normalized = NormalizeMaterialNameForLookup(name);
+                _normalizedAt.Add(normalized);
+                Bucket(_exact, name).Add(position);
+                Bucket(_normalized, normalized).Add(position);
+                Bucket(_stripped, NormalizeMaterialNameForLookup(StripAuthoringSlot(name))).Add(position);
+            }
+
+            private static List<int> Bucket(Dictionary<string, List<int>> map, string key)
+            {
+                if (!map.TryGetValue(key, out List<int> bucket))
+                    map[key] = bucket = new List<int>(1);
+                return bucket;
+            }
+
+            //MatchesByNameScan's three passes, read from the buckets
+            public IEnumerable<Materials.Material> Matches(string name)
+            {
+                List<Materials.Material> entries = _list;
+                if (name != null && _exact.TryGetValue(name, out List<int> exact))
+                    foreach (int i in exact)
+                        yield return entries[i];
+
+                string normalized = NormalizeMaterialNameForLookup(name);
+                if (_normalized.TryGetValue(normalized, out List<int> same))
+                    foreach (int i in same)
+                        if (entries[i].Name != name)
+                            yield return entries[i];
+
+                string strippedWanted = NormalizeMaterialNameForLookup(StripAuthoringSlot(name));
+                if (_stripped.TryGetValue(strippedWanted, out List<int> loose))
+                    foreach (int i in loose)
+                        if (entries[i].Name != name && _normalizedAt[i] != normalized)
+                            yield return entries[i];
+            }
+        }
+
+        private static IEnumerable<Materials.Material> MatchesByNameScan(Materials materials, string name)
+        {
             foreach (Materials.Material material in materials.Entries)
                 if (material?.Name == name)
                     yield return material;

@@ -42,15 +42,24 @@ namespace CATHODE
         private sealed class RowIdentity : IEqualityComparer<COLLISION_MAPPING>
         {
             public static readonly RowIdentity Instance = new RowIdentity();
-            public bool Equals(COLLISION_MAPPING x, COLLISION_MAPPING y) { return x == y; }
+            //A row always equals itself (every field == compares is an exact comparison), and comparing is not free:
+            //CollisionInstanceIndex searches the host compound's whole instance list
+            public bool Equals(COLLISION_MAPPING x, COLLISION_MAPPING y) { return ReferenceEquals(x, y) || x == y; }
             public int GetHashCode(COLLISION_MAPPING row)
             {
+                //Not CollisionInstanceIndex, for the same reason - hashing it searched the instance list for every row
+                //indexed and every row looked up (quadratic on a large host). The entity handle, which == also compares,
+                //tells rows apart instead.
                 if (row == null) return 0;
                 int hash = (int)row.Flags;
-                hash = hash * 31 + row.CollisionInstanceIndex;
                 hash = hash * 31 + (int)row.ResourceGUID.AsUInt32;
                 hash = hash * 31 + row.CollisionProxyIndex;
                 hash = hash * 31 + (int)row.ZoneID.AsUInt32;
+                if (row.Entity != null)
+                {
+                    hash = hash * 31 + (int)row.Entity.entity_id.AsUInt32;
+                    hash = hash * 31 + (int)row.Entity.composite_instance_id.AsUInt32;
+                }
                 return hash;
             }
         }

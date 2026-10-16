@@ -278,11 +278,15 @@ namespace CATHODE
                     nameOffset += Entries[i].Name.Length + 1;
                 }
 
-                //Serialize all material entries
+                //Serialize all material entries. Texture slots and shaders resolve through lookups made once here: GetWriteIndex
+                //scanned the whole table for every one of them. Nothing changes either table while this runs.
+                Func<Textures.TEX4, int> levelTextureRows = _levelTextures?.GetWriteIndexLookup();
+                Func<Textures.TEX4, int> globalTextureRows = _globalTextures?.GetWriteIndexLookup();
+                Func<Shaders.Shader, int> shaderRows = _shaders?.GetWriteIndexLookup();
                 byte[][] materialBuffers = new byte[Entries.Count][];
                 Parallel.For(0, Entries.Count, i =>
                 {
-                    materialBuffers[i] = SerializeMaterial(Entries[i], i, isGlobal, matOffsets, matCounts, nameOffsets[i]);
+                    materialBuffers[i] = SerializeMaterial(Entries[i], i, isGlobal, matOffsets, matCounts, nameOffsets[i], levelTextureRows, globalTextureRows, shaderRows);
                 });
 
                 //Write material data
@@ -308,7 +312,8 @@ namespace CATHODE
             return true;
         }
 
-        private byte[] SerializeMaterial(Material material, int index, bool isGlobal, List<int>[] matOffsets, List<int>[] matCounts, int nameOffset)
+        private byte[] SerializeMaterial(Material material, int index, bool isGlobal, List<int>[] matOffsets, List<int>[] matCounts, int nameOffset,
+                                         Func<Textures.TEX4, int> levelTextureRows, Func<Textures.TEX4, int> globalTextureRows, Func<Shaders.Shader, int> shaderRows)
         {
             using (MemoryStream stream = new MemoryStream(296))
             using (BinaryWriter writer = new BinaryWriter(stream))
@@ -322,7 +327,7 @@ namespace CATHODE
                         writer.Write((Int16)(-1));
                         continue;
                     }
-                    writer.Write((Int16)(tex.Location == Source.LEVEL ? _levelTextures.GetWriteIndex(tex.Texture) : _globalTextures.GetWriteIndex(tex.Texture)));
+                    writer.Write((Int16)(tex.Location == Source.LEVEL ? levelTextureRows(tex.Texture) : globalTextureRows(tex.Texture)));
                     writer.Write((Int16)tex.Location);
                 }
 
@@ -335,7 +340,7 @@ namespace CATHODE
                     writer.Write((byte)matCounts[x][index]);
                 writer.Write(new byte[7]);
                 writer.Write(nameOffset);
-                writer.Write(_shaders.GetWriteIndex(material.Shader));
+                writer.Write(shaderRows(material.Shader));
                 writer.Write(new byte[128]);
                 if (material.OfflineLightFeatures != null)
                     material.OfflineLightFeatures.Write(writer);

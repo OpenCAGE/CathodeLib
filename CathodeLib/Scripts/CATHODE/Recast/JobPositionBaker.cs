@@ -243,6 +243,8 @@ namespace CathodeLib.NavMesh
             GlassProbe glass = null;
             ObstacleProbe obstacles = null;
             bool obstaclesTried = false;
+            //Rim stations described by an earlier state, reused wherever a later one stands at the same point (StationDescriptions)
+            var stations = new StationDescriptions();
 
             // The learned spotting selector reads the same station description the cover baker
             // and the training tables use, off the same navmesh soup - so build that soup here
@@ -288,7 +290,7 @@ namespace CathodeLib.NavMesh
                     obstacles = ObstacleProbe.FromLevel(level, log);
                     obstaclesTried = true;
                 }
-                BakeResult result = Bake(state.NavMesh, settings, glass, state.Cover, obstacles, spotModel, learnedProbe, learnedCoverSettings, assaultModel, crawlModel);
+                BakeResult result = Bake(state.NavMesh, settings, glass, state.Cover, obstacles, spotModel, learnedProbe, learnedCoverSettings, assaultModel, crawlModel, stations);
                 state.SpottingPositions = result.Spotting;
                 state.CrawlSpaceSpottingPositions = result.CrawlSpace;
                 state.AssaultPositions = result.Assault;
@@ -297,6 +299,10 @@ namespace CathodeLib.NavMesh
         }
 
         public static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings = null, GlassProbe glass = null, Cover cover = null, ObstacleProbe obstacles = null, CoverGbdtModel spotModel = null, RimCoverGenerator.DepthProbe learnedProbe = null, CoverBakeSettings learnedCoverSettings = null, CoverGbdtModel assaultModel = null, CoverGbdtModel crawlModel = null)
+            => Bake(nav, settings, glass, cover, obstacles, spotModel, learnedProbe, learnedCoverSettings, assaultModel, crawlModel, null);
+
+        /// <param name="stations">Station descriptions shared by one BakeLevel's states.</param>
+        static BakeResult Bake(NavigationMesh nav, JobPositionBakeSettings settings, GlassProbe glass, Cover cover, ObstacleProbe obstacles, CoverGbdtModel spotModel, RimCoverGenerator.DepthProbe learnedProbe, CoverBakeSettings learnedCoverSettings, CoverGbdtModel assaultModel, CoverGbdtModel crawlModel, StationDescriptions stations)
         {
             if (nav == null)
                 throw new ArgumentNullException(nameof(nav));
@@ -369,7 +375,7 @@ namespace CathodeLib.NavMesh
                 ScanLearnedStations(spottingRuns, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(),
                                     spotModel, LearnedThreshold(settings.LearnedSpotThreshold, spotModel), spotScan,
                                     assaultModel, LearnedThreshold(settings.LearnedAssaultThreshold, assaultModel), assaultScan,
-                                    settings.LearnedStationPhase);
+                                    settings.LearnedStationPhase, stations);
             }
             if (learnedSpotting)
                 spottingJobs = LearnedSpottingJobs(spottingRuns, spotModel, learnedProbe, learnedCoverSettings ?? new CoverBakeSettings(), settings, glass, spottingOut, ref glassRejected, spotScan);
@@ -706,6 +712,53 @@ namespace CathodeLib.NavMesh
         const float LearnedStation = 0.25f;
 
         /// <summary>
+        /// Station descriptions kept across the states of one BakeLevel. The states' navmeshes differ only around their exclusive
+        /// masters, so most later stations stand at exactly a point an earlier state described, against the same soup - and a
+        /// description is a function of the point and the inward normal, bar the four run-position entries that
+        /// LearnedCoverFeatures.WriteRunPosition writes afresh.
+        /// </summary>
+        sealed class StationDescriptions
+        {
+            object _probe, _settings;
+            readonly Dictionary<StationKey, float[]> _described = new Dictionary<StationKey, float[]>();
+
+            /// <summary>The descriptions made against this probe and these settings, or null for any other pair.</summary>
+            public Dictionary<StationKey, float[]> For(RimCoverGenerator.DepthProbe probe, CoverBakeSettings settings)
+            {
+                if (probe == null || settings == null)
+                    return null;
+                if (_probe == null) { _probe = probe; _settings = settings; }
+                return ReferenceEquals(_probe, probe) && ReferenceEquals(_settings, settings) ? _described : null;
+            }
+        }
+
+        /// <summary>A rim station by the exact bits of its point and inward normal (so -0 and +0 differ, as they may to Describe).</summary>
+        readonly struct StationKey : IEquatable<StationKey>
+        {
+            readonly int _px, _py, _pz, _nx, _ny, _nz;
+
+            public StationKey(Vector3 p, Vector3 n)
+            {
+                _px = Bits(p.X); _py = Bits(p.Y); _pz = Bits(p.Z);
+                _nx = Bits(n.X); _ny = Bits(n.Y); _nz = Bits(n.Z);
+            }
+
+            static unsafe int Bits(float f) => *(int*)&f;
+
+            public bool Equals(StationKey o) => _px == o._px && _py == o._py && _pz == o._pz && _nx == o._nx && _ny == o._ny && _nz == o._nz;
+            public override bool Equals(object obj) => obj is StationKey o && Equals(o);
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int h = _px;
+                    h = h * 31 + _py; h = h * 31 + _pz; h = h * 31 + _nx; h = h * 31 + _ny; h = h * 31 + _nz;
+                    return h;
+                }
+            }
+        }
+
+        /// <summary>
         /// Describe every station along <paramref name="runs"/> once and score it with one or two
         /// models, keeping the stations each model puts at or above its threshold.
         /// </summary>
@@ -720,10 +773,15 @@ namespace CathodeLib.NavMesh
         static void ScanLearnedStations(
             List<List<RimEdge>> runs, RimCoverGenerator.DepthProbe probe, CoverBakeSettings coverSettings,
             CoverGbdtModel modelA, float thresholdA, List<(float prob, Vector3 on, Vector3 inward)> outA,
-            CoverGbdtModel modelB, float thresholdB, List<(float prob, Vector3 on, Vector3 inward)> outB, float phase)
+            CoverGbdtModel modelB, float thresholdB, List<(float prob, Vector3 on, Vector3 inward)> outB, float phase,
+            StationDescriptions stations = null)
         {
             var perRunA = new List<(float prob, Vector3 on, Vector3 inward)>[runs.Count];
             var perRunB = outB == null ? null : new List<(float prob, Vector3 on, Vector3 inward)>[runs.Count];
+            //What earlier states described against this probe and these settings - only read while the runs are walked; this
+            //state's new descriptions join it afterwards, in run order
+            Dictionary<StationKey, float[]> known = stations?.For(probe, coverSettings);
+            var perRunFresh = known == null ? null : new List<KeyValuePair<StationKey, float[]>>[runs.Count];
             System.Threading.Tasks.Parallel.For(0, runs.Count, r =>
             {
                 List<RimEdge> run = runs[r];
@@ -733,6 +791,7 @@ namespace CathodeLib.NavMesh
                 if (runInward.LengthSquared() < 1e-8f) return;
                 runInward = Vector3.Normalize(runInward);
                 List<(float prob, Vector3 on, Vector3 inward)> a = null, b = null;
+                List<KeyValuePair<StationKey, float[]>> fresh = null;
                 float pos = 0f;
                 foreach (RimEdge e in run)
                 {
@@ -742,7 +801,24 @@ namespace CathodeLib.NavMesh
                     {
                         float t = (i + stationPhase) / steps;
                         Vector3 on = Vector3.Lerp(e.A, e.B, t);
-                        float[] x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, pos + t * e.Length, probe.Bvh, probe, coverSettings);
+                        float posAlong = pos + t * e.Length;
+                        float[] x;
+                        if (known == null)
+                            x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, posAlong, probe.Bvh, probe, coverSettings);
+                        else
+                        {
+                            var key = new StationKey(on, e.Inward);
+                            if (known.TryGetValue(key, out float[] described))
+                            {
+                                x = (float[])described.Clone();
+                                LearnedCoverFeatures.WriteRunPosition(x, e.Length, runLength, posAlong);
+                            }
+                            else
+                            {
+                                x = LearnedCoverFeatures.Describe(on, e.Inward, e.Length, runLength, posAlong, probe.Bvh, probe, coverSettings);
+                                (fresh ??= new List<KeyValuePair<StationKey, float[]>>()).Add(new KeyValuePair<StationKey, float[]>(key, x));
+                            }
+                        }
                         float pa = modelA.Predict(x);
                         if (pa >= thresholdA) (a ??= new List<(float prob, Vector3 on, Vector3 inward)>()).Add((pa, on, runInward));
                         if (modelB == null) continue;
@@ -753,12 +829,19 @@ namespace CathodeLib.NavMesh
                 }
                 perRunA[r] = a;
                 if (perRunB != null) perRunB[r] = b;
+                if (perRunFresh != null) perRunFresh[r] = fresh;
             });
             for (int r = 0; r < runs.Count; r++)
             {
                 if (perRunA[r] != null) outA.AddRange(perRunA[r]);
                 if (perRunB != null && perRunB[r] != null) outB.AddRange(perRunB[r]);
             }
+            if (perRunFresh != null)
+                for (int r = 0; r < runs.Count; r++)
+                    if (perRunFresh[r] != null)
+                        foreach (KeyValuePair<StationKey, float[]> d in perRunFresh[r])
+                            if (!known.ContainsKey(d.Key))
+                                known.Add(d.Key, d.Value);
         }
 
         static List<(float prob, Vector3 on, Vector3 inward)> ScanLearnedStations(

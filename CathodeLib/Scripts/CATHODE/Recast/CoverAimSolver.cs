@@ -37,11 +37,10 @@ namespace CathodeLib.NavMesh
         {
             _settings = settings ?? new CoverBakeSettings();
 
+            //The soup's ray probe is this very build - BVHAccel.Build over the same two arrays, deterministic and only
+            //reading them - and the cover bake has usually made it by now: building a second one was 0.15 s for nothing
             if (soup != null && soup.TriangleCount > 0)
-            {
-                _bvh = new BVHAccel();
-                _bvh.Build(soup.Verts, soup.Tris);
-            }
+                _bvh = soup.RayProbe.Bvh;
 
             if (navMesh?.Polygons != null && navMesh.Vertices != null)
             {

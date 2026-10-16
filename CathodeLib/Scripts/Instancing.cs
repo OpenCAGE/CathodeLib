@@ -565,7 +565,7 @@ namespace CathodeLib
             Composite = composite;
 
             _template = parameterCache != null
-                ? parameterCache.GetOrAdd((entity, composite), key => BuildTemplate(level, key.Item1, key.Item2))
+                ? (parameterCache.TryGetValue((entity, composite), out EntityTemplate cached) ? cached : GetOrBuildTemplate(parameterCache, level, entity, composite))
                 : BuildTemplate(level, entity, composite);
 
             Bools = new Parameters<bool>(_template.Bools);
@@ -591,6 +591,12 @@ namespace CathodeLib
             Vectors.Owner = this; Transforms.Owner = this; Resources.Owner = this; Strings.Owner = this;
 
             //TODO: need to handle triggersequences a bit different i think? they can apply parameter data down
+        }
+
+        //Out of the constructor, so the lambda's closure is allocated on a cache miss rather than on every construction
+        private static EntityTemplate GetOrBuildTemplate(ConcurrentDictionary<(Entity, Composite), EntityTemplate> parameterCache, Level level, Entity entity, Composite composite)
+        {
+            return parameterCache.GetOrAdd((entity, composite), key => BuildTemplate(level, key.Item1, key.Item2));
         }
 
         private static EntityTemplate BuildTemplate(Level level, Entity entity, Composite composite)
@@ -837,14 +843,9 @@ namespace CathodeLib
                         break;
                     case DataType.RESOURCE:
                         {
-                            cResource value = new cResource();
+                            //A default is only made when the entity carries none: making one mints and reserves a random id
                             Parameter p = entity.GetParameter(guid);
-                            switch (p?.content?.dataType)
-                            {
-                                case DataType.RESOURCE:
-                                    value = (cResource)p.content;
-                                    break;
-                            }
+                            cResource value = p?.content?.dataType == DataType.RESOURCE ? (cResource)p.content : new cResource();
                             if (template.Resources == null) template.Resources = new Dictionary<ShortGuid, cResource>();
                             template.Resources.Add(guid, value);
                         }
@@ -856,13 +857,8 @@ namespace CathodeLib
                             //However since it's actually down as a filepath internally, I need to add a special case to convert it back here (and down below).
                             if (guid == ShortGuids.mapping && p?.content?.dataType == DataType.RESOURCE)
                             {
-                                cResource value = new cResource();
-                                switch (p?.content?.dataType)
-                                {
-                                    case DataType.RESOURCE:
-                                        value = (cResource)p.content;
-                                        break;
-                                }
+                                //The test above already makes it a resource: no default (and no random id) to throw away
+                                cResource value = (cResource)p.content;
                                 if (template.Resources == null) template.Resources = new Dictionary<ShortGuid, cResource>();
                                 template.Resources.Add(guid, value);
                             }
@@ -1960,6 +1956,7 @@ namespace CathodeLib
                         }
                     case FunctionType.RandomBool:
                         {
+                            _unseededRolls++;
                             bool result = (float)new Random().NextDouble() < 0.5f;
                             return GetValueAs<T>(result);
                         }
@@ -1987,6 +1984,7 @@ namespace CathodeLib
                         }
                     case FunctionType.RandomVector:
                         {
+                            _unseededRolls++;
                             float minX = Integers.Get(ShortGuids.MinX);
                             float rangeX = Integers.Get(ShortGuids.MaxX) - minX;
                             float randX = (float)new Random().NextDouble() * rangeX;
@@ -2481,6 +2479,23 @@ namespace CathodeLib
 
         public Matrix4x4 CalculateWorldTransformMatrix()
         {
+            /* Once the pass has generated every instance (SettlePlacement), what places an entity - its
+             * own transform, the links driving it, the composite instances above it - never changes, and
+             * the walk and the bakers ask for the same chains again and again: every entity re-derives its
+             * composite instance's matrix, and that instance's parent's, up to the root. So a settled
+             * entity keeps its answer. Not while something is being resolved through a link, though: a
+             * randomiser down a link is seeded on whoever asked (_resolutionRoot), so there the same entity
+             * can rightly place differently, and that is worked out fresh as it always was - as is any
+             * answer that rolled an unseeded randomiser, which differs on every ask. */
+            bool keep = _placementSettled && _resolutionRoot == null;
+            if (keep)
+            {
+                SettledMatrix settled = System.Threading.Volatile.Read(ref _worldMatrix);
+                if (settled != null)
+                    return settled.Value;
+            }
+            int rolls = _unseededRolls;
+
             Transform localTransform = GetAs<Transform>(ShortGuids.position);
             Matrix4x4 localMatrix = localTransform?.AsMatrix() ?? Matrix4x4.Identity;
             if (ParentCompositeInstanceEntity != null)
@@ -2488,7 +2503,31 @@ namespace CathodeLib
                 Matrix4x4 parentWorldMatrix = ParentCompositeInstanceEntity.CalculateWorldTransformMatrix();
                 localMatrix = localMatrix * parentWorldMatrix;
             }
+
+            if (keep && rolls == _unseededRolls)
+                System.Threading.Volatile.Write(ref _worldMatrix, new SettledMatrix(localMatrix));
             return localMatrix;
+        }
+
+        //A settled entity's world matrix (see CalculateWorldTransformMatrix). Boxed so that publishing it is one reference write.
+        private sealed class SettledMatrix
+        {
+            public readonly Matrix4x4 Value;
+            public SettledMatrix(Matrix4x4 value) { Value = value; }
+        }
+        private SettledMatrix _worldMatrix;
+        private bool _placementSettled = false;
+
+        //Unseeded randomiser rolls on this thread - an answer that took one is never kept.
+        [ThreadStatic] private static int _unseededRolls;
+
+        /// <summary>
+        /// Called by the instancing pass once every instance is generated: this entity's transform, links and parent chain are
+        /// final, so its world matrix can be kept from here.
+        /// </summary>
+        internal void SettlePlacement()
+        {
+            _placementSettled = true;
         }
         #endregion
     }
@@ -2862,6 +2901,9 @@ namespace CathodeLib
             }
 
             Phase("GenerateInstances", GenerateInstances);
+            //Every instance, link and alias exists now: nothing that places an entity changes after this
+            foreach (InstancedEntity entity in AllEntities)
+                entity.SettlePlacement();
             if (ProfilePhases)
                 Console.WriteLine("  [phase]   -> " + AllEntities.Count + " instanced entities in " + AllComposites.Count + " composite instances");
             Phase("RekeyAccessorySets", RekeyAccessorySets);
@@ -2878,14 +2920,25 @@ namespace CathodeLib
             // or textures no longer silently regenerates a level's navmesh, cover, jobs and sound.
             if (!SkipAgentBakes)
             {
-                if (navMeshSettings != null)
-                    RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings, Console.WriteLine));
-                if (coverSettings != null)
-                    RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
-                if (jobPositionSettings != null)
-                    RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine, this));
-                if (soundSettings != null)
-                    RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, soundSettings, Console.WriteLine));
+                //None of the four changes the collision, and between them they take the world host's triangles about ten
+                //times under different skip sets - so each root instance's triangles are cut once (HavokPackfile.BuildBakeMesh)
+                HavokPackfile bakeCollision = level.Collision;
+                bakeCollision?.BeginBakeMeshSharing();
+                try
+                {
+                    if (navMeshSettings != null)
+                        RunOptionalBake("navmesh", () => NavMeshBaker.BakeLevel(level, this, navMeshSettings, Console.WriteLine));
+                    if (coverSettings != null)
+                        RunOptionalBake("cover", () => CoverBaker.BakeLevel(level, this, coverSettings));
+                    if (jobPositionSettings != null)
+                        RunOptionalBake("job positions", () => JobPositionBaker.BakeLevel(level, jobPositionSettings, Console.WriteLine, this));
+                    if (soundSettings != null)
+                        RunOptionalBake("sound networks", () => SoundNodeNetworkGenerator.Generate(level, AllEntities, soundSettings, Console.WriteLine));
+                }
+                finally
+                {
+                    bakeCollision?.EndBakeMeshSharing();
+                }
             }
 
             if (!SkipAlphalightBake)
@@ -3020,7 +3073,6 @@ namespace CathodeLib
                     InstanceID = requiredAsset.shortGUID
                 };
                 RequiredAssets.Add(instancedRequiredAsset);
-                GenerateInstances(requiredAsset, new EntityPath(), instancedRequiredAsset, null, null, new List<InstancedAlias>(), false, null);
             }
 
             Root = new InstancedComposite()
@@ -3028,7 +3080,23 @@ namespace CathodeLib
                 Composite = _level.Commands.EntryPoints[0],
                 InstanceID = ShortGuid.InstanceGuid
             };
-            GenerateInstances(Root.Composite, new EntityPath(), Root, null, null, new List<InstancedAlias>(), false, null);
+
+            /* The required assets and the level are separate trees - no alias, link or parent crosses between them - and each
+             * is generated as sibling composites always are, concurrently: one after another, the small required-asset trees
+             * kept most cores idle for the first second. The order they end up in is fixed below, as before, and a failure is
+             * reported as the sequence would have met it: the first tree's, required assets first, unwrapped. */
+            List<InstancedComposite> trees = new List<InstancedComposite>(RequiredAssets);
+            trees.Add(Root);
+            Exception[] failures = new Exception[trees.Count];
+            Parallel.For(0, trees.Count, i =>
+            {
+                InstancedComposite tree = trees[i];
+                try { GenerateInstances(tree.Composite, new EntityPath(), tree, null, null, new List<InstancedAlias>(), false, null); }
+                catch (Exception e) { failures[i] = e; }
+            });
+            foreach (Exception failure in failures)
+                if (failure != null)
+                    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
             OrderInstancesDeterministically();
         }
 
@@ -3252,9 +3320,19 @@ namespace CathodeLib
                 }
             }
 
-            //Now calculate linked entity logic - zone and environment map assignment
-            Phase("  zones", CalculateZones);
-            Phase("  envmaps", CalculateEnvironmentMaps);
+            //Now calculate linked entity logic - zone and environment map assignment. Both resolve link paths through the same
+            //composite instances thousands of times and neither changes an instance's entity list, so those lists are indexed
+            //by GUID while they run (FirstEntityWithGuid)
+            _pathIndex = new Dictionary<object, Dictionary<ShortGuid, InstancedEntity>>(new ReferenceEqualityComparer());
+            try
+            {
+                Phase("  zones", CalculateZones);
+                Phase("  envmaps", CalculateEnvironmentMaps);
+            }
+            finally
+            {
+                _pathIndex = null;
+            }
 
             //The required models are indexed positionally by the engine and everything below
             //points at them by position, so make sure nothing has shuffled them out of the head.
@@ -3298,7 +3376,8 @@ namespace CathodeLib
             _sharedComposites.Clear();
             //FX movers claim a renderable run each, reusing the ones a previous save left behind.
             _level.RenderableElements?.ResetDuplicateRunReuse();
-            Phase("  walk", () => ProcessInstances(Root, false, false, false, false, false, false));
+            using (MaterialRemappingUtils.IndexNamesWhileWalking(_level.Materials))
+                Phase("  walk", () => ProcessInstances(Root, false, false, false, false, false, false));
 
             if (_materialFactory.MaterialsCreated != 0 || _materialFactory.TexturesNotFound != 0)
             {
@@ -3413,6 +3492,9 @@ namespace CathodeLib
         {
             List<CollisionMaps.COLLISION_MAPPING> rows = _level.CollisionMaps.Entries;
             var stamped = new HashSet<HavokPackfile.CompoundInstance>();
+            //CompoundInstance.Index is an IndexOf over its owner's whole slot list, and every row asks it - 28k rows into a
+            //28k-slot host on HAB_Airport. Each owner's slots are indexed once instead; nothing below changes a slot list
+            var slotsOf = new Dictionary<HavokPackfile.StaticCompoundShape, Dictionary<HavokPackfile.CompoundInstance, int>>();
 
             for (int i = 0; i < rows.Count; i++)
             {
@@ -3425,7 +3507,7 @@ namespace CathodeLib
 
                 //Whichever width leads, the other has to carry the same row index on the same slot
                 HavokPackfile.StaticCompoundShape hostMirror = _collisionMirror?.HostFor(rows[i].Flags);
-                int slot = instance.Index;
+                int slot = SlotOf(instance, slotsOf);
                 if (hostMirror != null && slot >= 0 && slot < hostMirror.Instances.Count)
                     hostMirror.Instances[slot].UserData = (ulong)i;
             }
@@ -3443,6 +3525,28 @@ namespace CathodeLib
             int orphans = CountUnstamped(_collision?.PrimaryHost, stamped) + CountUnstamped(_collision?.SecondaryHost, stamped);
             if (orphans > 0)
                 Console.WriteLine("  WARNING: {0} Havok instances have no COLLISION.MAP row (zone lookup will miss)", orphans);
+        }
+
+        /// <summary>
+        /// <see cref="HavokPackfile.CompoundInstance.Index"/>, from an index of the owner's slots built on first ask: the first
+        /// slot holding the instance (by reference, as IndexOf), -1 for none. Valid while no slot list changes.
+        /// </summary>
+        static int SlotOf(HavokPackfile.CompoundInstance instance,
+                          Dictionary<HavokPackfile.StaticCompoundShape, Dictionary<HavokPackfile.CompoundInstance, int>> slotsOf)
+        {
+            HavokPackfile.StaticCompoundShape owner = instance.Owner;
+            if (owner == null)
+                return -1;
+            if (!slotsOf.TryGetValue(owner, out Dictionary<HavokPackfile.CompoundInstance, int> slots))
+            {
+                List<HavokPackfile.CompoundInstance> list = owner.Instances;
+                slots = new Dictionary<HavokPackfile.CompoundInstance, int>(list.Count);
+                for (int s = 0; s < list.Count; s++)
+                    if (list[s] != null && !slots.ContainsKey(list[s]))
+                        slots.Add(list[s], s);
+                slotsOf.Add(owner, slots);
+            }
+            return slots.TryGetValue(instance, out int slot) ? slot : -1;
         }
 
         /// <summary>
@@ -3491,8 +3595,11 @@ namespace CathodeLib
             //A compound already waiting to be rebuilt (the world hosts) is rebuilt anyway, and re-adding its
             //instances here would double them
             var repair = new HashSet<HavokPackfile.StaticCompoundShape>();
+            //Every compound's test looks its children up by data offset, and nothing in this sweep changes one, so that
+            //lookup is built once rather than once per compound (O(n^2): ~0.9 s and ~570 MB of garbage on HAB_Airport)
+            Dictionary<uint, HavokPackfile.StaticCompoundShape> shapeByOffset = packfile.ShapesByOffset();
             foreach (HavokPackfile.StaticCompoundShape compound in packfile.StaticCompoundShapes)
-                if (compound.Instances.Count != 0 && !packfile.IsPendingRebuild(compound) && packfile.DomainMissesChildren(compound))
+                if (compound.Instances.Count != 0 && !packfile.IsPendingRebuild(compound) && packfile.DomainMissesChildren(compound, shapeByOffset))
                     repair.Add(compound);
             if (repair.Count == 0)
                 return;
@@ -4349,8 +4456,43 @@ namespace CathodeLib
             }
         }
 
+        //Composite instance -> its entities by GUID, while zones and environment maps are resolved (null otherwise). Keyed by
+        //reference, as InstancedComposite compares by InstanceID. A null value means visited once: indexed on the second visit.
+        private Dictionary<object, Dictionary<ShortGuid, InstancedEntity>> _pathIndex;
+        private static readonly Dictionary<ShortGuid, InstancedEntity> PathIndexUnusable = new Dictionary<ShortGuid, InstancedEntity>();
+
+        //The first entity of the instance with that GUID, as a scan of its Entities in order finds it
+        private InstancedEntity FirstEntityWithGuid(InstancedComposite composite, ShortGuid id)
+        {
+            Dictionary<ShortGuid, InstancedEntity> byId = null;
+            if (_pathIndex != null)
+            {
+                if (!_pathIndex.TryGetValue(composite, out byId))
+                    _pathIndex.Add(composite, null);
+                else if (byId == null)
+                {
+                    byId = new Dictionary<ShortGuid, InstancedEntity>(composite.Entities.Count);
+                    foreach (InstancedEntity e in composite.Entities)
+                    {
+                        //The scan would throw on reaching this one, so an instance holding it keeps the scan
+                        if (e?.Entity == null) { byId = PathIndexUnusable; break; }
+                        if (!byId.ContainsKey(e.Entity.shortGUID))
+                            byId.Add(e.Entity.shortGUID, e);
+                    }
+                    _pathIndex[composite] = byId;
+                }
+            }
+            if (byId != null && !ReferenceEquals(byId, PathIndexUnusable))
+                return byId.TryGetValue(id, out InstancedEntity found) ? found : null;
+
+            foreach (InstancedEntity e in composite.Entities)
+                if (e.Entity.shortGUID == id)
+                    return e;
+            return null;
+        }
+
         //Look up an entity in the current composite instance by following the path
-        private static InstancedEntity ResolvePathInComposite(InstancedComposite start, EntityPath path)
+        private InstancedEntity ResolvePathInComposite(InstancedComposite start, EntityPath path)
         {
             if (start?.Entities == null || path?.path == null || path.path.Length == 0)
                 return null;
@@ -4367,15 +4509,7 @@ namespace CathodeLib
                 if (step == ShortGuid.Invalid || current?.Entities == null)
                     return null;
 
-                InstancedEntity next = null;
-                foreach (InstancedEntity e in current.Entities)
-                {
-                    if (e.Entity.shortGUID == step)
-                    {
-                        next = e;
-                        break;
-                    }
-                }
+                InstancedEntity next = FirstEntityWithGuid(current, step);
                 if (next == null)
                     return null;
 
@@ -5214,8 +5348,7 @@ namespace CathodeLib
             Parallel.For(0, entityArray.Length, i =>
             {
                 Entity entity = entityArray[i];
-                EntityPath pathToThisEntity = path.Copy();
-                pathToThisEntity.AddNextStep(entity);
+                EntityPath pathToThisEntity = path.CopyWithNextStep(entity.shortGUID);
 
                 InstancedEntity newInstance = new InstancedEntity(_level, composite, entity, pathToThisEntity, _parameterCache, _entityLookupCache);
                 newInstance.ParentCompositeInstanceEntity = parentCompositeInstanceEntity;
@@ -5300,8 +5433,7 @@ namespace CathodeLib
                 if (!trackedAliases.TryGetValue(function.shortGUID, out List<InstancedAlias> childAliases))
                     childAliases = new List<InstancedAlias>();
 
-                EntityPath newPath = path.Copy();
-                newPath.AddNextStep(function);
+                EntityPath newPath = path.CopyWithNextStep(function.shortGUID);
 
                 if (!entityByGuid.TryGetValue(function.shortGUID, out InstancedEntity instancedEnt))
                     continue;

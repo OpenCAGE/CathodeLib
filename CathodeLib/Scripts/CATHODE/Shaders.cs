@@ -449,6 +449,48 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// GetWriteIndex for a run of lookups while neither the write list nor any shader in it changes (a material save).
+        /// Each answer is what GetWriteIndex gives: the FIRST row equal to it, or -1.
+        /// </summary>
+        internal Func<Shader, int> GetWriteIndexLookup()
+        {
+            Dictionary<Shader, int> rows = new Dictionary<Shader, int>(_writeList.Count, ShaderIdentity.Instance);
+            int firstNull = -1;
+            for (int i = 0; i < _writeList.Count; i++)
+            {
+                Shader entry = _writeList[i];
+                if (ReferenceEquals(entry, null))
+                {
+                    if (firstNull < 0) firstNull = i;
+                    continue;
+                }
+                if (!rows.ContainsKey(entry))
+                    rows.Add(entry, i);
+            }
+            return shader =>
+            {
+                if (ReferenceEquals(shader, null)) return firstNull;
+                return rows.TryGetValue(shader, out int index) ? index : -1;
+            };
+        }
+
+        //Hashes only scalars Shader.Equals compares directly, and lets Equals settle the rest
+        private sealed class ShaderIdentity : IEqualityComparer<Shader>
+        {
+            public static readonly ShaderIdentity Instance = new ShaderIdentity();
+            public bool Equals(Shader x, Shader y) { return x.Equals(y); }
+            public int GetHashCode(Shader shader)
+            {
+                int hash = (int)shader.PermutationHash;
+                hash = hash * 31 + ((int)shader.UbershaderFeatureFlags ^ (int)(shader.UbershaderFeatureFlags >> 32));
+                hash = hash * 31 + ((int)shader.UbershaderRequirementFlags ^ (int)(shader.UbershaderRequirementFlags >> 32));
+                hash = hash * 31 + shader.CycleCount;
+                hash = hash * 31 + shader.RegisterCount;
+                return hash;
+            }
+        }
+
+        /// <summary>
         /// Get the object at the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>

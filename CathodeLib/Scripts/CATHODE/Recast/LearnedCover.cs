@@ -38,6 +38,12 @@ namespace CathodeLib.NavMesh
         public const float RayMax = 6f;
         const float FloorTolerance = 0.3f;
 
+        //Where the four entries that read the station's place in its run sit; every other entry reads only the point, the
+        //inward normal, the BVH, the probe and the settings (see WriteRunPosition). Declared after the arrays they count.
+        internal static readonly int RunLenIndex = OutHeights.Length * Bearings.Length + InHeights.Length * Bearings.Length
+                                                   + AlongHeights.Length * 2 + AlongOffsets.Length * 2 + DropDistances.Length;
+        internal static readonly int PosFracIndex = RunLenIndex + 3 + FarAlongOffsets.Length * 2 + FrontDistances.Length + 2;
+
         public static List<string> Names()
         {
             var n = new List<string>();
@@ -83,9 +89,7 @@ namespace CathodeLib.NavMesh
             foreach (float o in AlongOffsets) f[k++] = probe.TopAlong(p + alongDir * o, outward, p.Y, cs);
             foreach (float o in AlongOffsets) f[k++] = Math.Min(6f, probe.Thickness(p + alongDir * o, outward, p.Y, cs));
             foreach (float d in DropDistances) f[k++] = Drop(bvh, p + outward * d, p.Y);
-            f[k++] = runLen;
-            f[k++] = Math.Min(posAlong, runLen - posAlong);
-            f[k++] = edgeLen;
+            k += 3;   //runLen, distEnd, edgeLen - WriteRunPosition, below
             // Appended context (see the class summary).
             foreach (float o in FarAlongOffsets) f[k++] = probe.TopAlong(p + alongDir * o, outward, p.Y, cs);
             foreach (float o in FarAlongOffsets) f[k++] = Math.Min(6f, probe.Thickness(p + alongDir * o, outward, p.Y, cs));
@@ -99,11 +103,24 @@ namespace CathodeLib.NavMesh
             }
             f[k++] = floorCount;
             f[k++] = floorEnds;
-            f[k++] = runLen > 1e-3f ? Math.Min(posAlong, runLen - posAlong) / runLen : 0f;
+            k++;      //posFrac - WriteRunPosition, below
             foreach (float o in PeekOffsets) foreach (float h in PeekHeights) f[k++] = Cast(bvh, p + alongDir * o, h, outward);
             f[k++] = Cast(bvh, p + inward * 0.6f, 1.7f, outward);
             f[k++] = Cast(bvh, p, 0.1f, new Vector3(0f, 1f, 0f));
+            WriteRunPosition(f, edgeLen, runLen, posAlong);
             return f;
+        }
+
+        /// <summary>
+        /// The descriptor entries that read the station's run rather than the geometry: run length, distance to the nearer run
+        /// end, edge length and position fraction. A description re-placed in another run has exactly these rewritten.
+        /// </summary>
+        internal static void WriteRunPosition(float[] f, float edgeLen, float runLen, float posAlong)
+        {
+            f[RunLenIndex] = runLen;
+            f[RunLenIndex + 1] = Math.Min(posAlong, runLen - posAlong);
+            f[RunLenIndex + 2] = edgeLen;
+            f[PosFracIndex] = runLen > 1e-3f ? Math.Min(posAlong, runLen - posAlong) / runLen : 0f;
         }
 
         static Vector3 Rot(Vector3 d, float deg)
@@ -165,7 +182,29 @@ namespace CathodeLib.NavMesh
             s.CopyTo(rest);
             rest.Position = 0;
             if (got >= 2 && head[0] == 0x1f && head[1] == 0x8b)
+            {
+                //Inflated in one go and parsed from memory: a reader straight over the GZipStream sent every one-to-four
+                //byte field through the inflater on its own (~0.13 s a model). The same bytes reach LoadBinary. A file
+                //that only reads cleanly up to the end of the model (a damaged gzip trailer) is parsed as it streams, as before.
+                var inflated = new MemoryStream();
+                bool whole;
+                try
+                {
+                    using (var gz = new GZipStream(rest, CompressionMode.Decompress, true)) gz.CopyTo(inflated);
+                    whole = true;
+                }
+                catch
+                {
+                    whole = false;
+                }
+                if (whole)
+                {
+                    inflated.Position = 0;
+                    return LoadBinary(inflated);
+                }
+                rest.Position = 0;
                 using (var gz = new GZipStream(rest, CompressionMode.Decompress)) return LoadBinary(gz);
+            }
             if (got >= 4 && head[0] == (byte)'C' && head[1] == (byte)'G' && head[2] == (byte)'B' && head[3] == (byte)'M')
                 return LoadBinary(rest);
             using (var reader = new StreamReader(rest)) return Load(reader);

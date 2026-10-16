@@ -321,8 +321,156 @@ namespace CATHODE
         public PreviewMesh BuildBakeMesh(StaticCompoundShape compound, ISet<CompoundInstance> skipInstances = null,
                                          bool trackInstances = false)
         {
+            BakeMeshShare share = _bakeMeshShare;
+            if (share != null && compound != null && ReferenceEquals(share.Payload, DataPayload) && share.CompoundCount == StaticCompoundShapes.Count)
+            {
+                lock (share)
+                    return BuildSharedBakeMesh(share, compound, skipInstances, trackInstances);
+            }
             return BuildTriangleMesh(compound, int.MaxValue, int.MaxValue, capRootInstances: false,
                 skipInstances, placeholders: false, trackInstances);
+        }
+
+        /// <summary>
+        /// From here to <see cref="EndBakeMeshSharing"/> nothing may change this packfile, and <see cref="BuildBakeMesh"/> cuts
+        /// each root instance's triangles once and copies them from then on. Instancing holds it open across the agent bakes,
+        /// which take the world host's triangles about ten times a save (three navmesh states, cover, the glass probe, the
+        /// sound soups), each time under its own skip set - and seconds of it went on decoding the same instances again. The
+        /// meshes are exactly what BuildBakeMesh builds without it, value for value and index for index.
+        /// </summary>
+        public void BeginBakeMeshSharing()
+        {
+            var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                StaticCompoundShape s = StaticCompoundShapes[i];
+                if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
+                    shapeByOffset[s.DataOffset] = s;
+            }
+            _bakeMeshShare = new BakeMeshShare { Payload = DataPayload, CompoundCount = StaticCompoundShapes.Count, ShapeByOffset = shapeByOffset };
+        }
+
+        public void EndBakeMeshSharing()
+        {
+            _bakeMeshShare = null;
+        }
+
+        private BakeMeshShare _bakeMeshShare;
+
+        private sealed class BakeMeshShare
+        {
+            public byte[] Payload;
+            public int CompoundCount;
+            //The same first-listed-wins map BuildTriangleMesh makes on every call, made once
+            public Dictionary<uint, StaticCompoundShape> ShapeByOffset;
+            public readonly Dictionary<StaticCompoundShape, BakePiece[]> Pieces = new Dictionary<StaticCompoundShape, BakePiece[]>();
+            public readonly PreviewMesh Scratch = new PreviewMesh();
+        }
+
+        /// <summary>One root instance's triangles, emitted into a mesh of their own (so its indices start at 0).</summary>
+        private sealed class BakePiece
+        {
+            public CompoundInstance Instance;
+            public Vector3[] Positions;
+            public int[] Indices;
+            public int Shapes;
+            /// <summary>Every instance the walk below this root tests against a skip set. A piece cut under a skip set that
+            /// held one of them carries that set's holes and is not kept.</summary>
+            public CompoundInstance[] Nested;
+        }
+
+        private static readonly CompoundInstance[] NoNestedInstances = new CompoundInstance[0];
+
+        /// <summary>
+        /// What BuildTriangleMesh and EmitCompoundPreview do for a bake (uncapped, no placeholders, depth 0), one root at a
+        /// time: every leaf appender places its vertices from its own arguments and indexes them from the position count it
+        /// found, so a root emitted alone and appended with its indices moved on is the same triangles in the same order.
+        /// </summary>
+        private PreviewMesh BuildSharedBakeMesh(BakeMeshShare share, StaticCompoundShape compound, ISet<CompoundInstance> skipInstances, bool trackInstances)
+        {
+            var mesh = new PreviewMesh { ShapeCapLimit = int.MaxValue, TriangleCapLimit = int.MaxValue };
+            if (trackInstances)
+                mesh.InstanceRanges = new List<KeyValuePair<int, CompoundInstance>>();
+            List<CompoundInstance> instances = compound.Instances;
+            if (instances == null || instances.Count == 0)
+                return mesh;
+
+            if (!share.Pieces.TryGetValue(compound, out BakePiece[] pieces) || pieces.Length != instances.Count)
+                share.Pieces[compound] = pieces = new BakePiece[instances.Count];
+
+            for (int i = 0; i < instances.Count; i++)
+            {
+                CompoundInstance inst = instances[i];
+                if (skipInstances != null && skipInstances.Contains(inst))
+                    continue;
+
+                if (mesh.InstanceRanges != null)
+                    mesh.InstanceRanges.Add(new KeyValuePair<int, CompoundInstance>(mesh.TriangleCount, inst));
+
+                BakePiece piece = pieces[i];
+                if (piece == null || !ReferenceEquals(piece.Instance, inst)
+                    || (skipInstances != null && AnySkipped(piece.Nested, skipInstances)))
+                {
+                    piece = CutBakePiece(share, inst, skipInstances);
+                    if (piece.Nested != null)
+                        pieces[i] = piece;
+                }
+
+                int baseIndex = mesh.Positions.Count;
+                mesh.Positions.AddRange(piece.Positions);
+                int[] indices = piece.Indices;
+                for (int k = 0; k < indices.Length; k++)
+                    mesh.Indices.Add(baseIndex + indices[k]);
+                mesh.ShapeCount += piece.Shapes;
+            }
+            return mesh;
+        }
+
+        private BakePiece CutBakePiece(BakeMeshShare share, CompoundInstance inst, ISet<CompoundInstance> skipInstances)
+        {
+            CompoundInstance[] nested = NoNestedInstances;
+            if (share.ShapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
+            {
+                var below = new List<CompoundInstance>();
+                CollectNestedInstances(child, share.ShapeByOffset, 1, below);
+                nested = below.ToArray();
+            }
+
+            PreviewMesh scratch = share.Scratch;
+            scratch.Positions.Clear();
+            scratch.Indices.Clear();
+            scratch.ShapeCount = 0;
+            EmitInstance(scratch, inst, share.ShapeByOffset, Vector3.Zero, Quaternion.Identity, Vector3.One, 0,
+                         int.MaxValue, int.MaxValue, false, skipInstances, false);
+            return new BakePiece
+            {
+                Instance = inst,
+                Positions = scratch.Positions.ToArray(),
+                Indices = scratch.Indices.ToArray(),
+                Shapes = scratch.ShapeCount,
+                Nested = skipInstances != null && AnySkipped(nested, skipInstances) ? null : nested
+            };
+        }
+
+        /// <summary>Every instance EmitCompoundPreview tests against a skip set below a root, to the same depth limit.</summary>
+        private static void CollectNestedInstances(StaticCompoundShape compound, Dictionary<uint, StaticCompoundShape> shapeByOffset, int depth, List<CompoundInstance> into)
+        {
+            if (compound == null || depth > 12 || compound.Instances == null)
+                return;
+            foreach (CompoundInstance inst in compound.Instances)
+            {
+                into.Add(inst);
+                if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
+                    CollectNestedInstances(child, shapeByOffset, depth + 1, into);
+            }
+        }
+
+        private static bool AnySkipped(CompoundInstance[] nested, ISet<CompoundInstance> skipInstances)
+        {
+            for (int i = 0; i < nested.Length; i++)
+                if (skipInstances.Contains(nested[i]))
+                    return true;
+            return false;
         }
 
         PreviewMesh BuildTriangleMesh(
@@ -572,21 +720,12 @@ namespace CATHODE
                 if (skipInstances != null && skipInstances.Contains(inst))
                     continue;
 
-                Vector3 t = translation + Vector3.Transform(
-                    new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z) * scale,
-                    rotation);
-                Quaternion r = Quaternion.Normalize(rotation * inst.Rotation);
-                Vector3 s = scale * new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z);
-
                 // Only the outermost level is recorded: a nested instance belongs to the same
                 // COLLISION.MAP entry as the root it hangs off.
                 if (depth == 0 && mesh.InstanceRanges != null)
                     mesh.InstanceRanges.Add(new KeyValuePair<int, CompoundInstance>(mesh.TriangleCount, inst));
 
-                if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
-                    EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, placeholders);
-                else
-                    AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, placeholders);
+                EmitInstance(mesh, inst, shapeByOffset, translation, rotation, scale, depth, shapeCap, triCap, capRootInstances, skipInstances, placeholders);
             }
 
             // Preview only: fall back to compound domain AABB when nothing decoded.
@@ -599,6 +738,23 @@ namespace CATHODE
                     new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z),
                     translation, rotation, scale);
             }
+        }
+
+        /// <summary>One instance of a compound under its parent's transform: a nested compound, or a leaf shape.</summary>
+        void EmitInstance(PreviewMesh mesh, CompoundInstance inst, Dictionary<uint, StaticCompoundShape> shapeByOffset,
+                          Vector3 translation, Quaternion rotation, Vector3 scale, int depth, int shapeCap, int triCap,
+                          bool capRootInstances, ISet<CompoundInstance> skipInstances, bool placeholders)
+        {
+            Vector3 t = translation + Vector3.Transform(
+                new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z) * scale,
+                rotation);
+            Quaternion r = Quaternion.Normalize(rotation * inst.Rotation);
+            Vector3 s = scale * new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z);
+
+            if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
+                EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, placeholders);
+            else
+                AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, placeholders);
         }
 
         void AppendShapePreview(
@@ -1334,14 +1490,25 @@ namespace CATHODE
         /// every query skips what falls outside. Children that cannot be sized are not judged.
         /// </summary>
         public bool DomainMissesChildren(StaticCompoundShape compound, float tolerance = 0.01f)
-        {
-            if (compound == null || compound.Instances.Count == 0 || !HasValidDomain(compound))
-                return false;
+            => DomainMissesChildren(compound, ShapesByOffset(), tolerance);
 
+        /// <summary>
+        /// Every compound by its data offset, the first listed winning - where DomainMissesChildren finds a child. A sweep
+        /// over many compounds builds it once: it only changes when StaticCompoundShapes does.
+        /// </summary>
+        public Dictionary<uint, StaticCompoundShape> ShapesByOffset()
+        {
             var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
             foreach (StaticCompoundShape s in StaticCompoundShapes)
                 if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
                     shapeByOffset[s.DataOffset] = s;
+            return shapeByOffset;
+        }
+
+        public bool DomainMissesChildren(StaticCompoundShape compound, Dictionary<uint, StaticCompoundShape> shapeByOffset, float tolerance = 0.01f)
+        {
+            if (compound == null || compound.Instances.Count == 0 || !HasValidDomain(compound))
+                return false;
 
             Vector3 dMin = new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z) - new Vector3(tolerance);
             Vector3 dMax = new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z) + new Vector3(tolerance);

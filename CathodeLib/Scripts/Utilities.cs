@@ -311,6 +311,30 @@ namespace CathodeLib
         /// </summary>
         public static void Write<T>(BinaryWriter stream, T aux)
         {
+            /* ShortGuids and EntityHandles are most of what comes through here - COMMANDS.BIN alone is millions of ShortGuids -
+             * and an unmanaged block per value goes through the process heap's lock while the save writes on several threads
+             * at once (2.2 s of AllocHGlobal in a HAB_Airport save, ~0.9 s of it on COMMANDS.BIN's critical path). Both marshal
+             * as their uints in memory order (ShortGuid is one, EntityHandle two ShortGuids, sequential and packed), so those
+             * bytes are written as they are, through the same Write(byte[]). Anything else, and an EntityHandle subclass, is
+             * marshalled as before. */
+            if (BitConverter.IsLittleEndian)
+            {
+                if (typeof(T) == typeof(ShortGuid))
+                {
+                    stream.Write(BitConverter.GetBytes(((ShortGuid)(object)aux).AsUInt32));
+                    return;
+                }
+                if (typeof(T) == typeof(EntityHandle) && aux != null && aux.GetType() == typeof(EntityHandle))
+                {
+                    EntityHandle handle = (EntityHandle)(object)aux;
+                    uint entity = handle.entity_id.AsUInt32, instance = handle.composite_instance_id.AsUInt32;
+                    stream.Write(new byte[] {
+                        (byte)entity, (byte)(entity >> 8), (byte)(entity >> 16), (byte)(entity >> 24),
+                        (byte)instance, (byte)(instance >> 8), (byte)(instance >> 16), (byte)(instance >> 24) });
+                    return;
+                }
+            }
+
             int length = Marshal.SizeOf(aux);
             IntPtr ptr = Marshal.AllocHGlobal(length);
             byte[] myBuffer = new byte[length];

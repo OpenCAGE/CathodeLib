@@ -1485,6 +1485,24 @@ namespace CATHODE.Scripting
             if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function].TryGetValue(variant, out int offset))
                 return null;
 
+            /* Where the scan below stops for a parameter, and what it reads there, is the same on every call - so each block
+             * is walked once (DefaultStops) and the answer built from what was read. Instancing asks this for every default of
+             * every entity template, through every variant of every class up the chain, and each question allocated a reader,
+             * a stream and an encoding: ~1.4 KB a default, millions of defaults on a large level. Whatever threw goes back to
+             * the scan, which throws it again. */
+            DefaultStops stops = GetDefaultStops(function, variant, offset, CustomTable.Vanilla.CathodeEntities.content);
+            if (stops.Stops.TryGetValue(parameter.AsUInt32, out DefaultStop stop))
+            {
+                if (stop.Read)
+                    return DefaultFromStop(stop, parameter, variant);
+            }
+            else if (stops.Complete)
+                return null;
+            return ScanDefaultParameterData(function, parameter, variant, offset);
+        }
+
+        private ParameterData ScanDefaultParameterData(FunctionType function, ShortGuid parameter, ParameterVariant variant, int offset)
+        {
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
             {
                 reader.BaseStream.Position = offset;
@@ -1604,6 +1622,202 @@ namespace CATHODE.Scripting
                 }
             }
             return null;
+        }
+
+        //One entry the default scan stops on, with the value it reads there already read
+        private sealed class DefaultStop
+        {
+            public DataType Type;
+            public bool Read;       //false: reading the value threw, so the scan is replayed to throw it
+            public bool Bool;
+            public int Int0, Int1;
+            public float Float0, Float1, Float2;
+            public string String0, String1;
+        }
+
+        //A (function, variant) block of the vanilla definitions: the first entry the scan stops on for each parameter id
+        private sealed class DefaultStops
+        {
+            public byte[] Content;
+            public int Offset;
+            public uint NameID;
+            public bool Complete;   //walked to the end without throwing
+            public readonly Dictionary<uint, DefaultStop> Stops = new Dictionary<uint, DefaultStop>();
+        }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, DefaultStops> _defaultStops = new System.Collections.Concurrent.ConcurrentDictionary<ulong, DefaultStops>();
+
+        private static DefaultStops GetDefaultStops(FunctionType function, ParameterVariant variant, int offset, byte[] content)
+        {
+            ulong key = ((ulong)(uint)function << 32) | (uint)variant;
+            if (_defaultStops.TryGetValue(key, out DefaultStops stops) && ReferenceEquals(stops.Content, content) && stops.Offset == offset && stops.NameID == _nameID)
+                return stops;
+            stops = DecodeDefaultStops(function, variant, offset, content);
+            _defaultStops[key] = stops;
+            return stops;
+        }
+
+        //The scan's walk through a block, entry by entry as it steps over the ones it is not asked for (its path does not
+        //depend on the id asked for), keeping where it would stop for each id
+        private static DefaultStops DecodeDefaultStops(FunctionType function, ParameterVariant variant, int offset, byte[] content)
+        {
+            DefaultStops stops = new DefaultStops() { Content = content, Offset = offset, NameID = _nameID };
+            try
+            {
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+                {
+                    reader.BaseStream.Position = offset;
+                    int paramCount = reader.ReadInt32();
+                    for (int i = 0; i < paramCount; i++)
+                    {
+                        uint paramID = reader.ReadUInt32();
+                        switch (variant)
+                        {
+                            case ParameterVariant.REFERENCE_PIN:
+                            case ParameterVariant.METHOD_FUNCTION:
+                            case ParameterVariant.METHOD_PIN:
+                                if (!stops.Stops.ContainsKey(paramID))
+                                    stops.Stops.Add(paramID, new DefaultStop() { Type = DataType.NONE, Read = true });
+                                break;
+                            default:
+                                int dataTypeTemp = reader.ReadInt32();
+                                DataType dataType = dataTypeTemp == -1 ? DataType.ENUM_STRING : (DataType)dataTypeTemp;
+                                //The scan steps over a name string on anything but a Zone, even the one it was asked for
+                                bool nameString = (dataType == DataType.STRING || dataType == DataType.FILEPATH) && function != FunctionType.Zone && paramID == _nameID;
+                                if (!nameString && !stops.Stops.ContainsKey(paramID))
+                                    stops.Stops.Add(paramID, ReadDefaultStop(content, reader.BaseStream.Position, dataType));
+                                //Then over the data, as the scan does for an entry it is not looking for
+                                switch (dataType)
+                                {
+                                    case DataType.BOOL:
+                                        reader.BaseStream.Position += 1;
+                                        break;
+                                    case DataType.INTEGER:
+                                    case DataType.FLOAT:
+                                    case DataType.RESOURCE:
+                                        reader.BaseStream.Position += 4;
+                                        break;
+                                    case DataType.STRING:
+                                    case DataType.FILEPATH:
+                                        {
+                                            int seek = reader.ReadByte();
+                                            reader.BaseStream.Position += seek;
+                                        }
+                                        break;
+                                    case DataType.ENUM:
+                                        if (reader.ReadInt32() != -1)
+                                            reader.BaseStream.Position += 4;
+                                        break;
+                                    case DataType.ENUM_STRING:
+                                        {
+                                            int seek = reader.ReadByte();
+                                            reader.BaseStream.Position += seek;
+                                            seek = reader.ReadByte();
+                                            reader.BaseStream.Position += seek;
+                                        }
+                                        break;
+                                    case DataType.VECTOR:
+                                        reader.BaseStream.Position += 12;
+                                        break;
+                                }
+                                break;
+                        }
+                    }
+                }
+                stops.Complete = true;
+            }
+            catch
+            {
+                stops.Complete = false;
+            }
+            return stops;
+        }
+
+        //The read the scan makes when it stops on an entry: a reader of its own, as the scan's is fresh for each call
+        private static DefaultStop ReadDefaultStop(byte[] content, long position, DataType dataType)
+        {
+            DefaultStop stop = new DefaultStop() { Type = dataType };
+            try
+            {
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+                {
+                    reader.BaseStream.Position = position;
+                    switch (dataType)
+                    {
+                        case DataType.BOOL:
+                            stop.Bool = reader.ReadBoolean();
+                            break;
+                        case DataType.INTEGER:
+                        case DataType.RESOURCE:
+                            stop.Int0 = reader.ReadInt32();
+                            break;
+                        case DataType.FLOAT:
+                            stop.Float0 = reader.ReadSingle();
+                            break;
+                        case DataType.STRING:
+                        case DataType.FILEPATH:
+                            stop.String0 = reader.ReadString();
+                            break;
+                        case DataType.ENUM:
+                            stop.Int0 = reader.ReadInt32();
+                            if (stop.Int0 != -1)
+                                stop.Int1 = reader.ReadInt32();
+                            break;
+                        case DataType.ENUM_STRING:
+                            stop.String0 = reader.ReadString();
+                            stop.String1 = reader.ReadString();
+                            break;
+                        case DataType.VECTOR:
+                            stop.Float0 = reader.ReadSingle();
+                            stop.Float1 = reader.ReadSingle();
+                            stop.Float2 = reader.ReadSingle();
+                            break;
+                    }
+                }
+                stop.Read = true;
+            }
+            catch
+            {
+                stop.Read = false;
+            }
+            return stop;
+        }
+
+        //What the scan returns when it stops on this entry - a new object every time, as before
+        private static ParameterData DefaultFromStop(DefaultStop stop, ShortGuid parameter, ParameterVariant variant)
+        {
+            switch (variant)
+            {
+                case ParameterVariant.REFERENCE_PIN:
+                case ParameterVariant.METHOD_FUNCTION:
+                case ParameterVariant.METHOD_PIN:
+                    return new cFloat();
+            }
+            switch (stop.Type)
+            {
+                case DataType.BOOL:
+                    return new cBool(stop.Bool);
+                case DataType.INTEGER:
+                    return new cInteger(stop.Int0);
+                case DataType.FLOAT:
+                    return new cFloat(stop.Float0);
+                case DataType.STRING:
+                case DataType.FILEPATH:
+                    return new cString(stop.String0);
+                case DataType.ENUM:
+                    return stop.Int0 == -1 ? new cEnum() : new cEnum((EnumType)stop.Int0, stop.Int1);
+                case DataType.ENUM_STRING:
+                    return new cEnumString((EnumStringType)Enum.Parse(typeof(EnumStringType), stop.String0), stop.String1);
+                case DataType.VECTOR:
+                    return new cVector3(stop.Float0, stop.Float1, stop.Float2);
+                case DataType.TRANSFORM:
+                    return new cTransform(); //There are no default transforms written
+                case DataType.RESOURCE:
+                    return parameter == ShortGuids.resource ? new cResource((ResourceType)stop.Int0) : null;
+                case DataType.SPLINE:
+                    return variant == ParameterVariant.INPUT_PIN ? null : new cSpline();
+                default:
+                    return IsPointerType(stop.Type) ? null : new cFloat(); //Any other types have no default values.
+            }
         }
 
         /// <summary>

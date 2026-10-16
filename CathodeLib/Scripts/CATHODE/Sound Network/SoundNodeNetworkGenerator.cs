@@ -263,6 +263,9 @@ namespace CathodeLib
             {
                 occluders = new BVHAccel();
                 occluders.Build(verts, tris);
+                //Every ray of the bake is cast against this tree. The leaf-ordered triangle copy changes no answer
+                //(BVHAccel.BuildOcclusionCache) and costs 36 bytes a triangle; it is simply not made if it cannot be.
+                occluders.BuildOcclusionCache();
                 log?.Invoke("Sound occluders: " + (tris.Length / 3) + " triangles");
             }
 
@@ -1265,19 +1268,24 @@ namespace CathodeLib
             var found = new List<(Vector3, uint)>();
             if (level?.CollisionMaps?.Entries == null) return found;
 
-            // One pass over the map, keyed by the handle the barrier entity will present.
-            var instanceOf = new Dictionary<(ShortGuid, ShortGuid), int>();
+            // One pass over the map, keyed by the handle the barrier entity will present. The instance is kept and its
+            // Index (a linear search of the host's instance list) read only for the barriers that find one - taking it
+            // for every one of HAB_Airport's 28k mappings cost ~0.9 s. The last mapping per key still wins, so each
+            // barrier resolves the very instance, and so the very index, it did before.
+            var instanceOf = new Dictionary<(ShortGuid, ShortGuid), HavokPackfile.CompoundInstance>();
             foreach (CollisionMaps.COLLISION_MAPPING entry in level.CollisionMaps.Entries)
             {
                 if (entry?.Entity == null || entry.CollisionInstance == null) continue;
-                instanceOf[(entry.Entity.composite_instance_id, entry.Entity.entity_id)] = entry.CollisionInstance.Index;
+                instanceOf[(entry.Entity.composite_instance_id, entry.Entity.entity_id)] = entry.CollisionInstance;
             }
 
             foreach (InstancedEntity barrier in barriers)
             {
                 if (barrier.ThisCompositeInstance == null) continue;
                 if (!instanceOf.TryGetValue((barrier.ThisCompositeInstance.InstanceID, barrier.Entity.shortGUID),
-                                            out int index) || index < 0) continue;
+                                            out HavokPackfile.CompoundInstance instance)) continue;
+                int index = instance.Index;
+                if (index < 0) continue;
                 found.Add((PositionOf(barrier), (uint)index));
             }
             return found;
@@ -1439,6 +1447,8 @@ namespace CathodeLib
             var keepVerts = new List<float>();
             var keepTris = new List<int>();
             var keepInstance = new List<uint>();
+            //CompoundInstance.Index is a linear search of the host's instances: once per instance, not per triangle
+            var indexOf = new Dictionary<HavokPackfile.CompoundInstance, uint>();
             var remap = new Dictionary<int, int>();
             for (int t = 0; t < owners.Count; t++)
             {
@@ -1456,7 +1466,9 @@ namespace CathodeLib
                     }
                     keepTris.Add(nv);
                 }
-                keepInstance.Add((uint)owners[t].Index);
+                if (!indexOf.TryGetValue(owners[t], out uint slot))
+                    indexOf[owners[t]] = slot = (uint)owners[t].Index;
+                keepInstance.Add(slot);
             }
             if (keepTris.Count < 3) return null;
 
@@ -1942,11 +1954,16 @@ namespace CathodeLib
             int sightCapacity = accepted.Count + pending.Count + 1;
             var sightKey = new float[sightCapacity];
             var sightIndex = new int[sightCapacity];
+            /* A candidate that goes is only flagged, and the list compacted in order when the pass ends. The pass walks
+             * backwards, so RemoveAt(i) only ever shifted entries it had already been past: the same entries are visited in
+             * the same order, the next pass sees the same list, and the tail is no longer moved once per removal. */
+            var leaving = new bool[pending.Count];
             bool progress = true;
             while (progress)
             {
                 progress = false;
-                for (int i = pending.Count - 1; i >= 0; i--)
+                int passCount = pending.Count;
+                for (int i = passCount - 1; i >= 0; i--)
                 {
                     Vector3 position = pending[i];
                     int from = testedAgainst[i];
@@ -1969,8 +1986,7 @@ namespace CathodeLib
 
                     if (toClose)
                     {
-                        pending.RemoveAt(i);
-                        testedAgainst.RemoveAt(i);
+                        leaving[i] = true;
                         continue;
                     }
 
@@ -2024,11 +2040,24 @@ namespace CathodeLib
                     if (!visible) continue;   // may become reachable once the fill gets closer
 
                     accepted.Add(position);
-                    pending.RemoveAt(i);
-                    testedAgainst.RemoveAt(i);
+                    leaving[i] = true;
                     added++;
                     progress = true;
                 }
+
+                int write = 0;
+                for (int read = 0; read < passCount; read++)
+                {
+                    if (leaving[read]) { leaving[read] = false; continue; }
+                    if (write != read)
+                    {
+                        pending[write] = pending[read];
+                        testedAgainst[write] = testedAgainst[read];
+                    }
+                    write++;
+                }
+                pending.RemoveRange(write, passCount - write);
+                testedAgainst.RemoveRange(write, passCount - write);
             }
             return added;
         }
@@ -2565,9 +2594,19 @@ namespace CathodeLib
             // Walk the ray, stepping just past each surface. Capped a little above the largest
             // ObstructedDistance retail writes, so a pathological run of surfaces cannot stall the
             // bake and anything past the cap is dropped as too blocked to be worth a link.
+            // The step that brings the count to the cap only has to say WHETHER there is a surface - the walk ends either way
+            // and its distance is never read - which an any-hit query answers. On the same ray Occluded and Traverse test
+            // the same nodes against the same range up to the first hit, so they agree unless one drops a subtree at its
+            // 64-entry stack, which a tree no deeper than 62 levels cannot make either do.
+            bool lastStepAnyHit = occluders.Statistics.MaxTreeDepth <= 62;
             while (travelled < distance - slack && crossed < cap)
             {
                 var ray = new Ray(from + direction * travelled, direction, 0.0f, distance - slack - travelled);
+                if (lastStepAnyHit && crossed == cap - 1)
+                {
+                    if (occluders.Occluded(ref ray)) crossed++;
+                    break;
+                }
                 if (!occluders.Traverse(ref ray, out Hit hit)) break;
                 crossed++;
                 travelled += hit.T + 0.01f;

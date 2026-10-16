@@ -395,6 +395,47 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// GetWriteIndex for a run of lookups while neither the write list nor any texture in it changes (a material save asks
+        /// once per texture slot of every material). Each answer is what GetWriteIndex gives: the FIRST row equal to it, or -1.
+        /// </summary>
+        internal Func<TEX4, int> GetWriteIndexLookup()
+        {
+            Dictionary<TEX4, int> rows = new Dictionary<TEX4, int>(_writeList.Count, TextureIdentity.Instance);
+            int firstNull = -1;
+            for (int i = 0; i < _writeList.Count; i++)
+            {
+                TEX4 entry = _writeList[i];
+                if (ReferenceEquals(entry, null))
+                {
+                    if (firstNull < 0) firstNull = i;
+                    continue;
+                }
+                if (!rows.ContainsKey(entry))
+                    rows.Add(entry, i);
+            }
+            return texture =>
+            {
+                if (ReferenceEquals(texture, null)) return firstNull;
+                return rows.TryGetValue(texture, out int index) ? index : -1;
+            };
+        }
+
+        //Hashes only what TEX4.Equals compares directly, and lets Equals settle the rest
+        private sealed class TextureIdentity : IEqualityComparer<TEX4>
+        {
+            public static readonly TextureIdentity Instance = new TextureIdentity();
+            public bool Equals(TEX4 x, TEX4 y) { return x.Equals(y); }
+            public int GetHashCode(TEX4 texture)
+            {
+                int hash = texture.Name == null ? 0 : texture.Name.GetHashCode();
+                hash = hash * 31 + (int)texture.Format;
+                hash = hash * 31 + (int)texture.StateFlags;
+                hash = hash * 31 + (int)texture.UsageFlags;
+                return hash;
+            }
+        }
+
+        /// <summary>
         /// Get the current index for a EnvironmentMap texture (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>

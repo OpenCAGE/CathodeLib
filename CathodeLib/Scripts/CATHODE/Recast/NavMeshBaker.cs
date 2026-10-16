@@ -117,30 +117,106 @@ namespace CathodeLib.NavMesh
             CollisionNavMeshSoup sharedAuthoring = null;
             BakeResult firstResult = null;
 
-            foreach (Instancing.StateProperties state in states)
+            /* Each state's Recast build is single-threaded and seconds long (~7 s a state on HAB_Airport),
+             * and the states share nothing a bake writes: the soups are collected here on this thread, in
+             * state order exactly as before (collecting reads nothing a bake changes), and each state's
+             * bake starts on its own thread as soon as its soup is ready. The bakes only write their own
+             * results - plus the area ids of the barrier list the soups share, which every bake sets to
+             * the same values. What the sequential loop did in between - the log lines, publishing each
+             * state's navmesh, the flood diagnostics - is then done in state order, and the first failure
+             * in state order is the one rethrown, after the states before it were published and with every
+             * bake finished, which is where the sequential loop would have stopped. */
+            int stateCount = states.Count;
+            var pending = new List<PendingStateBake>(stateCount);
+            Exception collectFailure = null;
+            try
             {
-                log?.Invoke("NavMesh STATE_" + state.StateIndex + ": " + state.Summary);
+                foreach (Instancing.StateProperties state in states)
+                {
+                    //The sequential loop stopped at a failed bake: nothing past it is collected or baked
+                    if (pending.Exists(p => p.Task != null && p.Task.IsFaulted))
+                        break;
 
-                CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(
-                    level,
-                    state.ExcludedCollision != null && state.ExcludedCollision.Count > 0 ? state.ExcludedCollision : null,
-                    sharedAuthoring,
-                    settings,
-                    instancing);
-                if (sharedAuthoring == null)
-                    sharedAuthoring = soup;
+                    var bake = new PendingStateBake { State = state };
+                    pending.Add(bake);
+                    bake.Log.Add("NavMesh STATE_" + state.StateIndex + ": " + state.Summary);
 
-                log?.Invoke("  soup: verts=" + soup.VertexCount + " tris=" + soup.TriangleCount +
-                            " seeds=" + soup.ReachabilitySeeds.Count + " excluded=" + (state.ExcludedCollision?.Count ?? 0) +
-                            " propsSkipped=" + soup.PropInstancesSkipped + " absurdTrisCulled=" + soup.AbsurdTrisCulled);
+                    CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(
+                        level,
+                        state.ExcludedCollision != null && state.ExcludedCollision.Count > 0 ? state.ExcludedCollision : null,
+                        sharedAuthoring,
+                        settings,
+                        instancing);
+                    if (sharedAuthoring == null)
+                        sharedAuthoring = soup;
 
-                BakeResult result = Bake(soup, settings);
+                    bake.Log.Add("  soup: verts=" + soup.VertexCount + " tris=" + soup.TriangleCount +
+                                " seeds=" + soup.ReachabilitySeeds.Count + " excluded=" + (state.ExcludedCollision?.Count ?? 0) +
+                                " propsSkipped=" + soup.PropInstancesSkipped + " absurdTrisCulled=" + soup.AbsurdTrisCulled);
+
+                    SeedFloodDiagnostics diagnostics = bake.Diagnostics;
+                    bake.Task = System.Threading.Tasks.Task.Factory.StartNew(() =>
+                    {
+                        //Recast's own warnings are held too, and printed where the sequential bake printed them
+                        RcContext.Capture = diagnostics.RecastLines;
+                        try { return Bake(soup, settings, diagnostics); }
+                        finally { RcContext.Capture = null; }
+                    }, System.Threading.CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.LongRunning,
+                        System.Threading.Tasks.TaskScheduler.Default);
+                }
+            }
+            catch (Exception e)
+            {
+                //The state whose soup failed never baked; the ones before it are published first, below
+                collectFailure = e;
+            }
+
+            Exception failure = null;
+            foreach (PendingStateBake bake in pending)
+            {
+                if (failure != null)
+                    break;
+                foreach (string line in bake.Log)
+                    log?.Invoke(line);
+                if (bake.Task == null)
+                    break;
+
+                BakeResult result;
+                try
+                {
+                    result = bake.Task.GetAwaiter().GetResult();
+                }
+                catch (Exception e)
+                {
+                    foreach (string line in bake.Diagnostics.RecastLines)
+                        Console.WriteLine(line);
+                    if (bake.Diagnostics.Stats != null)
+                        LastSeedFloodStats = bake.Diagnostics.Stats;
+                    failure = e;
+                    break;
+                }
+                foreach (string line in bake.Diagnostics.RecastLines)
+                    Console.WriteLine(line);
+                if (bake.Diagnostics.Stats != null)
+                    LastSeedFloodStats = bake.Diagnostics.Stats;
                 log?.Invoke("  " + result.Message);
 
-                if (state.State != null)
-                    state.State.NavMesh = result.NavMesh;
+                if (bake.State.State != null)
+                    bake.State.State.NavMesh = result.NavMesh;
                 if (firstResult == null)
                     firstResult = result;
+            }
+            if (failure == null)
+                failure = collectFailure;
+            if (failure != null)
+            {
+                //Nothing may still be baking when the caller retries at another cell height or gives up
+                foreach (PendingStateBake bake in pending)
+                {
+                    try { bake.Task?.Wait(); }
+                    catch { /* the first failure in state order is the one reported */ }
+                }
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
             }
 
             if (firstResult != null && level.PathBarrierResources != null)
@@ -151,7 +227,32 @@ namespace CathodeLib.NavMesh
             }
         }
 
+        /// <summary>One state of <see cref="BakeLevelOnce"/>: its log lines, its bake, and what its flood reported.</summary>
+        private sealed class PendingStateBake
+        {
+            public Instancing.StateProperties State;
+            public readonly List<string> Log = new List<string>(2);
+            public System.Threading.Tasks.Task<BakeResult> Task;
+            public readonly SeedFloodDiagnostics Diagnostics = new SeedFloodDiagnostics();
+        }
+
+        /// <summary>
+        /// Where a bake running beside others puts its <see cref="LastSeedFloodStats"/>, so they are
+        /// published in state order rather than by whichever bake finishes last.
+        /// </summary>
+        private sealed class SeedFloodDiagnostics
+        {
+            public string Stats;
+            //What Recast's context wrote while this bake ran (RcContext.Capture), for the console in state order
+            public readonly List<string> RecastLines = new List<string>();
+        }
+
         public static BakeResult Bake(CollisionNavMeshSoup soup, NavMeshBakeSettings settings = null)
+        {
+            return Bake(soup, settings, null);
+        }
+
+        private static BakeResult Bake(CollisionNavMeshSoup soup, NavMeshBakeSettings settings, SeedFloodDiagnostics diagnostics)
         {
             if (soup == null)
                 throw new ArgumentNullException(nameof(soup));
@@ -258,7 +359,7 @@ namespace CathodeLib.NavMesh
 
             if (settings.FilterUnreachable && soup.ReachabilitySeeds != null && soup.ReachabilitySeeds.Count > 0)
             {
-                bool[] reachable = MarkReachablePolys(detour, tile, soup.ReachabilitySeeds, settings, soup.OffMeshLinks, soup.BackstageNodes);
+                bool[] reachable = MarkReachablePolys(detour, tile, soup.ReachabilitySeeds, settings, soup.OffMeshLinks, soup.BackstageNodes, diagnostics);
                 int reachableCount = 0;
                 for (int i = 0; i < reachable.Length; i++)
                     if (reachable[i]) reachableCount++;
@@ -491,6 +592,10 @@ namespace CathodeLib.NavMesh
                 RcFilters.FilterWalkableLowHeightSpans(ctx, cfg.WalkableHeight, solid);
 
             RcCompactHeightfield chf = RcCompacts.BuildCompactHeightfield(ctx, cfg.WalkableHeight, cfg.WalkableClimb, solid);
+            // Nothing reads the solid heightfield past this point - the bake works from the compact one - and it is
+            // millions of span objects, so it is let go here rather than carried in the result to the end of the bake
+            // (the states bake side by side, and three of them at once were most of the pass's peak memory).
+            solid = null;
             // Deep-crouch floor erodes by fewer cells than the rest (see
             // NavMeshBakeSettings.DeepCrouchErodeCells). The full-radius erosion is taken first on
             // a copy, so standing and crouch floor come out byte-identical to a plain bake; only
@@ -536,7 +641,7 @@ namespace CathodeLib.NavMesh
                 ? RcMeshDetails.BuildPolyMeshDetail(ctx, pmesh, chf, cfg.DetailSampleDist, cfg.DetailSampleMaxError)
                 : null;
 
-            return new RcBuilderResult(bcfg.tileX, bcfg.tileZ, solid, chf, cset, pmesh, dmesh, ctx);
+            return new RcBuilderResult(bcfg.tileX, bcfg.tileZ, null, chf, cset, pmesh, dmesh, ctx);
         }
 
         /// <summary>
@@ -1658,7 +1763,8 @@ namespace CathodeLib.NavMesh
             List<Vector3> seeds,
             NavMeshBakeSettings settings,
             List<CollisionNavMeshSoup.OffMeshLinkDraft> offMesh = null,
-            List<CollisionNavMeshSoup.BackstageNodeDraft> backstage = null)
+            List<CollisionNavMeshSoup.BackstageNodeDraft> backstage = null,
+            SeedFloodDiagnostics diagnostics = null)
         {
             int polyCount = tile.data.header.polyCount;
             var keep = new bool[polyCount];
@@ -1756,7 +1862,11 @@ namespace CathodeLib.NavMesh
                     }
                     if (grew) Flood();
                 }
-                LastSeedFloodStats = "off-mesh drafts " + (offMesh?.Count ?? 0) + ", backstage nodes " + (backstage?.Count ?? 0) + ", link ends on polys " + ends.Count + ", crossings " + crossed;
+                string stats = "off-mesh drafts " + (offMesh?.Count ?? 0) + ", backstage nodes " + (backstage?.Count ?? 0) + ", link ends on polys " + ends.Count + ", crossings " + crossed;
+                if (diagnostics != null)
+                    diagnostics.Stats = stats;
+                else
+                    LastSeedFloodStats = stats;
             }
 
             // If no seed hit the mesh, keep everything rather than wiping the tile.

@@ -986,6 +986,20 @@ namespace CATHODE.Scripting
             Array.Copy(path, newPath, path.Length);
             return new EntityPath(newPath);
         }
+
+        /// <summary>
+        /// A copy of this path with one more step on the end - what Copy() then AddNextStep(guid) gives, built in one array
+        /// </summary>
+        public EntityPath CopyWithNextStep(ShortGuid guid)
+        {
+            int steps = path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid ? path.Length - 1 : path.Length;
+            ShortGuid[] newPath = new ShortGuid[guid == ShortGuid.Invalid ? steps + 1 : steps + 2];
+            Array.Copy(path, newPath, steps);
+            newPath[steps] = guid;
+            if (guid != ShortGuid.Invalid)
+                newPath[steps + 1] = ShortGuid.Invalid;
+            return new EntityPath(newPath);
+        }
         
         /// <summary>
         /// Updates this path to have the path to another entity prepended to it

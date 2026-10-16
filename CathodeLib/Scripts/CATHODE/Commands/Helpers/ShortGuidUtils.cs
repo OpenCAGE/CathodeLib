@@ -117,20 +117,29 @@ namespace CATHODE.Scripting
         /// </summary>
         public static ShortGuid GenerateRandom()
         {
-            lock (_cacheLock)
+            /* The guid and its two hashes are worked out before taking the lock (HashToShortGuid has a hasher per thread):
+             * only the name-cache lookups, the in-use check and the reservation need it, and those stay one atomic step - so
+             * each candidate gets exactly the guid GenerateUnlocked gave it, and the same candidates are tried before the
+             * throw. Instancing builds entity templates on every core and mints a resource id in many of them: with the
+             * hashing inside the lock they queued here, and every Generate queued behind them. */
+            string str = Guid.NewGuid().ToString();
+            int s = 0;
+            while (true)
             {
-                string str = Guid.NewGuid().ToString();
-                ShortGuid guid = GenerateUnlocked(str, cache: false);
-                int s = 0;
-                while (IsTakenUnlocked(guid))
+                ShortGuid hashed = HashToShortGuid(str);
+                lock (_cacheLock)
                 {
-                    str = $"{str}_{s++}";
-                    guid = GenerateUnlocked(str, cache: false);
-
-                    if (s > 10000) throw new Exception("Failed to generate unique ShortGuid after many attempts.");
+                    ShortGuid guid;
+                    if (!_custom.cache.TryGetValue(str, out guid) && !CustomTable.Vanilla.ShortGuids.cache.TryGetValue(str, out guid))
+                        guid = hashed;
+                    if (!IsTakenUnlocked(guid))
+                    {
+                        _reserved.Add(guid);
+                        return guid;
+                    }
                 }
-                _reserved.Add(guid);
-                return guid;
+                str = $"{str}_{s++}";
+                if (s > 10000) throw new Exception("Failed to generate unique ShortGuid after many attempts.");
             }
         }
 

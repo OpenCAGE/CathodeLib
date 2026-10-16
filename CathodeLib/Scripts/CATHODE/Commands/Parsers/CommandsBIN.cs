@@ -1063,21 +1063,24 @@ namespace CATHODE.Scripting.Internal.Parsers
                     }
                 }
 
-                using (MemoryStream stream = new MemoryStream())
+                //Straight into an array of the final size: growing a stream to it and then copying it out twice was ~200 MB of
+                //large-object allocations a save, and on HAB_Airport one of them stalled this writer for about a second
+                int bufferLength = (int)bufferWriter.BaseStream.Length;
+                content = new byte[12 + (commands.Count * 8) + bufferLength];
+                using (MemoryStream stream = new MemoryStream(content))
                 {
                     using (BinaryWriter writer = new BinaryWriter(stream))
                     {
-                        writer.Write(12 + (commands.Count * 8) + (int)bufferWriter.BaseStream.Length);
+                        writer.Write(12 + (commands.Count * 8) + bufferLength);
                         writer.Write(commands.Count);
-                        writer.Write((int)bufferWriter.BaseStream.Length);
+                        writer.Write(bufferLength);
                         foreach (var entry in commands)
                         {
                             writer.Write(entry.Item1);
                             writer.Write(entry.Item2);
                         }
-                        writer.Write(buffer.ToArray());
+                        writer.Write(buffer.GetBuffer(), 0, bufferLength);
                     }
-                    content = stream.ToArray();
                 }
             }
         }

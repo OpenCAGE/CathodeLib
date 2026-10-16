@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace NanoRT
 {
@@ -366,7 +367,7 @@ namespace NanoRT
         }
 
         /// <summary>Closest-hit query. Returns false when the ray misses everything.</summary>
-        public bool Traverse(ref Ray ray, out Hit hit)
+        public unsafe bool Traverse(ref Ray ray, out Hit hit)
         {
             hit = default;
             hit.T = ray.MaxT;
@@ -374,44 +375,71 @@ namespace NanoRT
             if (_nodeCount == 0)
                 return false;
 
-            Vector3 invDir = new Vector3(
-                1.0f / (ray.Direction.X == 0 ? 1e-30f : ray.Direction.X),
-                1.0f / (ray.Direction.Y == 0 ? 1e-30f : ray.Direction.Y),
-                1.0f / (ray.Direction.Z == 0 ? 1e-30f : ray.Direction.Z));
+            /* What every node reads lives in locals: the ray, which a query never writes, and the best hit so far,
+             * stored into `hit` once at the end. Read through the two byrefs - with stores to the stack in the same
+             * loop - the JIT has to reload them on every node. The stack is a plain stackalloc'd block: on .NET
+             * Framework Span<T> is System.Memory's portable struct, a bounds and pinnable check on every push and pop
+             * that can never fire here (the depth cap keeps sp within 0..64). Same values, same expressions, same
+             * visiting order as before. */
+            Vector3 origin = ray.Origin;
+            Vector3 direction = ray.Direction;
+            float minT = ray.MinT;
+            float bestT = ray.MaxT, bestU = 0.0f, bestV = 0.0f;
+            int bestPrim = -1;
 
-            Span<int> stack = stackalloc int[64];
+            Vector3 invDir = new Vector3(
+                1.0f / (direction.X == 0 ? 1e-30f : direction.X),
+                1.0f / (direction.Y == 0 ? 1e-30f : direction.Y),
+                1.0f / (direction.Z == 0 ? 1e-30f : direction.Z));
+            // Component(ray.Direction, axis) >= 0 for each split axis, taken once per ray rather than once per node.
+            bool nearLeftX = direction.X >= 0, nearLeftY = direction.Y >= 0, nearLeftZ = direction.Z >= 0;
+
+            Node[] nodes = _nodes;
+            int[] indices = _indices;
+            // The leaf-ordered copy, when BuildOcclusionCache made one. It holds exactly the p0, e1 and e2 the
+            // gathered test computes, so it gives the same answers - it is only read contiguously.
+            Vector3[] cache = _occlusionCache;
+
+            const int stackSize = 64;
+            int* stack = stackalloc int[stackSize];
             int sp = 0;
             stack[sp++] = 0;
 
             while (sp > 0)
             {
                 int nodeIndex = stack[--sp];
-                ref Node node = ref _nodes[nodeIndex];
+                ref Node node = ref nodes[nodeIndex];
 
-                if (!IntersectAabb(node.Min, node.Max, ray.Origin, invDir, ray.MinT, hit.T))
+                if (!IntersectAabb(node.Min, node.Max, origin, invDir, minT, bestT))
                     continue;
 
                 if (node.PrimCount > 0)
                 {
                     for (int i = 0; i < node.PrimCount; i++)
                     {
-                        int tri = _indices[node.Data0 + i];
-                        if (IntersectTriangle(tri, ref ray, hit.T, out float t, out float u, out float v))
+                        int slot = node.Data0 + i;
+                        int tri = indices[slot];
+                        float t, u, v;
+                        bool found = cache != null
+                            ? IntersectTriangle(cache[slot * 3], cache[slot * 3 + 1], cache[slot * 3 + 2], ref ray, bestT, out t, out u, out v)
+                            : IntersectTriangle(tri, ref ray, bestT, out t, out u, out v);
+                        if (found)
                         {
-                            hit.T = t;
-                            hit.U = u;
-                            hit.V = v;
-                            hit.PrimId = tri;
+                            bestT = t;
+                            bestU = u;
+                            bestV = v;
+                            bestPrim = tri;
                         }
                     }
                     continue;
                 }
 
-                if (sp + 2 > stack.Length)
+                if (sp + 2 > stackSize)
                     continue; // Depth cap reached; a dropped subtree can only cost us a hit, never correctness of a miss.
 
-                // Visit the near child first so the far one is more likely to be culled by hit.T.
-                bool nearIsLeft = Component(ray.Direction, node.Data1) >= 0;
+                // Visit the near child first so the far one is more likely to be culled by bestT.
+                int axis = node.Data1;
+                bool nearIsLeft = axis == 0 ? nearLeftX : axis == 1 ? nearLeftY : nearLeftZ;
                 int left = nodeIndex + 1;
                 int right = node.Data0;
                 if (nearIsLeft)
@@ -426,7 +454,11 @@ namespace NanoRT
                 }
             }
 
-            return hit.PrimId >= 0;
+            hit.T = bestT;
+            hit.U = bestU;
+            hit.V = bestV;
+            hit.PrimId = bestPrim;
+            return bestPrim >= 0;
         }
 
         /// <summary>
@@ -501,49 +533,56 @@ namespace NanoRT
         /// Any-hit query. Cheaper than <see cref="Traverse"/> because it stops at the first
         /// intersection inside the ray's range.
         /// </summary>
-        public bool Occluded(ref Ray ray)
+        public unsafe bool Occluded(ref Ray ray)
         {
             if (_nodeCount == 0)
                 return false;
 
+            // As in Traverse: the ray's range in locals, the stack a plain block. Same tests, same order.
+            Vector3 origin = ray.Origin;
+            float minT = ray.MinT, maxT = ray.MaxT;
             Vector3 invDir = new Vector3(
                 1.0f / (ray.Direction.X == 0 ? 1e-30f : ray.Direction.X),
                 1.0f / (ray.Direction.Y == 0 ? 1e-30f : ray.Direction.Y),
                 1.0f / (ray.Direction.Z == 0 ? 1e-30f : ray.Direction.Z));
 
-            Span<int> stack = stackalloc int[64];
+            Node[] nodes = _nodes;
+            int[] indices = _indices;
+            Vector3[] cache = _occlusionCache;
+
+            const int stackSize = 64;
+            int* stack = stackalloc int[stackSize];
             int sp = 0;
             stack[sp++] = 0;
 
             while (sp > 0)
             {
                 int nodeIndex = stack[--sp];
-                ref Node node = ref _nodes[nodeIndex];
+                ref Node node = ref nodes[nodeIndex];
 
-                if (!IntersectAabb(node.Min, node.Max, ray.Origin, invDir, ray.MinT, ray.MaxT))
+                if (!IntersectAabb(node.Min, node.Max, origin, invDir, minT, maxT))
                     continue;
 
                 if (node.PrimCount > 0)
                 {
-                    Vector3[] cache = _occlusionCache;
                     if (cache != null)
                     {
                         for (int i = 0, c = node.Data0 * 3; i < node.PrimCount; i++, c += 3)
                         {
-                            if (IntersectTriangle(cache[c], cache[c + 1], cache[c + 2], ref ray, ray.MaxT))
+                            if (IntersectTriangle(cache[c], cache[c + 1], cache[c + 2], ref ray, maxT))
                                 return true;
                         }
                         continue;
                     }
                     for (int i = 0; i < node.PrimCount; i++)
                     {
-                        if (IntersectTriangle(_indices[node.Data0 + i], ref ray, ray.MaxT, out _, out _, out _))
+                        if (IntersectTriangle(indices[node.Data0 + i], ref ray, maxT, out _, out _, out _))
                             return true;
                     }
                     continue;
                 }
 
-                if (sp + 2 > stack.Length)
+                if (sp + 2 > stackSize)
                     continue;
 
                 stack[sp++] = node.Data0;
@@ -593,6 +632,7 @@ namespace NanoRT
             return len > 0 ? n / len : Vector3.UnitY;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool IntersectTriangle(int tri, ref Ray ray, float tMax, out float t, out float u, out float v)
         {
             // Möller–Trumbore.
@@ -627,8 +667,40 @@ namespace NanoRT
         }
 
         /// <summary>
+        /// The gathered closest-hit test above, statement for statement, on a cached p0, e1 = p1 - p0 and
+        /// e2 = p2 - p0 - exactly the values that test computes from the face and vertex arrays.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IntersectTriangle(Vector3 p0, Vector3 e1, Vector3 e2, ref Ray ray, float tMax,
+                                              out float t, out float u, out float v)
+        {
+            const float epsilon = 1e-9f;
+            t = 0; u = 0; v = 0;
+
+            Vector3 pv = Vector3.Cross(ray.Direction, e2);
+            float det = Vector3.Dot(e1, pv);
+            if (det > -epsilon && det < epsilon)
+                return false;
+
+            float invDet = 1.0f / det;
+            Vector3 tv = ray.Origin - p0;
+            u = Vector3.Dot(tv, pv) * invDet;
+            if (u < 0.0f || u > 1.0f)
+                return false;
+
+            Vector3 qv = Vector3.Cross(tv, e1);
+            v = Vector3.Dot(ray.Direction, qv) * invDet;
+            if (v < 0.0f || u + v > 1.0f)
+                return false;
+
+            t = Vector3.Dot(e2, qv) * invDet;
+            return t >= ray.MinT && t <= tMax;
+        }
+
+        /// <summary>
         /// The test above, statement for statement, on a cached p0, e1 = p1 - p0 and e2 = p2 - p0 (any-hit: no t, u or v out).
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IntersectTriangle(Vector3 p0, Vector3 e1, Vector3 e2, ref Ray ray, float tMax)
         {
             const float epsilon = 1e-9f;
@@ -653,6 +725,7 @@ namespace NanoRT
             return t >= ray.MinT && t <= tMax;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IntersectAabb(Vector3 bmin, Vector3 bmax, Vector3 origin, Vector3 invDir, float tMin, float tMax)
         {
             float t0 = (bmin.X - origin.X) * invDir.X;
@@ -677,8 +750,10 @@ namespace NanoRT
             return tMin <= tMax;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private Vector3 Vertex(int index) => new Vector3(_vertices[index * 3], _vertices[index * 3 + 1], _vertices[index * 3 + 2]);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static float Component(Vector3 v, int axis) => axis == 0 ? v.X : axis == 1 ? v.Y : v.Z;
 
         private static int LongestAxis(Vector3 extent)
