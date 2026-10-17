@@ -208,6 +208,14 @@ namespace CathodeLib
                     debugTextPatches.Add(new PatchBytes(15031656, new byte[] { 0x80, 0x91, 0x99, 0x00 }, new byte[] { 0x10, 0x30, 0x8c, 0x00 })); 
                     debugTextPatches.Add(new PatchBytes(15030400, new byte[] { 0x80, 0x91, 0x99, 0x00 }, new byte[] { 0x10, 0x30, 0x8c, 0x00 })); 
                     break;
+                case Platform.EPIC_GAMES_STORE:
+                    debugTextPatches.Add(new PatchBytes(15128272, new byte[] { 0xd0, 0x7f, 0xfd, 0x00 }, new byte[] { 0xf0, 0xb2, 0x9c, 0x00 }));
+                    debugTextPatches.Add(new PatchBytes(15127016, new byte[] { 0xd0, 0x7f, 0xfd, 0x00 }, new byte[] { 0xf0, 0xb2, 0x9c, 0x00 }));
+                    break;
+                case Platform.GOG:
+                    debugTextPatches.Add(new PatchBytes(15128880, new byte[] { 0xe0, 0xb9, 0xd7, 0x00 }, new byte[] { 0x10, 0x30, 0x8c, 0x00 }));
+                    debugTextPatches.Add(new PatchBytes(15127624, new byte[] { 0xe0, 0xb9, 0xd7, 0x00 }, new byte[] { 0x10, 0x30, 0x8c, 0x00 }));
+                    break;
                 default:
                     return false;
             }
