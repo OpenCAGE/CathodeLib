@@ -640,6 +640,68 @@ namespace CathodeLib
             }
         }
 
+        /// <summary>
+        /// Point one of the game's hard-coded file paths at another file of the same length, or back at the original. The UI
+        /// movies are opened by paths held in the binary ("DATA/UI/PAUSEMENU.GFX" and the like), so pointing one at a new entry
+        /// in UI.PAK changes which movie the game plays without touching the shipped entry.
+        /// </summary>
+        public static bool PatchFilePath(string pathToAI, string originalPath, string replacementPath, bool redirect)
+        {
+            if (string.IsNullOrEmpty(originalPath) || replacementPath == null || originalPath.Length != replacementPath.Length)
+                return false;
+            byte[] from = System.Text.Encoding.ASCII.GetBytes(redirect ? originalPath : replacementPath);
+            byte[] to = System.Text.Encoding.ASCII.GetBytes(redirect ? replacementPath : originalPath);
+            try
+            {
+                string exe = pathToAI + "/AI.exe";
+                byte[] binary = File.ReadAllBytes(exe);
+                List<int> found = FindWholeString(binary, from);
+                if (found.Count == 0)
+                    return FindWholeString(binary, to).Count == 1;
+                if (found.Count != 1)
+                    return false;
+                using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(exe)))
+                {
+                    writer.BaseStream.Position = found[0];
+                    writer.Write(to);
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("PatchManager::PatchFilePath - " + e.ToString());
+                return false;
+            }
+        }
+
+        /// <summary>Whether the game's binary currently has <paramref name="path"/> as one of its strings, once.</summary>
+        public static bool HasFilePath(string pathToAI, string path)
+        {
+            try
+            {
+                return FindWholeString(File.ReadAllBytes(pathToAI + "/AI.exe"), System.Text.Encoding.ASCII.GetBytes(path)).Count == 1;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static List<int> FindWholeString(byte[] binary, byte[] text)
+        {
+            List<int> found = new List<int>();
+            for (int i = 1; i + text.Length < binary.Length; i++)
+            {
+                if (binary[i] != text[0] || binary[i - 1] != 0 || binary[i + text.Length] != 0)
+                    continue;
+                int j = 1;
+                while (j < text.Length && binary[i + j] == text[j]) j++;
+                if (j == text.Length)
+                    found.Add(i);
+            }
+            return found;
+        }
+
         struct PatchBytes
         {
             public PatchBytes(int _o, byte[] _orig, byte[] _patch)
