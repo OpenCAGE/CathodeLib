@@ -24,27 +24,18 @@ namespace CATHODE
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
+        private bool _isBespoke = false;
+
         private List<Shader> _writeList = new List<Shader>();
 
-        public Shaders(string path) : base(path) { }
+        //The six bytecode pools exactly as loaded, in file order. The save used to rebuild them
+        //in first-reference order over Entries, which permuted two thirds of the bin pak on a
+        //plain roundtrip - and the engine's rendering visibly changed with the permuted file
+        //(ChallengeMap9's gas/grading). Preserving the loaded order keeps the roundtrip
+        //byte-faithful; genuinely new bytecode appends at the tail.
+        private List<byte[]> _poolVertex, _poolPixel, _poolHull, _poolDomain, _poolGeometry, _poolCompute;
 
-        ~Shaders()
-        {
-            foreach (var shader in Entries)
-            {
-                if (shader != null)
-                {
-                    shader.VertexShader = null;
-                    shader.PixelShader = null;
-                    shader.HullShader = null;
-                    shader.DomainShader = null;
-                    shader.GeometryShader = null;
-                    shader.ComputeShader = null;
-                }
-            }
-            Entries.Clear();
-            _writeList.Clear();
-        }
+        public Shaders(string path) : base(path) { }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream) 
@@ -54,6 +45,7 @@ namespace CATHODE
                 return false;
 
             _compressed = Path.GetExtension(_filepath).ToLower() == ".gz";
+            _isBespoke = Path.GetFileName(_filepath).ToLower().Contains("bespokeshaders");
 
             if (!File.Exists(GetBinPath()))
                 return false;
@@ -123,8 +115,16 @@ namespace CATHODE
                     int[] parameterRemapCount = Utilities.ConsumeArray<int>(reader, 5);
                     int samplerRemapCount = reader.ReadInt16();
 
-                    reader.BaseStream.Position += 40; 
-                    shader.Ubershader = (SHADER_LIST)reader.ReadInt16();
+                    shader.Technique = Utilities.ReadString(reader.ReadBytes(40));
+                    if (_isBespoke)
+                    {
+                        shader.Ubershader = SHADER_LIST.BESPOKE_SHADER;
+                        reader.BaseStream.Position += 2;
+                    }
+                    else
+                    {
+                        shader.Ubershader = (SHADER_LIST)reader.ReadInt16();
+                    }
                     shader.UbershaderFeatureFlags = reader.ReadInt64();
                     shader.UbershaderRequirementFlags = reader.ReadInt64();
                     shader.RequiredShaderModel = (SHADER_MODEL)reader.ReadByte();
@@ -167,6 +167,13 @@ namespace CATHODE
                 }
             }
 
+            _poolVertex = VertexShaders;
+            _poolPixel = PixelShaders;
+            _poolHull = HullShaders;
+            _poolDomain = DomainShaders;
+            _poolGeometry = GeometryShaders;
+            _poolCompute = ComputeShaders;
+
             _writeList.AddRange(Entries);
             return true;
         }
@@ -178,13 +185,15 @@ namespace CATHODE
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
-            //Compile all shader data
-            List<byte[]> VertexShaders = new List<byte[]>();
-            List<byte[]> PixelShaders = new List<byte[]>();
-            List<byte[]> HullShaders = new List<byte[]>();
-            List<byte[]> DomainShaders = new List<byte[]>();
-            List<byte[]> GeometryShaders = new List<byte[]>();
-            List<byte[]> ComputeShaders = new List<byte[]>();
+            //Bytecode pools: the loaded file's pools in their original order, so an unchanged
+            //level roundtrips byte-for-byte; the loop below only appends bytecode that was not
+            //part of the loaded file.
+            List<byte[]> VertexShaders = _poolVertex != null ? new List<byte[]>(_poolVertex) : new List<byte[]>();
+            List<byte[]> PixelShaders = _poolPixel != null ? new List<byte[]>(_poolPixel) : new List<byte[]>();
+            List<byte[]> HullShaders = _poolHull != null ? new List<byte[]>(_poolHull) : new List<byte[]>();
+            List<byte[]> DomainShaders = _poolDomain != null ? new List<byte[]>(_poolDomain) : new List<byte[]>();
+            List<byte[]> GeometryShaders = _poolGeometry != null ? new List<byte[]>(_poolGeometry) : new List<byte[]>();
+            List<byte[]> ComputeShaders = _poolCompute != null ? new List<byte[]>(_poolCompute) : new List<byte[]>();
             for (int i = 0; i < Entries.Count; i++)
             {
                 if (Entries[i].VertexShader != null && !VertexShaders.Contains(Entries[i].VertexShader))
@@ -286,9 +295,12 @@ namespace CATHODE
                 writer.Write(shader.DomainShaderParameterRemaps.Count);
                 writer.Write((Int16)shader.SamplerRemaps.Count);
 
-                Utilities.WriteString(shader.Ubershader.ToString(), writer);
-                writer.Write(new byte[40 - shader.Ubershader.ToString().Length]);
-                writer.Write((Int16)shader.Ubershader);
+                Utilities.WriteString(shader.Technique, writer);
+                writer.Write(new byte[40 - shader.Technique.Length]);
+                if (_isBespoke)
+                    writer.Write((Int16)index);
+                else
+                    writer.Write((Int16)shader.Ubershader);
                 writer.Write(shader.UbershaderFeatureFlags);
                 writer.Write(shader.UbershaderRequirementFlags);
                 writer.Write((byte)shader.RequiredShaderModel);
@@ -433,8 +445,49 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(Shader shader)
         {
-            if (!_writeList.Contains(shader)) return -1;
-            return _writeList.IndexOf(shader);
+            return _writeList.IndexOf(shader); //-1 when it isn't there: one scan, not Contains and then the same scan again
+        }
+
+        /// <summary>
+        /// GetWriteIndex for a run of lookups while neither the write list nor any shader in it changes (a material save).
+        /// Each answer is what GetWriteIndex gives: the FIRST row equal to it, or -1.
+        /// </summary>
+        internal Func<Shader, int> GetWriteIndexLookup()
+        {
+            Dictionary<Shader, int> rows = new Dictionary<Shader, int>(_writeList.Count, ShaderIdentity.Instance);
+            int firstNull = -1;
+            for (int i = 0; i < _writeList.Count; i++)
+            {
+                Shader entry = _writeList[i];
+                if (ReferenceEquals(entry, null))
+                {
+                    if (firstNull < 0) firstNull = i;
+                    continue;
+                }
+                if (!rows.ContainsKey(entry))
+                    rows.Add(entry, i);
+            }
+            return shader =>
+            {
+                if (ReferenceEquals(shader, null)) return firstNull;
+                return rows.TryGetValue(shader, out int index) ? index : -1;
+            };
+        }
+
+        //Hashes only scalars Shader.Equals compares directly, and lets Equals settle the rest
+        private sealed class ShaderIdentity : IEqualityComparer<Shader>
+        {
+            public static readonly ShaderIdentity Instance = new ShaderIdentity();
+            public bool Equals(Shader x, Shader y) { return x.Equals(y); }
+            public int GetHashCode(Shader shader)
+            {
+                int hash = (int)shader.PermutationHash;
+                hash = hash * 31 + ((int)shader.UbershaderFeatureFlags ^ (int)(shader.UbershaderFeatureFlags >> 32));
+                hash = hash * 31 + ((int)shader.UbershaderRequirementFlags ^ (int)(shader.UbershaderRequirementFlags >> 32));
+                hash = hash * 31 + shader.CycleCount;
+                hash = hash * 31 + shader.RegisterCount;
+                return hash;
+            }
         }
 
         /// <summary>
@@ -448,16 +501,28 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Copy an entry into the file, along with all child objects.
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added or removed since the file
+        /// was loaded or last saved have no index until one of the two happens.
         /// </summary>
-        public Shader ImportEntry(Shader shader)
+        public void RebuildWriteList()
+        {
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="Shader.Technique"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same technique name.
+        /// </summary>
+        public Shader ImportEntry(Shader shader, bool overwriteExisting = false)
         {
             if (shader == null)
                 return null;
 
-            var existing = Entries.FirstOrDefault(o => o == shader);
-            if (existing != null)
-                return existing;
+            Shader identical = Entries.FirstOrDefault(o => o == shader);
+            if (identical != null)
+                return identical;
 
             Shader newShader = shader.Copy();
             Entries.Add(newShader);
@@ -469,6 +534,7 @@ namespace CATHODE
 
         public class Shader : IEquatable<Shader>
         {
+            public string Technique;
             public SHADER_LIST Ubershader;
             public SHADER_MODEL RequiredShaderModel;
 
@@ -571,25 +637,10 @@ namespace CATHODE
                     hash = hash * 23 + CycleCount.GetHashCode();
                     hash = hash * 23 + RegisterCount.GetHashCode();
                     hash = hash * 23 + PermutationHash.GetHashCode();
-                    hash = hash * 23 + Samplers.Count.GetHashCode();
-                    foreach (var sampler in Samplers)
-                    {
-                        hash = hash * 23 + (sampler?.GetHashCode() ?? 0);
-                    }
-                    hash = hash * 23 + (RenderStates?.GetHashCode() ?? 0);
-                    hash = hash * 23 + GetListHashCode(SamplerStageBindings);
-                    hash = hash * 23 + GetListHashCode(SamplerRemaps);
-                    hash = hash * 23 + GetListHashCode(EngineParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(VertexShaderParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(PixelShaderParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(HullShaderParameterRemaps);
-                    hash = hash * 23 + GetListHashCode(DomainShaderParameterRemaps);
-                    hash = hash * 23 + GetByteArrayHashCode(VertexShader);
-                    hash = hash * 23 + GetByteArrayHashCode(PixelShader);
-                    hash = hash * 23 + GetByteArrayHashCode(HullShader);
-                    hash = hash * 23 + GetByteArrayHashCode(DomainShader);
-                    hash = hash * 23 + GetByteArrayHashCode(GeometryShader);
-                    hash = hash * 23 + GetByteArrayHashCode(ComputeShader);
+                    hash = hash * 23 + (Samplers == null ? 0 : Samplers.Count);
+                    hash = hash * 23 + (SamplerRemaps == null ? 0 : SamplerRemaps.Count);
+                    hash = hash * 23 + (VertexShader == null ? 0 : VertexShader.Length);
+                    hash = hash * 23 + (PixelShader == null ? 0 : PixelShader.Length);
                     return hash;
                 }
             }
@@ -646,16 +697,6 @@ namespace CATHODE
                     }
                     return hash;
                 }
-            }
-
-            ~Shader()
-            {
-                VertexShader = null;
-                PixelShader = null;
-                HullShader = null;
-                DomainShader = null;
-                GeometryShader = null;
-                ComputeShader = null;
             }
         }
 

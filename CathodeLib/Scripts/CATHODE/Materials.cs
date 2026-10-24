@@ -9,11 +9,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using static CATHODE.Lights;
-using static CATHODE.Models;
-using static CATHODE.Movers;
-using static CATHODE.Shaders;
 using static CATHODE.TexturePtr;
-using static CATHODE.Textures.TEX4;
 
 namespace CATHODE
 {
@@ -35,6 +31,73 @@ namespace CATHODE
 
         private List<Material> _writeList = new List<Material>();
 
+        //First-index lookup over _writeList, grown as the list is. Material's own GetHashCode
+        //cannot key a dictionary - it hashes its lists by reference while == compares them by
+        //value - so MaterialIdentity hashes only what == compares directly.
+        //A material can be edited after it is indexed - renaming one, or adding a texture slot,
+        //changes what MaterialIdentity hashes and loses it. The by-reference lookup is checked
+        //first so a material always finds its own row whatever has been done to it since; the
+        //by-value one then answers for a separate object that happens to be identical.
+        private Dictionary<Material, int> _writeIndexByRef = null;
+        private Dictionary<Material, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        //Save serialises materials in parallel, so the lookup is built and read under a lock.
+        private readonly object _writeIndexLock = new object();
+
+        //Which material in this table is identical to a given one, for ImportEntry. Grown as
+        //Entries is; a Clear resets the count and rebuilds it on the next call. Editing a material
+        //that is already in the table leaves its key stale, and the worst that can do is append a
+        //second copy rather than reuse the first - which the format tolerates.
+        private Dictionary<Material, Material> _identityIndex = null;
+        private int _identityIndexCount = 0;
+
+        private Material FindIdentical(Material material)
+        {
+            if (material == null) return null;
+            if (_identityIndex == null || _identityIndexCount > Entries.Count)
+            {
+                _identityIndex = new Dictionary<Material, Material>(MaterialIdentity.Instance);
+                _identityIndexCount = 0;
+            }
+            for (; _identityIndexCount < Entries.Count; _identityIndexCount++)
+            {
+                Material entry = Entries[_identityIndexCount];
+                if (entry != null && !_identityIndex.ContainsKey(entry))
+                    _identityIndex[entry] = entry;
+            }
+            Material found;
+            return _identityIndex.TryGetValue(material, out found) ? found : null;
+        }
+
+        private sealed class MaterialReference : IEqualityComparer<Material>
+        {
+            public static readonly MaterialReference Instance = new MaterialReference();
+            public bool Equals(Material x, Material y) { return ReferenceEquals(x, y); }
+            public int GetHashCode(Material material)
+            {
+                return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(material);
+            }
+        }
+
+        private sealed class MaterialIdentity : IEqualityComparer<Material>
+        {
+            public static readonly MaterialIdentity Instance = new MaterialIdentity();
+            public bool Equals(Material x, Material y) { return x == y; }
+            public int GetHashCode(Material material)
+            {
+                if (material == null) return 0;
+                int hash = material.Name == null ? 0 : material.Name.GetHashCode();
+                hash = hash * 31 + (material.TextureReferences == null ? 0 : material.TextureReferences.Count);
+                hash = hash * 31 + (material.EngineConstants == null ? 0 : material.EngineConstants.Count);
+                hash = hash * 31 + (material.VertexShaderConstants == null ? 0 : material.VertexShaderConstants.Count);
+                hash = hash * 31 + (material.PixelShaderConstants == null ? 0 : material.PixelShaderConstants.Count);
+                hash = hash * 31 + material.PhysicalMaterialIndex;
+                hash = hash * 31 + material.EnvironmentMapIndex;
+                hash = hash * 31 + material.Priority;
+                return hash;
+            }
+        }
+
         public Materials(string path, Textures globalTextures, Textures levelTextures, Shaders shaders) : base(path)
         {
             _globalTextures = globalTextures;
@@ -49,13 +112,6 @@ namespace CATHODE
             _globalTextures = null;
             _levelTextures = null;
             _shaders = null;
-        }
-
-        ~Materials()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
         }
 
         #region FILE_IO
@@ -182,6 +238,8 @@ namespace CATHODE
                 Utilities.GZIPCompress(GetCstPath());
 
             _writeList.Clear();
+            _writeIndexByRef = null;
+            _writeIndex = null;
             using (Stream mtlStream = File.OpenWrite(_filepath))
             using (BinaryWriter mtl = new BinaryWriter(mtlStream))
             {
@@ -220,11 +278,15 @@ namespace CATHODE
                     nameOffset += Entries[i].Name.Length + 1;
                 }
 
-                //Serialize all material entries
+                //Serialize all material entries. Texture slots and shaders resolve through lookups made once here: GetWriteIndex
+                //scanned the whole table for every one of them. Nothing changes either table while this runs.
+                Func<Textures.TEX4, int> levelTextureRows = _levelTextures?.GetWriteIndexLookup();
+                Func<Textures.TEX4, int> globalTextureRows = _globalTextures?.GetWriteIndexLookup();
+                Func<Shaders.Shader, int> shaderRows = _shaders?.GetWriteIndexLookup();
                 byte[][] materialBuffers = new byte[Entries.Count][];
                 Parallel.For(0, Entries.Count, i =>
                 {
-                    materialBuffers[i] = SerializeMaterial(Entries[i], i, isGlobal, matOffsets, matCounts, nameOffsets[i]);
+                    materialBuffers[i] = SerializeMaterial(Entries[i], i, isGlobal, matOffsets, matCounts, nameOffsets[i], levelTextureRows, globalTextureRows, shaderRows);
                 });
 
                 //Write material data
@@ -250,7 +312,8 @@ namespace CATHODE
             return true;
         }
 
-        private byte[] SerializeMaterial(Material material, int index, bool isGlobal, List<int>[] matOffsets, List<int>[] matCounts, int nameOffset)
+        private byte[] SerializeMaterial(Material material, int index, bool isGlobal, List<int>[] matOffsets, List<int>[] matCounts, int nameOffset,
+                                         Func<Textures.TEX4, int> levelTextureRows, Func<Textures.TEX4, int> globalTextureRows, Func<Shaders.Shader, int> shaderRows)
         {
             using (MemoryStream stream = new MemoryStream(296))
             using (BinaryWriter writer = new BinaryWriter(stream))
@@ -264,7 +327,7 @@ namespace CATHODE
                         writer.Write((Int16)(-1));
                         continue;
                     }
-                    writer.Write((Int16)(tex.Location == Source.LEVEL ? _levelTextures.GetWriteIndex(tex.Texture) : _globalTextures.GetWriteIndex(tex.Texture)));
+                    writer.Write((Int16)(tex.Location == Source.LEVEL ? levelTextureRows(tex.Texture) : globalTextureRows(tex.Texture)));
                     writer.Write((Int16)tex.Location);
                 }
 
@@ -277,7 +340,7 @@ namespace CATHODE
                     writer.Write((byte)matCounts[x][index]);
                 writer.Write(new byte[7]);
                 writer.Write(nameOffset);
-                writer.Write(_shaders.GetWriteIndex(material.Shader));
+                writer.Write(shaderRows(material.Shader));
                 writer.Write(new byte[128]);
                 if (material.OfflineLightFeatures != null)
                     material.OfflineLightFeatures.Write(writer);
@@ -309,8 +372,35 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(Material material)
         {
-            if (!_writeList.Contains(material)) return -1;
-            return _writeList.IndexOf(material);
+            if (material == null) return -1;
+            lock (_writeIndexLock)
+            {
+                if (_writeIndex == null || _writeIndexCount > _writeList.Count)
+                {
+                    _writeIndexByRef = new Dictionary<Material, int>(MaterialReference.Instance);
+                    _writeIndex = new Dictionary<Material, int>(MaterialIdentity.Instance);
+                    _writeIndexCount = 0;
+                }
+                for (; _writeIndexCount < _writeList.Count; _writeIndexCount++)
+                {
+                    Material entry = _writeList[_writeIndexCount];
+                    if (entry == null) continue;
+                    //Both lookups answer with the FIRST row equal to the material, which is what
+                    //the linear search this replaced returned. A later duplicate must not report
+                    //its own row just because it was asked for by reference.
+                    int first;
+                    if (!_writeIndex.TryGetValue(entry, out first))
+                    {
+                        first = _writeIndexCount;
+                        _writeIndex[entry] = first;
+                    }
+                    if (!_writeIndexByRef.ContainsKey(entry))
+                        _writeIndexByRef[entry] = first;
+                }
+                int index;
+                if (_writeIndexByRef.TryGetValue(material, out index)) return index;
+                return _writeIndex.TryGetValue(material, out index) ? index : -1;
+            }
         }
 
         /// <summary>
@@ -321,6 +411,23 @@ namespace CATHODE
         {
             if (_writeList.Count <= index || index < 0) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added since the file was loaded
+        /// or last saved have no index until one of the two happens.
+        /// </summary>
+        public void RebuildWriteList()
+        {
+            lock (_writeIndexLock)
+            {
+                _writeList.Clear();
+                _writeList.AddRange(Entries);
+                _writeIndexByRef = null;
+                _writeIndex = null;
+                _writeIndexCount = 0;
+            }
         }
 
         /// <summary>
@@ -339,12 +446,25 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="Material.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        public Material ImportEntry(Material material)
+        public Material ImportEntry(Material material, bool overwriteExisting = false)
         {
             if (material == null)
                 return null;
+            if (PortMemo != null && PortMemo.TryGetValue(material, out object imported))
+                return (Material)imported;
+            Material result = ImportEntryCore(material, overwriteExisting);
+            if (PortMemo != null && result != null && !PortMemo.TryGetValue(material, out _))
+                PortMemo.Add(material, result);
+            return result;
+        }
 
+        /// <summary>While a port runs, what each source material has already been imported as (see <see cref="Models.PortMemo"/>).</summary>
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<object, object> PortMemo;
+
+        private Material ImportEntryCore(Material material, bool overwriteExisting)
+        {
             Material newMaterial = material.Copy();
 
             for (int i = 0; i < newMaterial.TextureReferences.Count; i++)
@@ -353,14 +473,27 @@ namespace CATHODE
                 if (newMaterial.TextureReferences[i].Location == Source.GLOBAL)
                     continue;
 
-                newMaterial.TextureReferences[i].Texture = _levelTextures.ImportEntry(newMaterial.TextureReferences[i].Texture);
+                newMaterial.TextureReferences[i].Texture = _levelTextures.ImportEntry(newMaterial.TextureReferences[i].Texture, overwriteExisting);
             }
-            newMaterial.Shader = _shaders.ImportEntry(newMaterial.Shader);
+            newMaterial.Shader = _shaders.ImportEntry(newMaterial.Shader, overwriteExisting);
             //newMaterial.EnvironmentMapIndex = 255; //TEMP! should remap
 
-            var existing = Entries.FirstOrDefault(o => o == newMaterial);
-            if (existing != null)
-                return existing;
+            /* Reuse a material only when this level already holds the very same one - the whole
+             * thing, textures and shader and constants included.
+             *
+             * Matching on the name is unsound, because a material name is not an identity in this
+             * game: BSP_Torrens ships 6,745 materials under 4,803 names and calls 31 of them
+             * "MATERIAL #46", Solace has 54 called "GUN_BLACK". Reusing a same-named material meant
+             * a ported asset silently rendered with whatever the destination happened to have under
+             * that name - the alien arrived with a CA_ENVIRONMENT bomb decal for a body and
+             * spacesuit laces where its CA_SKIN head should have been.
+             *
+             * Appending a duplicate name is fine and matches retail: materials are referenced by
+             * index, and the name only has to survive for the mapping tables that read it.
+             */
+            Material identical = FindIdentical(newMaterial);
+            if (identical != null)
+                return identical;
 
             Entries.Add(newMaterial);
             return newMaterial;
@@ -397,10 +530,43 @@ namespace CATHODE
 
             public int Priority; 
 
+            /// <summary>
+            /// Copy this material. Its own data (name, constants, flags, texture slots) is copied;
+            /// the textures and the shader it points at are SHARED with the original.
+            /// </summary>
+            public Material Copy()
+            {
+                Material copy = new Material()
+                {
+                    Name = Name,
+                    EngineConstants = new List<float>(EngineConstants),
+                    VertexShaderConstants = new List<float>(VertexShaderConstants),
+                    PixelShaderConstants = new List<float>(PixelShaderConstants),
+                    HullShaderConstants = new List<float>(HullShaderConstants),
+                    DomainShaderConstants = new List<float>(DomainShaderConstants),
+                    OfflineLightFeatures = OfflineLightFeatures?.Copy(),
+                    Shader = Shader,
+                    PhysicalMaterialIndex = PhysicalMaterialIndex,
+                    EnvironmentMapIndex = EnvironmentMapIndex,
+                    Priority = Priority,
+                };
+                copy.TextureReferences = new List<TexturePtr>(TextureReferences.Count);
+                for (int i = 0; i < TextureReferences.Count; i++)
+                {
+                    TexturePtr slot = TextureReferences[i];
+                    copy.TextureReferences.Add(slot == null ? null
+                        : new TexturePtr() { Texture = slot.Texture, Location = slot.Location });
+                }
+                return copy;
+            }
+
             public static bool operator ==(Material x, Material y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
+                //Comparing a material with itself otherwise walks every texture reference and every
+                //constant list, and looking one up in a dictionary does exactly that on every hit.
+                if (ReferenceEquals(x, y)) return true;
                 if (x.Name != y.Name) return false;
 
                 if (x.TextureReferences?.Count != y.TextureReferences?.Count) return false;
@@ -562,6 +728,9 @@ namespace CATHODE
                 set { SetFeatureFlag(15, value); }
             }
 
+            /// <summary>The raw dword: the light type in the low byte, the feature bits above it.</summary>
+            public int Value => flags;
+
             public void Read(BinaryReader reader) => flags = reader.ReadInt32();
             public void Write(BinaryWriter writer) => writer.Write(flags);
 
@@ -611,6 +780,11 @@ namespace CATHODE
             public override int GetHashCode()
             {
                 return flags.GetHashCode();
+            }
+
+            public LightFlags Copy()
+            {
+                return new LightFlags() { flags = flags };
             }
 
             private int flags = 0;

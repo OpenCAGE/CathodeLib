@@ -27,11 +27,15 @@ namespace CATHODE
 
         private List<Resource> _writeList = new List<Resource>(); 
 
-        ~Resources()
-        {
-            Entries.Clear();
-            _writeList.Clear();
-        }
+        //Lookups over Entries and _writeList. Both lists are only ever appended to or rebuilt
+        //wholesale, so a count change is enough to spot one going stale; the rebuild sites null
+        //the caches as well, for the case where a list is cleared and refilled to the same size.
+        private Dictionary<(uint, uint), Resource> _byId = null;
+        private int _byIdCount = -1;
+        private Dictionary<Resource, int> _writeIndex = null;
+        private int _writeIndexCount = -1;
+        //Movers serialise in parallel and each one resolves its resource here.
+        private readonly object _writeIndexLock = new object();
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -54,6 +58,7 @@ namespace CATHODE
                 Entries = entries.ToList();
             }
             _writeList.AddRange(Entries);
+            _writeIndex = null;
             return true;
         }
 
@@ -61,10 +66,18 @@ namespace CATHODE
         {
             List<Resource> orderedEntries = Entries.OrderBy(o => o.composite_instance_id.AsUInt32).ThenBy(o => o.resource_id.AsUInt32).ToList();
 
+            //The on-disk order is sorted but each entry stores its index in Entries, so work that
+            //out once for the whole table - Entries.IndexOf per entry made saving quadratic (a
+            //level with 18,480 resources spent 1.3s of its save here alone).
+            Dictionary<Resource, int> indexInEntries = new Dictionary<Resource, int>(Entries.Count);
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i] != null && !indexInEntries.ContainsKey(Entries[i]))
+                    indexInEntries[Entries[i]] = i;
+
             byte[][] entryBuffers = new byte[orderedEntries.Count][];
             Parallel.For(0, orderedEntries.Count, i =>
             {
-                entryBuffers[i] = SerializeResourceEntry(orderedEntries[i]);
+                entryBuffers[i] = SerializeResourceEntry(orderedEntries[i], indexInEntries);
             });
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
@@ -78,17 +91,19 @@ namespace CATHODE
             }
             _writeList.Clear();
             _writeList.AddRange(Entries);
+            _writeIndex = null;
             return true;
         }
 
-        private byte[] SerializeResourceEntry(Resource resource)
+        private byte[] SerializeResourceEntry(Resource resource, Dictionary<Resource, int> indexInEntries)
         {
             using (MemoryStream stream = new MemoryStream())
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 Utilities.Write(writer, resource.composite_instance_id);
                 Utilities.Write(writer, resource.resource_id);
-                writer.Write(Entries.IndexOf(resource));
+                int index;
+                writer.Write(indexInEntries.TryGetValue(resource, out index) ? index : -1);
                 return stream.ToArray();
             }
         }
@@ -96,13 +111,39 @@ namespace CATHODE
 
         #region HELPERS
         /// <summary>
+        /// Rebuild the write-index lookup from the current entry list. The lookup is otherwise
+        /// only refreshed at load and save, so resources appended mid-pipeline (instancing adds
+        /// one per new renderable entity) resolve to -1 until the next save - which silently
+        /// dropped every newly added composite instance from radiosity geometry collection.
+        /// </summary>
+        public void RefreshWriteList()
+        {
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
+            _writeIndex = null;
+        }
+
+        /// <summary>
         /// Get the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
         public int GetWriteIndex(Resource resource)
         {
-            if (!_writeList.Contains(resource)) return -1;
-            return _writeList.IndexOf(resource);
+            if (resource == null) return -1;
+            lock (_writeIndexLock)
+            {
+                if (_writeIndex == null || _writeIndexCount != _writeList.Count)
+                {
+                    Dictionary<Resource, int> map = new Dictionary<Resource, int>(_writeList.Count);
+                    for (int i = 0; i < _writeList.Count; i++)
+                        if (_writeList[i] != null && !map.ContainsKey(_writeList[i]))
+                            map[_writeList[i]] = i;
+                    _writeIndex = map;
+                    _writeIndexCount = _writeList.Count;
+                }
+                int index;
+                return _writeIndex.TryGetValue(resource, out index) ? index : -1;
+            }
         }
 
         /// <summary>
@@ -127,8 +168,26 @@ namespace CATHODE
 
         public Resource AddUniqueResource(ShortGuid resource_id, ShortGuid composite_instance_id)
         {
-            Resource resource = Entries.FirstOrDefault(o => o.composite_instance_id == composite_instance_id && o.resource_id == resource_id);
-            if (resource != null)
+            //Instancing calls this once per renderable entity and the table grows to tens of
+            //thousands of rows, so the old scan of Entries was quadratic - 1.2s of Solace's pass.
+            if (_byId == null || _byIdCount != Entries.Count)
+            {
+                Dictionary<(uint, uint), Resource> map = new Dictionary<(uint, uint), Resource>(Entries.Count);
+                for (int i = 0; i < Entries.Count; i++)
+                {
+                    Resource existing = Entries[i];
+                    if (existing == null) continue;
+                    (uint, uint) existingKey = (existing.composite_instance_id.AsUInt32, existing.resource_id.AsUInt32);
+                    if (!map.ContainsKey(existingKey))
+                        map[existingKey] = existing;
+                }
+                _byId = map;
+                _byIdCount = Entries.Count;
+            }
+
+            (uint, uint) key = (composite_instance_id.AsUInt32, resource_id.AsUInt32);
+            Resource resource;
+            if (_byId.TryGetValue(key, out resource))
                 return resource;
 
             resource = new Resource()
@@ -137,6 +196,8 @@ namespace CATHODE
                 resource_id = resource_id
             };
             Entries.Add(resource);
+            _byId[key] = resource;
+            _byIdCount = Entries.Count;
             return resource;
         }
         #endregion

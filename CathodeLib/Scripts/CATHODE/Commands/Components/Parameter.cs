@@ -27,10 +27,5 @@ namespace CATHODE.Scripting
         public ShortGuid name; 
         public ParameterData content = null;
         public ParameterVariant variant = ParameterVariant.PARAMETER;
-
-        ~Parameter()
-        {
-            content = null;
-        }
     }
 }

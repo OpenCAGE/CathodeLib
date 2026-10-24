@@ -164,7 +164,9 @@ namespace CathodeLib
         {
             cMesh mesh = new cMesh();
 
-            if (submesh == null || submesh.Data.Length == 0)
+            if (submesh == null || submesh.Data == null || submesh.Data.Length == 0)
+                return mesh;
+            if (ReferenceEquals(submesh.VertexFormatFull, null) || submesh.VertexFormatFull.Attributes == null)
                 return mesh;
 
             using (BinaryReader reader = new BinaryReader(new MemoryStream(submesh.Data)))
@@ -230,7 +232,7 @@ namespace CathodeLib
 #elif GODOT
                                     mesh.Colours.Add(new Color(v.X, v.Y, v.Z, v.W));
 #else
-                                    mesh.Colours.Add(Color.FromArgb((int)(v.W * 255.0f), (int)(v.X * 255.0f), (int)(v.Y * 255.0f), (int)(v.Z * 255.0f))); // TODO: is this correct?
+                                    mesh.Colours.Add(Color.FromArgb(ColourByte(v.W), ColourByte(v.X), ColourByte(v.Y), ColourByte(v.Z)));
 #endif
                                     break;
                             }
@@ -281,7 +283,18 @@ namespace CathodeLib
             }
         }
 
-        private static Vector4 ReadVertexData(BinaryReader reader, Models.VertexFormat.Type type)
+        private static byte ToBiasedByte(float value)
+        {
+            return (byte)Math.Max(0, Math.Min(255, Math.Round(value * 127.0f) + 128));
+        }
+
+        /// <summary>
+        /// Decode one vertex attribute. Public so callers that need to rewrite a single attribute in
+        /// place - resizing a mesh touches positions and must leave every other attribute, including
+        /// the position W whose meaning is unknown, byte for byte as it was - can use the same codec
+        /// the rest of this class reads and writes with.
+        /// </summary>
+        public static Vector4 ReadVertexData(BinaryReader reader, Models.VertexFormat.Type type)
         {
             switch (type)
             {
@@ -294,8 +307,9 @@ namespace CathodeLib
                 case Models.VertexFormat.Type.FP32_4:
                     return new Vector4(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                 case Models.VertexFormat.Type.Color:
+                    //The game declares it DXGI_FORMAT_B8G8R8A8_UNORM: blue, green, red, alpha in memory. Read as red, green, blue, alpha
                     uint data = reader.ReadUInt32();
-                    return new Vector4((float)((data & 0xFF000000) >> 24) / 255.0f, (float)((data & 0x00FF0000) >> 16) / 255.0f, (float)((data & 0x0000FF00) >> 8) / 255.0f, (float)((data & 0x000000FF) >> 0) / 255.0f);
+                    return new Vector4((float)((data & 0x00FF0000) >> 16) / 255.0f, (float)((data & 0x0000FF00) >> 8) / 255.0f, (float)((data & 0x000000FF) >> 0) / 255.0f, (float)((data & 0xFF000000) >> 24) / 255.0f);
                 case Models.VertexFormat.Type.U8_4:
                     return new Vector4(reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                 case Models.VertexFormat.Type.S16_2:
@@ -313,11 +327,11 @@ namespace CathodeLib
                 case Models.VertexFormat.Type.U16_4N:
                     return new Vector4((float)reader.ReadUInt16() / (float)UInt16.MaxValue, (float)reader.ReadUInt16() / (float)UInt16.MaxValue, (float)reader.ReadUInt16() / (float)UInt16.MaxValue, (float)reader.ReadUInt16() / (float)UInt16.MaxValue);
                 case Models.VertexFormat.Type.Dec3N:
-                    uint val = reader.ReadUInt32();
-                    short sx = (short)((val >> 20) & 0x3ff);
-                    short sy = (short)((val >> 10) & 0x3ff);
-                    short sz = (short)((val) & 0x3ff);
-                    return new Vector4(((sx < 512) ? sx : (sx - 1024)) / 511.0f, ((sy < 512) ? sy : (sy - 1024)) / 511.0f, ((sz < 512) ? sz : (sz - 1024)) / 511.0f, 0);
+                    //Declared as DEC3N, but the data is three unsigned bytes biased around 128, with the fourth unused.
+                    //Decoding it as 10:10:10 gives normals that neither point the right way nor come out unit length.
+                    byte dx = reader.ReadByte(), dy = reader.ReadByte(), dz = reader.ReadByte();
+                    reader.ReadByte();
+                    return new Vector4((dx - 128.0f) / 127.0f, (dy - 128.0f) / 127.0f, (dz - 128.0f) / 127.0f, 0);
             }
             throw new Exception("Unsupported VertexFormatType");
         }
@@ -393,7 +407,14 @@ namespace CathodeLib
             }
         }
 
-        private static void WriteVertexData(BinaryWriter writer, Vector4 v, Models.VertexFormat.Type type)
+        /// <summary>Encode one vertex attribute - the exact inverse of <see cref="ReadVertexData"/>.</summary>
+        /* A 0-1 colour channel as a byte, rounded, so a colour read and written again comes back the same */
+        private static byte ColourByte(float value)
+        {
+            return (byte)Math.Max(0, Math.Min(255, Math.Round(value * 255.0f)));
+        }
+
+        public static void WriteVertexData(BinaryWriter writer, Vector4 v, Models.VertexFormat.Type type)
         {
             switch (type)
             {
@@ -438,10 +459,11 @@ namespace CathodeLib
 #endif
                     break;
                 case Models.VertexFormat.Type.Color:
+                    //Red, green, blue, alpha written as the game reads it: blue, green, red, alpha in memory (see ReadVertexData)
 #if UNITY_EDITOR || UNITY_STANDALONE
-                    uint data = ((uint)(v.x * 255.0f) << 24) | ((uint)(v.y * 255.0f) << 16) | ((uint)(v.z * 255.0f) << 8) | (uint)(v.w * 255.0f);
+                    uint data = ((uint)ColourByte(v.w) << 24) | ((uint)ColourByte(v.x) << 16) | ((uint)ColourByte(v.y) << 8) | (uint)ColourByte(v.z);
 #else
-                    uint data = ((uint)(v.X * 255.0f) << 24) | ((uint)(v.Y * 255.0f) << 16) | ((uint)(v.Z * 255.0f) << 8) | (uint)(v.W * 255.0f);
+                    uint data = ((uint)ColourByte(v.W) << 24) | ((uint)ColourByte(v.X) << 16) | ((uint)ColourByte(v.Y) << 8) | (uint)ColourByte(v.Z);
 #endif
                     writer.Write(data);
                     break;
@@ -538,20 +560,17 @@ namespace CathodeLib
 #endif
                     break;
                 case Models.VertexFormat.Type.Dec3N:
+                    //See ReadVertexData: three bytes biased around 128, with a fourth that's always zero
 #if UNITY_EDITOR || UNITY_STANDALONE
-                    short sx = (short)(Math.Max(-511, Math.Min(511, v.x * 511.0f)));
-                    short sy = (short)(Math.Max(-511, Math.Min(511, v.y * 511.0f)));
-                    short sz = (short)(Math.Max(-511, Math.Min(511, v.z * 511.0f)));
+                    writer.Write(ToBiasedByte(v.x));
+                    writer.Write(ToBiasedByte(v.y));
+                    writer.Write(ToBiasedByte(v.z));
 #else
-                    short sx = (short)(Math.Max(-511, Math.Min(511, v.X * 511.0f)));
-                    short sy = (short)(Math.Max(-511, Math.Min(511, v.Y * 511.0f)));
-                    short sz = (short)(Math.Max(-511, Math.Min(511, v.Z * 511.0f)));
+                    writer.Write(ToBiasedByte(v.X));
+                    writer.Write(ToBiasedByte(v.Y));
+                    writer.Write(ToBiasedByte(v.Z));
 #endif
-                    if (sx < 0) sx += 1024;
-                    if (sy < 0) sy += 1024;
-                    if (sz < 0) sz += 1024;
-                    uint val = ((uint)(sx & 0x3ff) << 20) | ((uint)(sy & 0x3ff) << 10) | ((uint)(sz & 0x3ff));
-                    writer.Write(val);
+                    writer.Write((byte)0);
                     break;
                 default:
                     throw new Exception("Unsupported VertexFormatType");

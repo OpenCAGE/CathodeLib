@@ -1,8 +1,6 @@
 ﻿using CATHODE;
 using System;
-using System.Collections.Generic;
 using System.Numerics;
-using System.Text;
 
 namespace CATHODE.Animations
 {
@@ -12,7 +10,6 @@ namespace CATHODE.Animations
         public bool RequiresConvert { get; set; }
         public bool CanMirror { get; set; }
         public bool CanModulateByPlayspeed { get; set; }
-        public ushort Flags { get; set; }
 
         protected AnimationMetadataValue(MetadataValueType valueType)
         {
@@ -20,7 +17,18 @@ namespace CATHODE.Animations
             RequiresConvert = false;
             CanMirror = false;
             CanModulateByPlayspeed = false;
-            Flags = 0;
+        }
+
+        internal static bool Is64BitType(MetadataValueType type)
+        {
+            return type == MetadataValueType.UINT64
+                || type == MetadataValueType.INT64
+                || type == MetadataValueType.FLOAT64;
+        }
+
+        internal static bool IsVectorType(MetadataValueType type)
+        {
+            return type == MetadataValueType.VECTOR;
         }
     }
 

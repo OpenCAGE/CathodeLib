@@ -21,14 +21,13 @@ namespace CATHODE
         public AnimationStrings(MemoryStream stream, string path = "") : base(stream, path) { }
         public AnimationStrings(byte[] data, string path = "") : base(data, path) { }
 
-        ~AnimationStrings()
-        {
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
+            Entries.Clear();
+            _stringOrder.Clear();
+            _stringIndexByID.Clear();
+
             using (BinaryReader reader = new BinaryReader(stream))
             {
                 int entryCount = reader.ReadInt32();
@@ -38,48 +37,110 @@ namespace CATHODE
 
                 int baseline = (entryCount * 4 * 2) + 8 + (stringCount * 4);
 
-                List<string> strings = new List<string>();
                 for (int i = 0; i < stringCount; i++)
-                    strings.Add(Utilities.ReadString(reader, stringOffsets[i] + baseline, false));
-                for (int i = 0; i < entries.Length; i++) 
-                    Entries.Add(entries[i].StringID, strings[entries[i].StringIndex]);
+                    _stringOrder.Add(ReadRawString(reader, stringOffsets[i] + baseline));
+                for (int i = 0; i < entries.Length; i++)
+                {
+                    Entries.Add(entries[i].StringID, _stringOrder[entries[i].StringIndex]);
+                    _stringIndexByID.Add(entries[i].StringID, entries[i].StringIndex);
+                }
+
             }
             return true;
         }
 
         override protected bool SaveInternal()
         {
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
-            {
-                writer.BaseStream.SetLength(0);
-                writer.Write(Entries.Count);
-                writer.Write(Entries.Count);
-                int count = 0;
-                foreach (KeyValuePair<uint, string> value in Entries)
-                {
-                    writer.Write(value.Key);
-                    writer.Write(count);
-                    count++;
-                }
-                int baseline = (Entries.Count * 4 * 2) + 8 + (Entries.Count * 4);
-                writer.BaseStream.Position = baseline;
-                List<int> stringOffsets = new List<int>();
-                foreach (KeyValuePair<uint, string> value in Entries)
-                {
-                    stringOffsets.Add((int)writer.BaseStream.Position - baseline);
-                    Utilities.WriteString(value.Value, writer, true);
-                }
-                writer.BaseStream.Position = (Entries.Count * 4 * 2) + 8;
-                for (int i = 0; i < stringOffsets.Count; i++)
-                {
-                    writer.Write(stringOffsets[i]);
-                }
-            }
+            File.WriteAllBytes(_filepath, ToBytes());
             return true;
         }
+
+        /// <summary>
+        /// Serialise back to the format stored in ANIMATION.PAK.
+        /// </summary>
+        public byte[] ToBytes()
+        {
+            /* IDs are listed in descending order so the engine can binary search them, while the
+             * strings themselves sit in their own order - preserved from load where possible so
+             * an untouched DB saves back byte for byte. */
+            List<string> strings = new List<string>(_stringOrder);
+            var lookup = new List<KeyValuePair<uint, int>>(Entries.Count);
+            foreach (KeyValuePair<uint, string> entry in Entries)
+            {
+                if (!_stringIndexByID.TryGetValue(entry.Key, out int index) || index >= strings.Count || strings[index] != entry.Value)
+                {
+                    index = strings.IndexOf(entry.Value);
+                    if (index == -1) { index = strings.Count; strings.Add(entry.Value); }
+                }
+                lookup.Add(new KeyValuePair<uint, int>(entry.Key, index));
+            }
+            lookup.Sort((a, b) => b.Key.CompareTo(a.Key));
+
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                writer.Write(lookup.Count);
+                writer.Write(strings.Count);
+                for (int i = 0; i < lookup.Count; i++)
+                {
+                    writer.Write(lookup[i].Key);
+                    writer.Write(lookup[i].Value);
+                }
+
+                int baseline = (lookup.Count * 4 * 2) + 8 + (strings.Count * 4);
+                writer.BaseStream.Position = baseline;
+                List<int> stringOffsets = new List<int>(strings.Count);
+                for (int i = 0; i < strings.Count; i++)
+                {
+                    stringOffsets.Add((int)writer.BaseStream.Position - baseline);
+                    WriteRawString(strings[i], writer);
+                }
+
+                writer.BaseStream.Position = (lookup.Count * 4 * 2) + 8;
+                for (int i = 0; i < stringOffsets.Count; i++)
+                    writer.Write(stringOffsets[i]);
+
+                return stream.ToArray();
+            }
+        }
+
+        /* A handful of entries hold bytes above 0x7F (mangled asset paths). Reading those as ASCII
+         * turns them into '?' and loses the original bytes, so map byte <-> char directly. */
+        private static string ReadRawString(BinaryReader reader, int position)
+        {
+            reader.BaseStream.Position = position;
+            StringBuilder value = new StringBuilder();
+            while (reader.BaseStream.Position < reader.BaseStream.Length)
+            {
+                byte b = reader.ReadByte();
+                if (b == 0x00) break;
+                value.Append((char)b);
+            }
+            return value.ToString();
+        }
+
+        private static void WriteRawString(string value, BinaryWriter writer)
+        {
+            for (int i = 0; i < value.Length; i++)
+                writer.Write((byte)(value[i] & 0xFF));
+            writer.Write((byte)0x00);
+        }
+
+        /* Kept from load so an unmodified DB round trips exactly - the string table isn't ordered
+         * the same way as the ID table, and neither order is derivable from the other. */
+        private List<string> _stringOrder = new List<string>();
+        private Dictionary<uint, int> _stringIndexByID = new Dictionary<uint, int>();
         #endregion
 
         #region ACCESSORS
+        /// <summary>
+        /// A second table to fall back on for names this one does not hold. CA shipped the plain DB
+        /// next to a much larger debug one, and most of the names the files reference - clips,
+        /// contexts, arguments - only ever appear in the debug half. Writing is unaffected: an ID is
+        /// the hash of its own name, so a name resolved through here hashes straight back to it.
+        /// </summary>
+        public AnimationStrings Fallback;
+
         /// <summary>
         /// Add a string to the DB (generates an ID)
         /// </summary>
@@ -88,6 +149,7 @@ namespace CATHODE
             uint id = Utilities.AnimationHashedString(str);
             if (Entries.ContainsKey(id)) return;
             Entries.Add(id, str);
+            _idsByString = null;
         }
 
         /// <summary>
@@ -97,6 +159,7 @@ namespace CATHODE
         {
             uint id = Utilities.AnimationHashedString(str);
             Entries.Remove(id);
+            _idsByString = null;
         }
 
         /// <summary>
@@ -106,6 +169,8 @@ namespace CATHODE
         {
             if (Entries.TryGetValue(id, out string s))
                 return s;
+            if (Fallback != null && Fallback.Entries.TryGetValue(id, out string fallback))
+                return fallback;
             return id.ToString(); //Warn?
         }
 
@@ -115,10 +180,40 @@ namespace CATHODE
         public uint GetID(string str)
         {
             uint id = Utilities.AnimationHashedString(str);
-            if (!Entries.ContainsKey(id))
-                Entries.Add(id, str);
+            if (Entries.TryGetValue(id, out string match) && match == str)
+                return id;
+
+            /* Some entries hold bytes that don't survive being read back as text, so hashing the
+             * string we handed out won't find them again - look those up by value instead. */
+            if (_idsByString == null)
+            {
+                _idsByString = new Dictionary<string, uint>();
+                foreach (KeyValuePair<uint, string> entry in Entries)
+                    if (entry.Value != null && !_idsByString.ContainsKey(entry.Value))
+                        _idsByString.Add(entry.Value, entry.Key);
+            }
+            if (_idsByString.TryGetValue(str, out uint existing))
+                return existing;
+
+            /* Same again for anything that only lives in the fallback table */
+            if (Fallback != null)
+            {
+                uint borrowed = Fallback.GetID(str);
+                if (Fallback.Entries.ContainsKey(borrowed)) return borrowed;
+            }
+
+            /* GetString hands back the raw ID as text when it doesn't know a hash, so turn that
+             * back into the ID rather than hashing the digits. */
+            if (uint.TryParse(str, out uint literal) && !Entries.ContainsKey(literal))
+                return literal;
+
+            /* The hash is what actually gets written, so an unknown name still round-trips. Adding
+             * it here would quietly grow the table every time a file is serialised - anything that
+             * wants a new name kept has to call AddString for it. */
             return id;
         }
+
+        private Dictionary<string, uint> _idsByString = null;
         #endregion
 
         #region STRUCTURES

@@ -19,6 +19,8 @@ namespace CATHODE
         public List<Element> Entries = new List<Element>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
+        public const int MaxElementsPerInstance = 255;
+
         protected override bool HandlesLoadingManually => true;
         private Models _models;
         private Materials _materials;
@@ -27,6 +29,70 @@ namespace CATHODE
         private bool _compressed = false;
 
         private List<Element> _writeList = new List<Element>();
+
+        //Where each element sits in Entries, so a run can be found without scanning the table.
+        //Two lookups, because GetWriteIndex answers reference matches before value matches and the
+        //distinction is load-bearing: retail keeps value-identical duplicate runs on purpose.
+        //Element's own GetHashCode is not usable as a key (it hashes LODs by reference while ==
+        //compares it by value), hence ElementIdentity.
+        private Dictionary<Element, List<int>> _startsByRef = null;
+        private Dictionary<Element, List<int>> _startsByValue = null;
+        private List<Element> _startsList = null;
+        private int _startsCount = 0;
+        //Save serialises elements in parallel and each one resolves its LOD run here.
+        private readonly object _startsLock = new object();
+
+        private sealed class ElementReference : IEqualityComparer<Element>
+        {
+            public static readonly ElementReference Instance = new ElementReference();
+            public bool Equals(Element x, Element y) { return ReferenceEquals(x, y); }
+            public int GetHashCode(Element element) { return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element); }
+        }
+
+        private sealed class ElementIdentity : IEqualityComparer<Element>
+        {
+            public static readonly ElementIdentity Instance = new ElementIdentity();
+            public bool Equals(Element x, Element y) { return x == y; }
+            public int GetHashCode(Element element)
+            {
+                if (element == null) return 0;
+                int hash = (int)element.ModelLocation;
+                hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element.Model);
+                hash = hash * 31 + (element.ModelSubplatformDependent ? 1 : 0);
+                hash = hash * 31 + (int)element.MaterialLocation;
+                hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(element.Material);
+                hash = hash * 31 + (element.MaterialSubplatformDependent ? 1 : 0);
+                hash = hash * 31 + (element.LODs == null ? 0 : element.LODs.Count);
+                return hash;
+            }
+        }
+
+        //Entries is only ever appended to, so the lookups are extended rather than rebuilt.
+        private void EnsureStartIndex()
+        {
+            if (_startsByRef == null || !ReferenceEquals(_startsList, Entries) || _startsCount > Entries.Count)
+            {
+                _startsByRef = new Dictionary<Element, List<int>>(ElementReference.Instance);
+                _startsByValue = new Dictionary<Element, List<int>>(ElementIdentity.Instance);
+                _startsList = Entries;
+                _startsCount = 0;
+            }
+            for (; _startsCount < Entries.Count; _startsCount++)
+            {
+                Element entry = Entries[_startsCount];
+                if (entry == null) continue;
+                AddStart(_startsByRef, entry, _startsCount);
+                AddStart(_startsByValue, entry, _startsCount);
+            }
+        }
+
+        private static void AddStart(Dictionary<Element, List<int>> index, Element element, int at)
+        {
+            List<int> starts;
+            if (!index.TryGetValue(element, out starts))
+                index[element] = starts = new List<int>(1);
+            starts.Add(at);
+        }
 
         public RenderableElements(string path, Models models, Materials materials) : base(path)
         {
@@ -40,13 +106,6 @@ namespace CATHODE
         {
             _models = null;
             _materials = null;
-        }
-
-        ~RenderableElements()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
         }
 
         #region FILE_IO
@@ -120,8 +179,8 @@ namespace CATHODE
                 writer.Write((int)element.MaterialLocation);
                 writer.Write(_materials.GetWriteIndex(element.Material));
                 writer.Write(element.MaterialSubplatformDependent);
-                writer.Write(element.LODs.Count == 0 ? -1 : Entries.IndexOf(element.LODs[0]));
-                writer.Write((byte)element.LODs.Count);
+                writer.Write((element.LODs == null || element.LODs.Count == 0) ? -1 : GetWriteIndex(element.LODs));
+                writer.Write((byte)(element.LODs?.Count ?? 0));
                 return stream.ToArray();
             }
         }
@@ -140,27 +199,46 @@ namespace CATHODE
             if (greaterThan >= Entries.Count)
                 return -1;
 
-            for (int i = greaterThan; i < Entries.Count; i++)
+            lock (_startsLock)
             {
-                if (Entries[i] != element[0])
-                    continue;
+                EnsureStartIndex();
 
-                if (element.Count == 1)
+                //Reference match first: retail's file holds VALUE-identical duplicate runs on purpose
+                //(every instanced FX mover gets its own entry), and matching by value alone collapsed
+                //them all onto the first copy on save - a plain load+save moved every fogsphere mover's
+                //redsIndex, which is a fidelity loss even before instancing edits anything.
+                List<int> starts;
+                if (_startsByRef.TryGetValue(element[0], out starts))
                 {
-                    return i;
-                }
-                else
-                {
-                    for (int x = 1; x < element.Count; x++)
+                    for (int s = 0; s < starts.Count; s++)
                     {
-                        if (Entries[i + x] != element[x])
-                            break;
-                        if (x == element.Count - 1)
+                        int i = starts[s];
+                        if (i < greaterThan) continue;
+                        bool all = true;
+                        for (int x = 1; x < element.Count; x++)
+                            if (i + x >= Entries.Count || !ReferenceEquals(Entries[i + x], element[x])) { all = false; break; }
+                        if (all)
                             return i;
                     }
                 }
+
+                if (_startsByValue.TryGetValue(element[0], out starts))
+                {
+                    for (int s = 0; s < starts.Count; s++)
+                    {
+                        int i = starts[s];
+                        if (i < greaterThan) continue;
+                        if (element.Count == 1)
+                            return i;
+                        bool all = true;
+                        for (int x = 1; x < element.Count; x++)
+                            if (i + x >= Entries.Count || Entries[i + x] != element[x]) { all = false; break; }
+                        if (all)
+                            return i;
+                    }
+                }
+                return -1;
             }
-            return -1;
         }
 
         /// <summary>
@@ -179,9 +257,178 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Forget which duplicate runs have been handed out, so the next instancing pass starts
+        /// reusing from the beginning again. Must be called once per pass - without it a second save
+        /// in the same session finds the cursors already past every run and appends instead.
+        /// </summary>
+        public void ResetDuplicateRunReuse()
+        {
+            lock (Entries) _duplicateCursor.Clear();
+        }
+
+        //Per base run, the index to resume looking for a free duplicate from. See RegisterDuplicateRun.
+        private readonly Dictionary<int, int> _duplicateCursor = new Dictionary<int, int>();
+
+        //Escape hatch for measuring the reuse against the old append-always behaviour. Off means the
+        //table grows by every FX mover's run on every save.
+        public static bool ReuseDuplicateRuns = true;
+
+        /// <summary>
+        /// Claim a renderable run of this shape that no other caller has taken this pass, appending a
+        /// fresh copy only when none is left. Retail gives every instanced FX mover (fogsphere /
+        /// particle / ribbon) its OWN renderable entry rather than sharing the composite resource's -
+        /// the per-instance entry is the mover's identity to the engine.
+        /// </summary>
+        public List<Element> RegisterDuplicateRun(List<Element> elements)
+        {
+            if (elements == null || elements.Count == 0)
+                return elements;
+
+            lock (Entries)
+            {
+                /* Reuse a duplicate the table already holds before adding another. Instancing rebuilds
+                 * every mover from COMMANDS on each save, so without this the previous save's copies are
+                 * orphaned and a fresh set appended - REDS grew by a fixed amount on every save forever
+                 * (ChallengeMap14 +1,138 entries, TECH_HUB +4,354) and registration is quadratic.
+                 * The search starts PAST the first match: that one is the run the composite resource
+                 * itself points at, and not sharing it is the entire point of a duplicate. */
+                int baseAt = ReuseDuplicateRuns ? GetWriteIndex(elements, 0) : -1;
+                if (baseAt >= 0)
+                {
+                    int from;
+                    if (!_duplicateCursor.TryGetValue(baseAt, out from))
+                        from = baseAt + 1;
+
+                    int reuse = GetWriteIndex(elements, from);
+                    if (reuse >= 0)
+                    {
+                        _duplicateCursor[baseAt] = reuse + 1;
+                        var existing = new List<Element>(elements.Count);
+                        for (int i = 0; i < elements.Count; i++)
+                            existing.Add(Entries[reuse + i]);
+                        return existing;
+                    }
+
+                    //Nothing left to claim for this shape - every later call appends too.
+                    _duplicateCursor[baseAt] = Entries.Count;
+                }
+
+                return Append(elements);
+            }
+        }
+
+        private List<Element> Append(List<Element> elements)
+        {
+            var copies = new List<Element>(elements.Count);
+            foreach (Element el in elements)
+            {
+                if (el == null) { copies.Add(null); continue; }
+                copies.Add(new Element
+                {
+                    ModelLocation = el.ModelLocation,
+                    Model = el.Model,
+                    ModelSubplatformDependent = el.ModelSubplatformDependent,
+                    MaterialLocation = el.MaterialLocation,
+                    Material = el.Material,
+                    MaterialSubplatformDependent = el.MaterialSubplatformDependent,
+                    LODs = el.LODs != null ? new List<Element>(el.LODs) : new List<Element>()
+                });
+            }
+            foreach (Element el in copies)
+                if (el != null)
+                    Entries.Add(el);
+            return copies;
+        }
+
+        /// <summary>
+        /// Ensure a sequence of renderable elements are registered.
+        /// </summary>
+        public List<Element> EnsureRegistered(List<Element> elements)
+        {
+            return EnsureRegistered(elements, 0);
+        }
+
+        /// <summary>
+        /// Ensure a sequence of renderable elements are registered as a contiguous run, with each
+        /// element's LOD chain placed after it.
+        /// </summary>
+        public List<Element> EnsureRegistered(List<Element> elements, int mustStartAfter)
+        {
+            if (elements == null || elements.Count == 0)
+                return elements ?? new List<Element>();
+
+            // Reuse a run that is already registered rather than appending a second copy: retail's
+            // file holds one run per distinct renderable set, not one per user. Appending per user
+            // grew the file to ~1.6x retail and made registration quadratic (BSP_LV426_Pt01's
+            // instancing pass went from 250s to 44s once this was restored).
+            if (GetWriteIndex(elements, mustStartAfter) >= 0)
+                return elements;
+            
+            var parentIndices = new List<int>(elements.Count);
+            for (int i = 0; i < elements.Count; i++)
+            {
+                Element el = elements[i];
+                if (el == null)
+                {
+                    parentIndices.Add(-1);
+                    continue;
+                }
+                parentIndices.Add(Entries.Count);
+                Entries.Add(el);
+            }
+
+            for (int i = 0; i < elements.Count; i++)
+            {
+                Element el = elements[i];
+                if (el?.LODs == null || el.LODs.Count == 0)
+                    continue;
+                el.LODs = EnsureRegistered(el.LODs, parentIndices[i] + 1);
+            }
+
+            return elements;
+        }
+
+        /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public List<Element> ImportEntry(List<Element> elements, Models sourceModels)
+        public List<Element> ImportEntry(List<Element> elements, Models sourceModels, bool overwriteExisting = false)
+        {
+            return ImportEntry(elements, sourceModels, overwriteExisting, null);
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects - or, when one of <paramref name="reuseRuns"/> is the
+        /// run the copy would make (the same models, materials and LODs), point at that run instead and take it off the list.
+        /// For a composite ported over its own earlier copy: the runs the replaced copy's renderables used are handed in.
+        /// Without them every such port appended a fresh set and left the old one behind, unused, growing the file by the
+        /// same amount each time.
+        /// </summary>
+        public List<Element> ImportEntry(List<Element> elements, Models sourceModels, bool overwriteExisting, List<List<Element>> reuseRuns)
+        {
+            if (elements == null)
+                return null;
+
+            List<Element> newElements = ResolveImport(elements, sourceModels, overwriteExisting);
+
+            if (reuseRuns != null)
+            {
+                for (int r = 0; r < reuseRuns.Count; r++)
+                {
+                    List<Element> run = reuseRuns[r];
+                    if (run == null || run.Count == 0 || run.Count != newElements.Count || !SameRun(run, newElements) || !IsRegisteredRun(run))
+                        continue;
+                    reuseRuns.RemoveAt(r);
+                    return new List<Element>(run);
+                }
+            }
+
+            AppendResolved(newElements);
+            return newElements;
+        }
+
+        /* The elements an import makes - their models and materials brought into this level's tables, their LODs made the
+           same way - without putting any of them in the table yet (AppendResolved does that) */
+        private List<Element> ResolveImport(List<Element> elements, Models sourceModels, bool overwriteExisting)
         {
             if (elements == null)
                 return null;
@@ -193,22 +440,67 @@ namespace CATHODE
 
                 if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
                     throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
-                
-                Models.CS2 cs2 = _models.ImportEntry(sourceModels.FindModel(elements[i].Model)); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
-                newElement.Model = cs2.GetSubmesh(newElement.Model);
-                newElement.Material = _materials.ImportEntry(newElement.Material);
+
+                Models.CS2 sourceCs2 = sourceModels.FindModel(elements[i].Model);
+                Models.CS2 cs2 = _models.ImportEntry(sourceCs2, overwriteExisting); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
+                newElement.Model = cs2?.GetCorrespondingSubmesh(sourceCs2, elements[i].Model);
+                newElement.Material = _materials.ImportEntry(newElement.Material, overwriteExisting);
 
                 newElements.Add(newElement);
-                Entries.Add(newElement);
             }
 
-            //Add LODs after so they're also sequential 
             for (int i = 0; i < elements.Count; i++)
             {
-                newElements[i].LODs = ImportEntry(newElements[i].LODs, sourceModels);
+                newElements[i].LODs = ResolveImport(newElements[i].LODs, sourceModels, overwriteExisting);
             }
 
             return newElements;
+        }
+
+        /* Into the table in the order an import always used - the run, then each element's LOD run after it - so every run
+           is contiguous */
+        private void AppendResolved(List<Element> elements)
+        {
+            if (elements == null)
+                return;
+
+            foreach (Element element in elements)
+                Entries.Add(element);
+            foreach (Element element in elements)
+                AppendResolved(element.LODs);
+        }
+
+        private static bool SameRun(List<Element> x, List<Element> y)
+        {
+            for (int i = 0; i < x.Count; i++)
+                if (x[i] != y[i])
+                    return false;
+            return true;
+        }
+
+        /* Whether these very elements sit together in the table, in this order */
+        private bool IsRegisteredRun(List<Element> run)
+        {
+            if (run[0] == null)
+                return false;
+
+            lock (_startsLock)
+            {
+                EnsureStartIndex();
+                List<int> starts;
+                if (!_startsByRef.TryGetValue(run[0], out starts))
+                    return false;
+                for (int s = 0; s < starts.Count; s++)
+                {
+                    int i = starts[s];
+                    bool all = true;
+                    for (int x = 1; x < run.Count; x++)
+                        if (i + x >= Entries.Count || !ReferenceEquals(Entries[i + x], run[x])) { all = false; break; }
+                    if (all)
+                        return true;
+                }
+                return false;
+            }
         }
         #endregion
 
@@ -224,6 +516,25 @@ namespace CATHODE
             public bool MaterialSubplatformDependent = false;
 
             public List<Element> LODs = new List<Element>();
+
+            /// <summary>
+            /// Copy this element. The model, the material and the LOD elements are SHARED with the
+            /// original, not cloned - an element is a three-field pointer record, and the things it
+            /// points at belong to the level's model and material tables.
+            /// </summary>
+            public Element Copy()
+            {
+                return new Element()
+                {
+                    ModelLocation = ModelLocation,
+                    Model = Model,
+                    ModelSubplatformDependent = ModelSubplatformDependent,
+                    MaterialLocation = MaterialLocation,
+                    Material = Material,
+                    MaterialSubplatformDependent = MaterialSubplatformDependent,
+                    LODs = LODs == null ? null : new List<Element>(LODs),
+                };
+            }
 
             public static bool operator ==(Element x, Element y)
             {

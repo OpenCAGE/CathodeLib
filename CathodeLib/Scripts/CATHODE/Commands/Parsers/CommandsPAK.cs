@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using CATHODE.Enums;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -25,7 +27,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 {
     public static class CommandsPAK
     {
-        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        public static void Read(MemoryStream stream, out ShortGuid[] EntryPoints, out List<Composite> Entries, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null)
         {
             byte[] content = stream.ToArray();
 
@@ -70,7 +72,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     break;
                                 case DataType.STRING:
                                     reader_parallel.BaseStream.Position += 8;
-                                    parametersArr[i] = new cString(Utilities.ReadString(reader_parallel).Replace("\u0092", "'"));
+                                    parametersArr[i] = new cString(Utilities.ReadStringWindows1252(reader_parallel));
                                     Utilities.Align(reader_parallel, 4);
                                     break;
                                 case DataType.BOOL:
@@ -137,7 +139,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                         //Read script ID and string name
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
-                        composite.name = Utilities.ReadString(reader_parallel);
+                        composite.name = Utilities.ReadStringWindows1252(reader_parallel);
                         Utilities.Align(reader_parallel, 4);
 
                         //Pull data from those offsets
@@ -260,12 +262,16 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                     int animModelIndex = reader_parallel.ReadInt32();
-                                                    resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ResourceIndex == animModelIndex); //TODO: why is this not write index? we should probs order by this on read
+                                                    resource.AnimatedModel = envAnims.Entries.FirstOrDefault(o => o.ID == animModelIndex); //TODO: why is this not write index? we should probs order by this on read
                                                     reader_parallel.BaseStream.Position += 4;
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
-                                                    resource.PhysicsSystemIndex = reader_parallel.ReadInt32();
-                                                    reader_parallel.BaseStream.Position += 4;
+                                                    {
+                                                        int systemIndex = reader_parallel.ReadInt32();
+                                                        resource.PhysicsSystem = physicsHKX?.GetPhysicsSystem(systemIndex);
+                                                        resource.PhysicsSystemIndex = systemIndex;
+                                                        reader_parallel.BaseStream.Position += 4;
+                                                    }
                                                     break;
                                                 default:
                                                     reader_parallel.BaseStream.Position += 8;
@@ -326,7 +332,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     keyframe.tan_out = Utilities.Consume<Vector2>(reader_parallel);
                                                     animation.keyframes.Add(keyframe);
                                                 }
-                                                animEntity.animations.Add(animation);
+                                                animEntity.floatTracks.Add(animation);
                                             }
 
                                             reader_parallel.BaseStream.Position = eventOffset;
@@ -343,15 +349,17 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 for (int m = 0; m < keyframeCount; m++)
                                                 {
                                                     CAGEAnimation.EventTrack.Keyframe keyframe = new CAGEAnimation.EventTrack.Keyframe();
-                                                    keyframe.mode = (CAGEAnimation.InterpolationMode)reader_parallel.ReadInt32();
+                                                    reader_parallel.BaseStream.Position += 4;
                                                     keyframe.time = reader_parallel.ReadSingle();
                                                     keyframe.forward = Utilities.Consume<ShortGuid>(reader_parallel);
                                                     keyframe.reverse = Utilities.Consume<ShortGuid>(reader_parallel);
-                                                    keyframe.track_type = (CAGEAnimation.TrackType)reader_parallel.ReadInt32();
+                                                    keyframe.track_type = (ANIM_TRACK_TYPE)reader_parallel.ReadInt32();
                                                     keyframe.duration = reader_parallel.ReadSingle();
                                                     thisParamSet.keyframes.Add(keyframe);
                                                 }
-                                                animEntity.events.Add(thisParamSet);
+                                                if (thisParamSet.keyframes.Count > 0)
+                                                    thisParamSet.track_type = thisParamSet.keyframes[0].track_type;
+                                                animEntity.eventTracks.Add(thisParamSet);
                                             }
                                             break;
                                         }
@@ -361,13 +369,29 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             reader_parallel.BaseStream.Position = (reader_parallel.ReadInt32() * 4);
 
                                             Entity thisEntity = composite.GetEntityByID(new ShortGuid(reader_parallel));
-                                            if (thisEntity.variant == EntityVariant.PROXY)
+
+                                            //Trigger sequence data can also be attached to proxies pointing at TriggerSequence
+                                            //entities (e.g. PRODUCTION\TECH_COMMS) - those store the data on the ProxyEntity.
+                                            List<TriggerSequence.SequenceEntry> sequenceList;
+                                            List<TriggerSequence.MethodEntry> methodList;
+                                            switch (thisEntity)
                                             {
-                                                //Logs indicate that these vanilla entities contain no parameters or links, so they're not very valuable. We should implement this anyways though so we can add them ourselves.
-                                                Console.WriteLine("WARNING: Skipping load of PROXY TriggerSequence in " + composite.name);
-                                                break;
+                                                case TriggerSequence trigEntity:
+                                                    sequenceList = trigEntity.sequence;
+                                                    methodList = trigEntity.methods;
+                                                    break;
+                                                case ProxyEntity proxyEntity:
+                                                    sequenceList = proxyEntity.sequence;
+                                                    methodList = proxyEntity.methods;
+                                                    break;
+                                                default:
+                                                    Console.WriteLine("WARNING: Skipping load of trigger sequence data on unexpected entity type in " + composite.name);
+                                                    sequenceList = null;
+                                                    methodList = null;
+                                                    break;
                                             }
-                                            TriggerSequence trigEntity = (TriggerSequence)thisEntity;
+                                            if (sequenceList == null)
+                                                break;
 
                                             int triggersOffset = reader_parallel.ReadInt32() * 4;
                                             int triggersCount = reader_parallel.ReadInt32();
@@ -384,7 +408,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 thisTrigger.timing = reader_parallel.ReadSingle();
                                                 reader_parallel.BaseStream.Position = hierarchyOffset;
                                                 thisTrigger.connectedEntity.path = Utilities.ConsumeArray<ShortGuid>(reader_parallel, hierarchyCount);
-                                                trigEntity.sequence.Add(thisTrigger);
+                                                sequenceList.Add(thisTrigger);
                                             }
 
                                             for (int z = 0; z < eventsCount; z++)
@@ -395,7 +419,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 thisEvent.method = new ShortGuid(reader_parallel);
                                                 thisEvent.relay = new ShortGuid(reader_parallel);
                                                 thisEvent.finished = new ShortGuid(reader_parallel);
-                                                trigEntity.methods.Add(thisEvent);
+                                                methodList.Add(thisEvent);
                                             }
                                             break;
                                         }
@@ -492,7 +516,9 @@ namespace CATHODE.Scripting.Internal.Parsers
             }
         }
 
-        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds)
+        /// <param name="leadingPadding">Zero bytes written ahead of the file, which every offset then counts. Writing the same
+        /// content twice with different paddings shows which words are offsets (see Commands.WriteLiveLinkImage).</param>
+        public static void Write(ShortGuid[] EntryPoints, List<Composite> Entries, out byte[] content, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, int leadingPadding = 0)
         {
             ShortGuid SHORTGUID_resource = ShortGuidUtils.Generate("resource");
 
@@ -507,7 +533,7 @@ namespace CATHODE.Scripting.Internal.Parsers
             List<AliasEntity>[] reshuffledAliasPathHashes = new List<AliasEntity>[Entries.Count];
             List<ResourceReference>[] resourceReferences = new List<ResourceReference>[Entries.Count];
             List<CAGEAnimation>[] cageAnimationEntities = new List<CAGEAnimation>[Entries.Count];
-            List<TriggerSequence>[] triggerSequenceEntities = new List<TriggerSequence>[Entries.Count];
+            List<TriggerSequenceData>[] triggerSequenceEntities = new List<TriggerSequenceData>[Entries.Count];
 
             Parallel.For(0, Entries.Count, i =>
             {
@@ -518,7 +544,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                 reshuffledAliasPathHashes[i] = Entries[i].aliases.OrderBy(o => o.alias.GeneratePathHash().AsUInt32).ToList();
 
                 cageAnimationEntities[i] = new List<CAGEAnimation>();
-                triggerSequenceEntities[i] = new List<TriggerSequence>();
+                triggerSequenceEntities[i] = new List<TriggerSequenceData>();
                 resourceReferences[i] = new List<ResourceReference>();
                 foreach (var function in Entries[i].functions_dictionary.Values)
                 {
@@ -526,14 +552,14 @@ namespace CATHODE.Scripting.Internal.Parsers
                     if (function.function == FunctionType.CAGEAnimation)
                     {
                         CAGEAnimation thisEntity = (CAGEAnimation)function;
-                        if (thisEntity.connections.Count == 0 && thisEntity.animations.Count == 0 && thisEntity.events.Count == 0) continue;
+                        if (thisEntity.connections.Count == 0 && thisEntity.floatTracks.Count == 0 && thisEntity.eventTracks.Count == 0) continue;
                         cageAnimationEntities[i].Add(thisEntity);
                     }
                     else if (function.function == FunctionType.TriggerSequence)
                     {
                         TriggerSequence thisEntity = (TriggerSequence)function;
                         if (thisEntity.sequence.Count == 0 && thisEntity.methods.Count == 0) continue;
-                        triggerSequenceEntities[i].Add(thisEntity);
+                        triggerSequenceEntities[i].Add(new TriggerSequenceData(thisEntity.shortGUID, thisEntity.sequence, thisEntity.methods));
                     }
 
                     //Get resources on this function
@@ -544,17 +570,33 @@ namespace CATHODE.Scripting.Internal.Parsers
                     if (param == null) continue;
                     resourceReferences[i].AddRange(((cResource)param.content).value);
                 }
+
+                //Proxies to TriggerSequence entities can carry trigger sequence data too (e.g. PRODUCTION\TECH_COMMS)
+                foreach (var proxy in Entries[i].proxies)
+                {
+                    if (proxy.sequence.Count == 0 && proxy.methods.Count == 0) continue;
+                    triggerSequenceEntities[i].Add(new TriggerSequenceData(proxy.shortGUID, proxy.sequence, proxy.methods));
+                }
+
                 resourceReferences[i] = resourceReferences[i].Distinct().ToList();
             });
 
+            /* Collect per composite and concatenate in index order. Appending to one shared list under a
+             * lock let the threads interleave differently on every run, and since Distinct() keeps first
+             * occurrences that reordered the whole parameter table - two saves of an unchanged level
+             * disagreed on ~20% of COMMANDS.PAK, because every parameter reference indexes into it. */
+            List<ParameterData>[] parametersPerComposite = new List<ParameterData>[Entries.Count];
             Parallel.For(0, Entries.Count, i =>
             {
                 List<Entity> ents = Entries[i].GetEntities();
+                List<ParameterData> local = new List<ParameterData>();
                 for (int x = 0; x < ents.Count; x++)
                     for (int y = 0; y < ents[x].parameters.Count; y++)
-                        lock (parameters)
-                            parameters.Add(ents[x].parameters[y].content);
+                        local.Add(ents[x].parameters[y].content);
+                parametersPerComposite[i] = local;
             });
+            for (int i = 0; i < parametersPerComposite.Length; i++)
+                parameters.AddRange(parametersPerComposite[i]);
             parameters = parameters.Distinct().ToList();
 
             using (MemoryStream stream = new MemoryStream())
@@ -562,6 +604,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                 using (BinaryWriter writer = new BinaryWriter(stream))
                 {
                     writer.BaseStream.SetLength(0);
+                    if (leadingPadding > 0)
+                        writer.Write(new byte[leadingPadding]);
 
                     //Write entry points
                     for (int i = 0; i < 3; i++)
@@ -607,10 +651,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
                                 stringStartRaw[3] = 0x80;
                                 writer.Write(stringStartRaw);
-                                string str = ((cString)parameters[i]).value.Replace("\u0092", "'");
-                                writer.Write(ShortGuidUtils.Generate(str, false).AsUInt32);
-                                for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
-                                writer.Write((char)0x00);
+                                //Windows-1252 text, beside the hash of exactly those bytes (see GenerateForStringParameter)
+                                byte[] str = Utilities.GetBytesWindows1252(((cString)parameters[i]).value);
+                                writer.Write(ShortGuidUtils.GenerateForStringParameter(str).AsUInt32);
+                                writer.Write(str);
+                                writer.Write((byte)0x00);
                                 Utilities.Align(writer, 4);
                                 break;
                             case DataType.BOOL:
@@ -670,9 +715,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                         int firstInst = -1;
                         int lastInst = -1;
 
-                        Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name, false));
-                        for (int x = 0; x < Entries[i].name.Length; x++) writer.Write(Entries[i].name[x]);
-                        writer.Write((char)0x00);
+                        byte[] name = Utilities.GetBytesWindows1252(Entries[i].name);
+                        Utilities.Write<ShortGuid>(writer, ShortGuidUtils.GenerateFromBytes(name));
+                        writer.Write(name);
+                        writer.Write((byte)0x00);
                         Utilities.Align(writer, 4);
 
                         //Write data
@@ -844,7 +890,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     break;
                                                 case ResourceType.ANIMATED_MODEL:
                                                     //writer.Write(envAnims.GetWriteIndex(resourceReferences[i][p].AnimatedModel));
-                                                    writer.Write(resourceReferences[i][p].AnimatedModel.ResourceIndex);
+                                                    //A reference with no entry (the save gives every EnvironmentModelReference one) reads back as none
+                                                    writer.Write(resourceReferences[i][p].AnimatedModel?.ID ?? -1);
                                                     writer.Write(-1);
                                                     break;
                                                 case ResourceType.DYNAMIC_PHYSICS_SYSTEM:
@@ -887,14 +934,14 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                 writer.Write(header.connectedEntity.path.Length);
                                             }
 
-                                            List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].animations.Count);
-                                            for (int pp = 0; pp < cageAnimationEntities[i][p].animations.Count; pp++)
+                                            List<int> internalOffsets = new List<int>(cageAnimationEntities[i][p].floatTracks.Count);
+                                            for (int pp = 0; pp < cageAnimationEntities[i][p].floatTracks.Count; pp++)
                                             {
                                                 int toPointTo = (int)writer.BaseStream.Position;
-                                                cageAnimationEntities[i][p].animations[pp].keyframes = cageAnimationEntities[i][p].animations[pp].keyframes.OrderBy(o => o.time).ToList();
-                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].animations[pp].keyframes.Count; ppp++)
+                                                cageAnimationEntities[i][p].floatTracks[pp].keyframes = cageAnimationEntities[i][p].floatTracks[pp].keyframes.OrderBy(o => o.time).ToList();
+                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count; ppp++)
                                                 {
-                                                    CAGEAnimation.FloatTrack.Keyframe key = cageAnimationEntities[i][p].animations[pp].keyframes[ppp];
+                                                    CAGEAnimation.FloatTrack.Keyframe key = cageAnimationEntities[i][p].floatTracks[pp].keyframes[ppp];
                                                     writer.Write((Int32)key.mode);
                                                     writer.Write(key.time);
                                                     Utilities.Write<Vector2>(writer, key.value);
@@ -906,33 +953,33 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                                 float minSeconds = 0;
                                                 float maxSeconds = 0;
-                                                if (cageAnimationEntities[i][p].animations[pp].keyframes.Count != 0)
+                                                if (cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count != 0)
                                                 {
-                                                    minSeconds = cageAnimationEntities[i][p].animations[pp].keyframes[0].time;
-                                                    maxSeconds = cageAnimationEntities[i][p].animations[pp].keyframes[cageAnimationEntities[i][p].animations[pp].keyframes.Count - 1].time;
+                                                    minSeconds = cageAnimationEntities[i][p].floatTracks[pp].keyframes[0].time;
+                                                    maxSeconds = cageAnimationEntities[i][p].floatTracks[pp].keyframes[cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count - 1].time;
                                                 }
                                                 writer.Write(minSeconds);
                                                 writer.Write(maxSeconds);
 
-                                                Utilities.Write(writer, cageAnimationEntities[i][p].animations[pp].shortGUID);
+                                                Utilities.Write(writer, cageAnimationEntities[i][p].floatTracks[pp].shortGUID);
 
                                                 writer.Write(toPointTo / 4);
-                                                writer.Write(cageAnimationEntities[i][p].animations[pp].keyframes.Count);
+                                                writer.Write(cageAnimationEntities[i][p].floatTracks[pp].keyframes.Count);
                                             }
 
                                             int animationOffset = (int)writer.BaseStream.Position;
                                             Utilities.Write<int>(writer, internalOffsets);
 
-                                            internalOffsets = new List<int>(cageAnimationEntities[i][p].events.Count);
-                                            for (int pp = 0; pp < cageAnimationEntities[i][p].events.Count; pp++)
+                                            internalOffsets = new List<int>(cageAnimationEntities[i][p].eventTracks.Count);
+                                            for (int pp = 0; pp < cageAnimationEntities[i][p].eventTracks.Count; pp++)
                                             {
                                                 int toPointTo = (int)writer.BaseStream.Position;
-                                                List<CAGEAnimation.Connection> keyframeRefs = cageAnimationEntities[i][p].connections.FindAll(o => o.target_track == cageAnimationEntities[i][p].events[pp].shortGUID);
-                                                cageAnimationEntities[i][p].events[pp].keyframes = cageAnimationEntities[i][p].events[pp].keyframes.OrderBy(o => o.time).ToList();
-                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].events[pp].keyframes.Count; ppp++)
+                                                List<CAGEAnimation.Connection> keyframeRefs = cageAnimationEntities[i][p].connections.FindAll(o => o.target_track == cageAnimationEntities[i][p].eventTracks[pp].shortGUID);
+                                                cageAnimationEntities[i][p].eventTracks[pp].keyframes = cageAnimationEntities[i][p].eventTracks[pp].keyframes.OrderBy(o => o.time).ToList();
+                                                for (int ppp = 0; ppp < cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count; ppp++)
                                                 {
-                                                    CAGEAnimation.EventTrack.Keyframe key = cageAnimationEntities[i][p].events[pp].keyframes[ppp];
-                                                    writer.Write((Int32)key.mode);
+                                                    CAGEAnimation.EventTrack.Keyframe key = cageAnimationEntities[i][p].eventTracks[pp].keyframes[ppp];
+                                                    writer.Write((Int32)CAGEAnimation.InterpolationMode.Linear);
                                                     writer.Write(key.time);
                                                     Utilities.Write<ShortGuid>(writer, key.forward);
                                                     Utilities.Write<ShortGuid>(writer, key.reverse);
@@ -944,18 +991,18 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                                                 float minSeconds = 0;
                                                 float maxSeconds = 0;
-                                                if (cageAnimationEntities[i][p].events[pp].keyframes.Count != 0)
+                                                if (cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count != 0)
                                                 {
-                                                    minSeconds = cageAnimationEntities[i][p].events[pp].keyframes[0].time;
-                                                    maxSeconds = cageAnimationEntities[i][p].events[pp].keyframes[cageAnimationEntities[i][p].events[pp].keyframes.Count - 1].time;
+                                                    minSeconds = cageAnimationEntities[i][p].eventTracks[pp].keyframes[0].time;
+                                                    maxSeconds = cageAnimationEntities[i][p].eventTracks[pp].keyframes[cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count - 1].time;
                                                 }
                                                 writer.Write(minSeconds);
                                                 writer.Write(maxSeconds);
 
-                                                Utilities.Write(writer, cageAnimationEntities[i][p].events[pp].shortGUID);
+                                                Utilities.Write(writer, cageAnimationEntities[i][p].eventTracks[pp].shortGUID);
 
                                                 writer.Write(toPointTo / 4);
-                                                writer.Write(cageAnimationEntities[i][p].events[pp].keyframes.Count);
+                                                writer.Write(cageAnimationEntities[i][p].eventTracks[pp].keyframes.Count);
                                             }
 
                                             int eventOffset = (int)writer.BaseStream.Position;
@@ -966,9 +1013,9 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             writer.Write(headerOffset / 4);
                                             writer.Write(cageAnimationEntities[i][p].connections.Count);
                                             writer.Write(animationOffset / 4);
-                                            writer.Write(cageAnimationEntities[i][p].animations.Count);
+                                            writer.Write(cageAnimationEntities[i][p].floatTracks.Count);
                                             writer.Write(eventOffset / 4);
-                                            writer.Write(cageAnimationEntities[i][p].events.Count);
+                                            writer.Write(cageAnimationEntities[i][p].eventTracks.Count);
                                         }
 
                                         scriptPointerOffsetInfo[(int)CompositeFileData.CAGEANIMATION_DATA] = new OffsetPair(writer.BaseStream.Position, globalOffsets.Count);
@@ -1060,8 +1107,8 @@ namespace CATHODE.Scripting.Internal.Parsers
                     int compositeOffsetPos = (int)writer.BaseStream.Position;
                     Utilities.Write<int>(writer, compositeOffsets);
 
-                    //Rewrite header info with correct offsets 
-                    writer.BaseStream.Position = 12;
+                    //Rewrite header info with correct offsets
+                    writer.BaseStream.Position = 12 + leadingPadding;
                     writer.Write(parameterOffsetPos / 4);
                     writer.Write(parameters.Count);
                     writer.Write(compositeOffsetPos / 4);
@@ -1110,6 +1157,21 @@ namespace CATHODE.Scripting.Internal.Parsers
             public CommandsParamRefSet(ShortGuid _id)
             {
                 id = _id;
+            }
+        }
+
+        //Trigger sequence data to write for an entity - either a TriggerSequence function, or a proxy pointing at one
+        private class TriggerSequenceData
+        {
+            public ShortGuid shortGUID;
+            public List<TriggerSequence.SequenceEntry> sequence;
+            public List<TriggerSequence.MethodEntry> methods;
+
+            public TriggerSequenceData(ShortGuid _id, List<TriggerSequence.SequenceEntry> _sequence, List<TriggerSequence.MethodEntry> _methods)
+            {
+                shortGUID = _id;
+                sequence = _sequence;
+                methods = _methods;
             }
         }
         #endregion

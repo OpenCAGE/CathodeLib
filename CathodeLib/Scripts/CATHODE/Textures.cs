@@ -26,23 +26,104 @@ namespace CATHODE
 
         public List<TEX4> _writeList = new List<TEX4>();
 
-        public Textures(string path) : base(path) { }
+        //Which texture answers to a given path-normalised name, for ImportEntry. Grown as Entries
+        //is; a Clear resets the count and it rebuilds. Importing one material asks about a dozen
+        //textures and the old scan normalised every name in the table for each question, which on
+        //a level with thousands of textures is millions of throwaway strings per port.
+        private Dictionary<string, TEX4> _byNormalisedName = null;
+        private int _byNormalisedNameCount = 0;
 
-        ~Textures()
+        /// <summary>The texture with this name (compared the way an import compares names), or null.</summary>
+        public TEX4 FindByName(string name)
         {
-            foreach (var tex in Entries)
+            return FindByNormalisedName(NormaliseTextureName(name));
+        }
+
+        private TEX4 FindByNormalisedName(string normalisedName)
+        {
+            /* Entries is a public list that the editors add to and remove from directly, so the index
+               can only trust itself so far: any change in count rebuilds it, an answer is checked
+               against the list before it is given (a remove and an add leave the count where it was),
+               and a miss with the count unchanged is checked against the list too, since the miss may
+               be an entry added behind the index's back. */
+            if (_byNormalisedName == null || _byNormalisedNameCount != Entries.Count)
+                RebuildNameIndex();
+
+            TEX4 found;
+            if (_byNormalisedName.TryGetValue(normalisedName, out found))
             {
-                if (tex?.TexturePersistent?.Content != null)
-                    tex.TexturePersistent.Content = null;
-                if (tex?.TextureStreamed?.Content != null)
-                    tex.TextureStreamed.Content = null;
+                if (IsInEntries(found))
+                    return found;
+                RebuildNameIndex();
+                return _byNormalisedName.TryGetValue(normalisedName, out found) ? found : null;
             }
-            Entries?.Clear();
-            _writeList?.Clear();
+
+            //Compared without making the normalised string: a level load asks this for hundreds of textures it
+            //doesn't have yet, and each miss used to allocate a copy of every name in the table
+            foreach (TEX4 entry in Entries)
+            {
+                if (entry != null && MatchesNormalisedName(entry.Name, normalisedName))
+                {
+                    RebuildNameIndex();
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        private static bool MatchesNormalisedName(string name, string normalisedName)
+        {
+            name = name ?? "";
+            if (name.Length != normalisedName.Length)
+                return false;
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i] == '/' ? '\\' : char.ToUpperInvariant(name[i]);
+                if (c != normalisedName[i])
+                    return false;
+            }
+            return true;
+        }
+
+        private void RebuildNameIndex()
+        {
+            _byNormalisedName = new Dictionary<string, TEX4>(StringComparer.Ordinal);
+            foreach (TEX4 entry in Entries)
+            {
+                if (entry == null) continue;
+                string key = NormaliseTextureName(entry.Name);
+                if (!_byNormalisedName.ContainsKey(key))
+                    _byNormalisedName[key] = entry;
+            }
+            _byNormalisedNameCount = Entries.Count;
+        }
+
+        private bool IsInEntries(TEX4 texture)
+        {
+            for (int i = 0; i < Entries.Count; i++)
+                if (ReferenceEquals(Entries[i], texture))
+                    return true;
+            return false;
+        }
+
+        /* Read from the file where it is (LoadFromFile). A level's PAK runs to 400 MB and more, and it was read into memory whole
+           twice - by CathodeFile, then again below, that first copy never used - only for each texture to be copied out of it. A
+           small buffer: the reads go back to the headers after every texture's content. */
+        protected override bool HandlesLoadingManually => true;
+
+        public Textures(string path) : base(path)
+        {
+            _loaded = LoadFromFile(Read, 4096);
         }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
+        {
+            return Read(stream);
+        }
+
+        //The PAK from the stream given - the file, open - or decompressed from the file when it is compressed
+        private bool Read(Stream file)
         {
             //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
             if (_filepath == "")
@@ -98,7 +179,7 @@ namespace CATHODE
                 }
             }
 
-            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : file)
             using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
@@ -310,8 +391,48 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(TEX4 texture)
         {
-            if (!_writeList.Contains(texture)) return -1;
-            return _writeList.IndexOf(texture);
+            return _writeList.IndexOf(texture); //-1 when it isn't there: one scan, not Contains and then the same scan again
+        }
+
+        /// <summary>
+        /// GetWriteIndex for a run of lookups while neither the write list nor any texture in it changes (a material save asks
+        /// once per texture slot of every material). Each answer is what GetWriteIndex gives: the FIRST row equal to it, or -1.
+        /// </summary>
+        internal Func<TEX4, int> GetWriteIndexLookup()
+        {
+            Dictionary<TEX4, int> rows = new Dictionary<TEX4, int>(_writeList.Count, TextureIdentity.Instance);
+            int firstNull = -1;
+            for (int i = 0; i < _writeList.Count; i++)
+            {
+                TEX4 entry = _writeList[i];
+                if (ReferenceEquals(entry, null))
+                {
+                    if (firstNull < 0) firstNull = i;
+                    continue;
+                }
+                if (!rows.ContainsKey(entry))
+                    rows.Add(entry, i);
+            }
+            return texture =>
+            {
+                if (ReferenceEquals(texture, null)) return firstNull;
+                return rows.TryGetValue(texture, out int index) ? index : -1;
+            };
+        }
+
+        //Hashes only what TEX4.Equals compares directly, and lets Equals settle the rest
+        private sealed class TextureIdentity : IEqualityComparer<TEX4>
+        {
+            public static readonly TextureIdentity Instance = new TextureIdentity();
+            public bool Equals(TEX4 x, TEX4 y) { return x.Equals(y); }
+            public int GetHashCode(TEX4 texture)
+            {
+                int hash = texture.Name == null ? 0 : texture.Name.GetHashCode();
+                hash = hash * 31 + (int)texture.Format;
+                hash = hash * 31 + (int)texture.StateFlags;
+                hash = hash * 31 + (int)texture.UsageFlags;
+                return hash;
+            }
         }
 
         /// <summary>
@@ -334,6 +455,40 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// Every environment map (cubemap) in write order: the one at [i] is what <see cref="GetAtWriteIndexForEnvMap"/> gives for i,
+        /// for looking many up without counting through all the textures for each
+        /// </summary>
+        public List<TEX4> GetEnvMapsInWriteOrder()
+        {
+            List<TEX4> cubes = new List<TEX4>();
+            foreach (TEX4 tex in _writeList)
+            {
+                if (tex.StateFlags.HasFlag(TextureStateFlag.CUBE))
+                    cubes.Add(tex);
+            }
+            return cubes;
+        }
+
+        /// <summary>
+        /// Get all environment maps (cubemaps) in this texture database
+        /// </summary>
+        public List<TEX4> GetEnvironmentMaps()
+        {
+            return Entries.Where(o => o.StateFlags.HasFlag(TextureStateFlag.CUBE)).ToList();
+        }
+
+        /// <summary>
+        /// Get an environment map (cubemap) by its path (used for Texture parameters on the EnvironmentMap entity)
+        /// </summary>
+        public TEX4 GetEnvironmentMapByPath(string path)
+        {
+            string normalised = path.ToUpper().Replace("/", "\\");
+            if (!normalised.Contains("CONTENT\\BUILD\\TEXTURES\\"))
+                return Entries.FirstOrDefault(o => o.Name.ToUpper().Replace("/", "\\") == normalised);
+            return Entries.FirstOrDefault(o => o.Name.ToUpper().Replace("/", "\\") == normalised.Split(new string[] { "CONTENT\\BUILD\\TEXTURES\\" }, StringSplitOptions.None)[1]);
+        }
+
+        /// <summary>
         /// Get a texture by its current index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
@@ -341,6 +496,17 @@ namespace CATHODE
         {
             if (index < 0 || _writeList.Count <= index) return null;
             return _writeList[index];
+        }
+
+        /// <summary>
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added or removed since the file
+        /// was loaded or last saved have no index until one of the two happens.
+        /// </summary>
+        public void RebuildWriteList()
+        {
+            _writeList.Clear();
+            _writeList.AddRange(Entries);
         }
 
         /// <summary>
@@ -364,19 +530,77 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by texture name (path-normalised). When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        public TEX4 ImportEntry(TEX4 texture)
+        public TEX4 ImportEntry(TEX4 texture, bool overwriteExisting = false)
         {
             if (texture == null)
                 return null;
+            if (PortMemo != null && PortMemo.TryGetValue(texture, out object imported))
+                return (TEX4)imported;
+            TEX4 result = ImportEntryCore(texture, overwriteExisting);
+            if (PortMemo != null && result != null && !PortMemo.TryGetValue(texture, out _))
+                PortMemo.Add(texture, result);
+            return result;
+        }
 
-            var existing = Entries.FirstOrDefault(o => o == texture);
-            if (existing != null)
-                return existing;
+        /// <summary>While a port runs, what each source texture has already been imported as (see <see cref="Models.PortMemo"/>) -
+        /// with overwriting on, each repeat compared the texture's bytes with the copy the first one left.</summary>
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<object, object> PortMemo;
+
+        private TEX4 ImportEntryCore(TEX4 texture, bool overwriteExisting)
+        {
+            string normalisedName = NormaliseTextureName(texture.Name);
+            TEX4 existingByName = FindByNormalisedName(normalisedName);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
+
+            if (existingByName != null)
+            {
+                /* The same texture again: keep what is here, objects and all. Everything that watches the
+                   table for changes (the viewport's resource sync above all) goes by object identity, and
+                   a level with all of its textures replaced by identical copies would be sent to the
+                   viewer whole - hundreds of megabytes - for nothing. Compared before anything is copied. */
+                if (existingByName.Format == texture.Format
+                    && existingByName.StateFlags == texture.StateFlags
+                    && existingByName.UsageFlags == texture.UsageFlags
+                    && SamePart(existingByName.TexturePersistent, texture.TexturePersistent)
+                    && SamePart(existingByName.TextureStreamed, texture.TextureStreamed))
+                    return existingByName;
+
+                //Replaced in place: the same object under the same name, so the name index stands
+                TEX4 replacement = texture.Copy();
+                existingByName.Format = replacement.Format;
+                existingByName.StateFlags = replacement.StateFlags;
+                existingByName.UsageFlags = replacement.UsageFlags;
+                existingByName.TexturePersistent = replacement.TexturePersistent;
+                existingByName.TextureStreamed = replacement.TextureStreamed;
+                return existingByName;
+            }
 
             TEX4 newTexture = texture.Copy();
             Entries.Add(newTexture);
+            //Kept in step rather than rebuilt: the count moving made the next import rebuild the whole index, and a level
+            //load imports its global textures one after another (quadratic in the table's size)
+            if (_byNormalisedName != null && _byNormalisedNameCount == Entries.Count - 1)
+            {
+                if (!_byNormalisedName.ContainsKey(normalisedName))
+                    _byNormalisedName[normalisedName] = newTexture;
+                _byNormalisedNameCount = Entries.Count;
+            }
             return newTexture;
+        }
+
+        private static bool SamePart(TEX4.Texture a, TEX4.Texture b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            return a.Equals(b);
+        }
+
+        static string NormaliseTextureName(string name)
+        {
+            return (name ?? "").ToUpperInvariant().Replace('/', '\\');
         }
         #endregion
 
@@ -437,12 +661,6 @@ namespace CATHODE
                     hash = hash * 23 + (TextureStreamed?.GetHashCode() ?? 0);
                     return hash;
                 }
-            }
-
-            ~TEX4()
-            {
-                TexturePersistent = null;
-                TextureStreamed = null;
             }
 
             public class Texture : IEquatable<Texture>
@@ -516,11 +734,6 @@ namespace CATHODE
                         }
                         return hash;
                     }
-                }
-
-                ~Texture()
-                {
-                    Content = null;
                 }
             }
         }

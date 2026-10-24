@@ -15,7 +15,7 @@ namespace CATHODE
     /// </summary>
     public class SoundDialogueLookups : CathodeFile
     {
-        //This stores the associated sound and animation hashes for soundbank entries
+        // note - this file is the same across all levels, so does not need to be regenerated unless adding in new sounds
 
         public List<Soundbank> Entries = new List<Soundbank>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
@@ -23,11 +23,6 @@ namespace CATHODE
         public SoundDialogueLookups(string path) : base(path) { }
         public SoundDialogueLookups(MemoryStream stream, string path = "") : base(stream, path) { }
         public SoundDialogueLookups(byte[] data, string path = "") : base(data, path) { }
-
-        ~SoundDialogueLookups()
-        {
-            Entries.Clear();
-        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)

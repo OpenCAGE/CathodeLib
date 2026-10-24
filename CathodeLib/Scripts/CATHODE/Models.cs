@@ -43,13 +43,56 @@ namespace CATHODE
 
         private List<CS2.Component.LOD.Submesh> _writeList = new List<CS2.Component.LOD.Submesh>();
 
+        //First-index lookup over _writeList. Submesh's own GetHashCode hashes its vertex buffer by
+        //reference while == compares it by value, so it cannot key a dictionary; SubmeshIdentity
+        //hashes the one field that is both immutable and required by == and lets Equals settle the
+        //rest.
+        private Dictionary<CS2.Component.LOD.Submesh, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        //Save serialises submeshes in parallel, so the lookup is built and read under a lock.
+        private readonly object _writeIndexLock = new object();
+
+        private sealed class SubmeshIdentity : IEqualityComparer<CS2.Component.LOD.Submesh>
+        {
+            public static readonly SubmeshIdentity Instance = new SubmeshIdentity();
+            public bool Equals(CS2.Component.LOD.Submesh x, CS2.Component.LOD.Submesh y) { return x == y; }
+            public int GetHashCode(CS2.Component.LOD.Submesh submesh)
+            {
+                return submesh == null ? 0 : submesh.Identity.GetHashCode();
+            }
+        }
+
+        private int WriteIndexOf(CS2.Component.LOD.Submesh submesh)
+        {
+            if (submesh == null) return -1;
+            lock (_writeIndexLock)
+            {
+                if (_writeIndex == null || _writeIndexCount > _writeList.Count)
+                {
+                    _writeIndex = new Dictionary<CS2.Component.LOD.Submesh, int>(SubmeshIdentity.Instance);
+                    _writeIndexCount = 0;
+                }
+                for (; _writeIndexCount < _writeList.Count; _writeIndexCount++)
+                {
+                    CS2.Component.LOD.Submesh entry = _writeList[_writeIndexCount];
+                    if (entry != null && !_writeIndex.ContainsKey(entry))
+                        _writeIndex[entry] = _writeIndexCount;
+                }
+                int index;
+                return _writeIndex.TryGetValue(submesh, out index) ? index : -1;
+            }
+        }
+
         public Models(string path, Materials materials, Collisions weightedCollisions, MorphTargets morphTargets) : base (path)
         {
             _materials = materials;
             _collisions = weightedCollisions;
             _morphTargets = morphTargets;
 
-            _loaded = Load();
+            /* Read from the file where it is (LoadFromFile): a level's PAK runs to 200 MB and more, and it was read into memory whole
+               twice - by Load, then again below, that first copy never used. A small buffer: the reads go back to the headers after
+               every component's content. */
+            _loaded = LoadFromFile(Read, 4096);
         }
 
         public void ClearReferences()
@@ -59,33 +102,17 @@ namespace CATHODE
             _morphTargets = null;
         }
 
-        ~Models()
-        {
-            foreach (var model in Entries)
-            {
-                foreach (var component in model?.Components ?? new List<CATHODE.Models.CS2.Component>())
-                {
-                    foreach (var lod in component?.LODs ?? new List<CATHODE.Models.CS2.Component.LOD>())
-                    {
-                        foreach (var submesh in lod?.Submeshes ?? new List<CATHODE.Models.CS2.Component.LOD.Submesh>())
-                        {
-                            if (submesh?.Data != null)
-                                submesh.Data = null;
-                        }
-                    }
-                }
-            }
-            ClearReferences();
-
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         /// <summary>
         /// Load the file
         /// </summary>
         override protected bool LoadInternal(MemoryStream stream)
+        {
+            return Read(stream);
+        }
+
+        //The PAK from the stream given - the file, open - or decompressed from the file when it is compressed
+        private bool Read(Stream file)
         {
             //NOTE: Loading via byte[] or MemoryStream is not currently supported. Must be loaded via disk from a filepath!
             if (_filepath == "")
@@ -93,7 +120,7 @@ namespace CATHODE
 
             _compressed = Path.GetExtension(_filepath).ToLower() == ".fzip";
 
-            if (!File.Exists(GetBinPath())) 
+            if (!File.Exists(GetBinPath()))
                 return false;
 
             Dictionary<CS2.Component.LOD.Submesh, int> boneOffsets = new Dictionary<CS2.Component.LOD.Submesh, int>();
@@ -199,7 +226,7 @@ namespace CATHODE
                 }
             }
 
-            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : new MemoryStream(File.ReadAllBytes(_filepath)))
+            using (Stream pakStream = _compressed ? Utilities.FZipDecompressPAK(_filepath) : file)
             using (BinaryReader pak = new BinaryReader(pakStream))
             {
                 //Read & check the header info from the PAK
@@ -208,6 +235,14 @@ namespace CATHODE
                 pak.BaseStream.Position += 12;
 
                 int endOfHeaders = 32 + (entryCount * 48);
+                //Each model by name, the first in the list with it - the one Entries.FirstOrDefault found, a search of every model
+                //so far for each component
+                Dictionary<string, CS2> modelsByName = new Dictionary<string, CS2>();
+                foreach (CS2 existing in Entries)
+                {
+                    if (existing.Name != null && !modelsByName.ContainsKey(existing.Name))
+                        modelsByName.Add(existing.Name, existing);
+                }
                 for (int i = 0; i < entryCount; i++)
                 {
                     //Read component header info
@@ -224,11 +259,14 @@ namespace CATHODE
                     if (binIndex == -1)
                         continue;
 
-                    CS2 cs2 = Entries.FirstOrDefault(o => o.Name == submeshMetadata[binIndex].cs2Name);
+                    string cs2Name = submeshMetadata[binIndex].cs2Name;
+                    CS2 cs2 = cs2Name == null ? Entries.FirstOrDefault(o => o.Name == null) : (modelsByName.TryGetValue(cs2Name, out CS2 found) ? found : null);
                     if (cs2 == null)
                     {
-                        cs2 = new CS2() { Name = submeshMetadata[binIndex].cs2Name };
+                        cs2 = new CS2() { Name = cs2Name };
                         Entries.Add(cs2);
+                        if (cs2Name != null)
+                            modelsByName.Add(cs2Name, cs2);
                     }
                     CS2.Component component = new CS2.Component();
                     cs2.Components.Add(component);
@@ -316,6 +354,7 @@ namespace CATHODE
             {
                 bin.BaseStream.SetLength(0);
                 _writeList.Clear();
+                _writeIndex = null;
 
                 //Write header
                 Utilities.WriteString("XMDB", bin);
@@ -715,15 +754,12 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(CS2.Component.LOD.Submesh submesh)
         {
-            if (submesh == null) return -1;
-            if (!_writeList.Contains(submesh)) return -1;
-            return _writeList.IndexOf(submesh);
+            return WriteIndexOf(submesh);
         }
         public int GetWriteIndex(CS2.Component mesh)
         {
             if (mesh == null) return -1;
-            if (!_writeList.Contains(mesh.LODs[0].Submeshes[0])) return -1;
-            return _writeList.IndexOf(mesh.LODs[0].Submeshes[0]);
+            return WriteIndexOf(mesh.LODs[0].Submeshes[0]);
         }
 
         /// <summary>
@@ -737,13 +773,51 @@ namespace CATHODE
         }
 
         /// <summary>
-        /// Copy an entry into the file, along with all child objects.
+        /// Rebuild the write index from Entries without saving, in the order Save would write them, so
+        /// indexes agree with a file written from this state. Entries added or removed since the file
+        /// was loaded or last saved have no index until one of the two happens.
         /// </summary>
-        /// 
-        public CS2 ImportEntry(CS2 model)
+        public void RebuildWriteList()
+        {
+            lock (_writeIndexLock)
+            {
+                _writeList.Clear();
+                _writeIndex = null;
+                _writeIndexCount = 0;
+                for (int i = 0; i < Entries.Count; i++)
+                    for (int z = 0; z < Entries[i].Components.Count; z++)
+                        for (int x = 0; x < Entries[i].Components[z].LODs.Count; x++)
+                            for (int y = 0; y < Entries[i].Components[z].LODs[x].Submeshes.Count; y++)
+                                _writeList.Add(Entries[i].Components[z].LODs[x].Submeshes[y]);
+            }
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="CS2.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
+        /// </summary>
+        public CS2 ImportEntry(CS2 model, bool overwriteExisting = false)
         {
             if (model == null)
                 return null;
+            if (PortMemo != null && PortMemo.TryGetValue(model, out object imported))
+                return (CS2)imported;
+            CS2 result = ImportEntryCore(model, overwriteExisting);
+            if (PortMemo != null && result != null && !PortMemo.TryGetValue(model, out _))
+                PortMemo.Add(model, result);
+            return result;
+        }
+
+        /// <summary>
+        /// While a <see cref="CathodeLib.CompositePorter"/> port runs: what each source model has already been imported as.
+        /// </summary>
+        internal System.Runtime.CompilerServices.ConditionalWeakTable<object, object> PortMemo;
+
+        private CS2 ImportEntryCore(CS2 model, bool overwriteExisting)
+        {
+            CS2 existingByName = Entries.FirstOrDefault(o => o.Name == model.Name);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             CS2 newModel = model.Copy();
             foreach (CS2.Component component in newModel.Components)
@@ -752,19 +826,106 @@ namespace CATHODE
                 {
                     foreach (CS2.Component.LOD.Submesh submesh in lod.Submeshes)
                     {
-                        submesh.Material = _materials.ImportEntry(submesh.Material);
+                        submesh.Material = _materials.ImportEntry(submesh.Material, overwriteExisting);
                         submesh.WeightedCollision = _collisions.ImportEntry(submesh.WeightedCollision);
                         submesh.MorphAnimSet = _morphTargets.ImportEntry(submesh.MorphAnimSet); 
                     }
                 }
             }
 
-            var existing = Entries.FirstOrDefault(o => o == newModel);
-            if (existing != null)
-                return existing;
+            if (existingByName != null)
+            {
+                if (!SameLayout(existingByName, newModel))
+                {
+                    return existingByName;
+                }
+                /* Only what actually differs is copied across: a submesh that is the same again keeps its
+                   objects (its data array above all), so an overwrite that changes nothing is invisible to
+                   anything that watches the table by object identity - the viewport's resource sync would
+                   otherwise be sent every model in the level. */
+                for (int c = 0; c < newModel.Components.Count; c++)
+                {
+                    for (int l = 0; l < newModel.Components[c].LODs.Count; l++)
+                    {
+                        CS2.Component.LOD from = newModel.Components[c].LODs[l];
+                        CS2.Component.LOD into = existingByName.Components[c].LODs[l];
+                        if (into.Name != from.Name)
+                            into.Name = from.Name;
+                        for (int s = 0; s < from.Submeshes.Count; s++)
+                            if (!SameContent(from.Submeshes[s], into.Submeshes[s]))
+                                CopySubmeshInto(from.Submeshes[s], into.Submeshes[s]);
+                    }
+                }
+                return existingByName;
+            }
 
-            Entries.Add(model);
+            Entries.Add(newModel);
             return newModel;
+        }
+
+        private static bool SameLayout(CS2 a, CS2 b)
+        {
+            if (a.Components.Count != b.Components.Count) return false;
+            for (int c = 0; c < a.Components.Count; c++)
+            {
+                if (a.Components[c].LODs.Count != b.Components[c].LODs.Count) return false;
+                for (int l = 0; l < a.Components[c].LODs.Count; l++)
+                    if (a.Components[c].LODs[l].Submeshes.Count != b.Components[c].LODs[l].Submeshes.Count) return false;
+            }
+            return true;
+        }
+
+        /* Everything but CollisionProxyIndex: that is an index into THIS level's COLLISION.HKX, and the
+         * source's value addresses the source's file, so the destination's own binding is kept. */
+        /* Everything CopySubmeshInto copies, compared - unlike Submesh's own equality, which also tells
+           two objects apart. CollisionProxyIndex is left out on both sides: see CopySubmeshInto. */
+        private static bool SameContent(CS2.Component.LOD.Submesh a, CS2.Component.LOD.Submesh b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a == null || b == null) return false;
+            if (a.MinBounds.X != b.MinBounds.X || a.MinBounds.Y != b.MinBounds.Y || a.MinBounds.Z != b.MinBounds.Z) return false;
+            if (a.MaxBounds.X != b.MaxBounds.X || a.MaxBounds.Y != b.MaxBounds.Y || a.MaxBounds.Z != b.MaxBounds.Z) return false;
+            if (a.MinLODRange != b.MinLODRange || a.MaxLODRange != b.MaxLODRange) return false;
+            if (a.RenderFlags != b.RenderFlags) return false;
+            if (a.Material != b.Material) return false;
+            if (a.WeightedCollision != b.WeightedCollision) return false;
+            if (a.MorphAnimSet != b.MorphAnimSet) return false;
+            if (a.VertexFormatFull != b.VertexFormatFull) return false;
+            if (a.VertexFormatPartial != b.VertexFormatPartial) return false;
+            if (a.VertexScale != b.VertexScale || a.VertexCount != b.VertexCount || a.IndexCount != b.IndexCount) return false;
+            if ((a.Bones == null) != (b.Bones == null)) return false;
+            if (a.Bones != null)
+            {
+                if (a.Bones.Count != b.Bones.Count) return false;
+                for (int i = 0; i < a.Bones.Count; i++)
+                    if (a.Bones[i] != b.Bones[i]) return false;
+            }
+            if (ReferenceEquals(a.Data, b.Data)) return true;
+            if (a.Data == null || b.Data == null || a.Data.Length != b.Data.Length) return false;
+            for (int i = 0; i < a.Data.Length; i++)
+                if (a.Data[i] != b.Data[i]) return false;
+            return true;
+        }
+
+        private static void CopySubmeshInto(CS2.Component.LOD.Submesh from, CS2.Component.LOD.Submesh into)
+        {
+            into.MinBounds = from.MinBounds;
+            into.MaxBounds = from.MaxBounds;
+            into.MinLODRange = from.MinLODRange;
+            into.MaxLODRange = from.MaxLODRange;
+            into.RenderFlags = from.RenderFlags;
+            into.Material = from.Material;
+            into.WeightedCollision = from.WeightedCollision;
+            into.MorphAnimSet = from.MorphAnimSet;
+            into.VertexFormatFull = from.VertexFormatFull;
+            into.VertexFormatPartial = from.VertexFormatPartial;
+            into.VertexScale = from.VertexScale;
+            into.VertexCount = from.VertexCount;
+            into.IndexCount = from.IndexCount;
+            //A list of its own: `from` belongs to the copy ImportEntry throws away, and ~Submesh clears its Bones - shared,
+            //the overwritten model lost its bone list whenever the GC got round to finalising the copy
+            into.Bones = from.Bones == null ? null : new List<int>(from.Bones);
+            into.Data = from.Data;
         }
         #endregion
 
@@ -950,6 +1111,38 @@ namespace CATHODE
                 return null;
             }
 
+            /// <summary>
+            /// Resolve <paramref name="sourceSubmesh"/> onto this model: prefer guid/content match, otherwise the same component/LOD/submesh indices in <paramref name="sourceModel"/>.
+            /// </summary>
+            public CS2.Component.LOD.Submesh GetCorrespondingSubmesh(CS2 sourceModel, CS2.Component.LOD.Submesh sourceSubmesh)
+            {
+                CS2.Component.LOD.Submesh matched = GetSubmesh(sourceSubmesh);
+                if (matched != null)
+                    return matched;
+
+                if (sourceModel == null || sourceSubmesh == null)
+                    return null;
+
+                for (int i = 0; i < sourceModel.Components.Count; i++)
+                {
+                    for (int x = 0; x < sourceModel.Components[i].LODs.Count; x++)
+                    {
+                        for (int z = 0; z < sourceModel.Components[i].LODs[x].Submeshes.Count; z++)
+                        {
+                            CS2.Component.LOD.Submesh candidate = sourceModel.Components[i].LODs[x].Submeshes[z];
+                            if (!ReferenceEquals(candidate, sourceSubmesh) && candidate != sourceSubmesh)
+                                continue;
+
+                            if (i >= Components.Count || x >= Components[i].LODs.Count || z >= Components[i].LODs[x].Submeshes.Count)
+                                return null;
+
+                            return Components[i].LODs[x].Submeshes[z];
+                        }
+                    }
+                }
+                return null;
+            }
+
             public static bool operator ==(CS2 x, CS2 y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
@@ -992,11 +1185,6 @@ namespace CATHODE
                     if (x[i] != y[i]) return false;
                 }
                 return true;
-            }
-
-            ~CS2()
-            {
-                Components.Clear();
             }
 
             public class Component : IEquatable<Component>
@@ -1043,11 +1231,6 @@ namespace CATHODE
                         if (x[i] != y[i]) return false;
                     }
                     return true;
-                }
-
-                ~Component()
-                {
-                    LODs.Clear();
                 }
 
                 public class LOD : IEquatable<LOD>
@@ -1102,11 +1285,6 @@ namespace CATHODE
                             if (x[i] != y[i]) return false;
                         }
                         return true;
-                    }
-
-                    ~LOD()
-                    {
-                        Submeshes.Clear();
                     }
 
                     [Flags]
@@ -1174,6 +1352,8 @@ namespace CATHODE
 
                         //I've added in unique GUIDs to help track submeshes even if their properties are identical, which can happen, E.G. for LV426 NPC spacesuits.
                         private Guid guid = Guid.NewGuid();
+
+                        internal Guid Identity { get { return guid; } }
 
                         public static bool operator ==(Submesh x, Submesh y)
                         {
@@ -1265,12 +1445,6 @@ namespace CATHODE
                                 if (x[i] != y[i]) return false;
                             }
                             return true;
-                        }
-
-                        ~Submesh()
-                        {
-                            Bones.Clear();
-                            Data = null;
                         }
                     }
 

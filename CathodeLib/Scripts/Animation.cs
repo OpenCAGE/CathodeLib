@@ -1,0 +1,2210 @@
+using CATHODE;
+using CATHODE.Animations;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Xml;
+
+namespace CathodeLib
+{
+    /// <summary>
+    /// A helper class that holds every parseable format in DATA/GLOBAL/ANIMATION.PAK, resolves the
+    /// references between them, and writes them all back into the PAK together.
+    ///
+    /// The PAK holds each skeleton, mapping and ragdoll twice - once for the 32 bit build and once
+    /// for the 64 bit one - so those are paired up into a single entry with both halves on it.
+    /// </summary>
+    public class Animation
+    {
+        /// <summary>Names and hashes shared by every file in the PAK.</summary>
+        public AnimationStrings Strings;
+
+        /// <summary>The larger string table CA shipped alongside it - argument and clip names live here.</summary>
+        public AnimationStrings StringsDebug;
+
+        /// <summary>Every skeleton in the game, and which pairs of them can be retargeted.</summary>
+        public SkeletonDB SkeletonIndex;
+
+        /// <summary>The blend sets and the dependencies between the per-character clip DBs.</summary>
+        public GlobalAnimClipDB ClipIndex;
+
+        /// <summary>One per character: the clips it owns and the sections holding them.</summary>
+        public List<AnimClipDB> ClipDatabases { get { EnsureContents(); return _clipDatabases; } }
+
+        /// <summary>The loadable chunks of animation - Havok clips plus their metadata.</summary>
+        public List<AnimClipDBSec> Sections { get { EnsureContents(); return _sections; } }
+
+        /// <summary>The animation trees that decide which clip plays when. These name themselves out
+        /// of the debug string table rather than the plain one.</summary>
+        public List<AnimTreeDB> Trees { get { EnsureContents(); return _trees; } }
+
+        private readonly List<AnimClipDB> _clipDatabases = new List<AnimClipDB>();
+        private readonly List<AnimClipDBSec> _sections = new List<AnimClipDBSec>();
+        private readonly List<AnimTreeDB> _trees = new List<AnimTreeDB>();
+
+        public List<SkeletonAsset> Skeletons { get { EnsureContents(); return _skeletons; } }
+        public List<MappingAsset> Mappings { get { EnsureContents(); return _mappings; } }
+        public List<RagdollAsset> Ragdolls { get { EnsureContents(); return _ragdolls; } }
+
+        private readonly List<SkeletonAsset> _skeletons = new List<SkeletonAsset>();
+        private readonly List<MappingAsset> _mappings = new List<MappingAsset>();
+        private readonly List<RagdollAsset> _ragdolls = new List<RagdollAsset>();
+
+        /// <summary>The PAK everything came out of. Entry content is refreshed by <see cref="Save"/>.</summary>
+        public PAK2 PAK { get { return _pak; } }
+
+        /// <summary>
+        /// Called as <see cref="Save"/> puts each file back into the PAK, before the PAK is written (which reports through
+        /// <see cref="PAK2.OnSaveProgress"/>): the files done so far, and in all. On the thread saving.
+        /// </summary>
+        public Action<int, int> OnSaveProgress;
+
+        /// <summary>Whether every file in the PAK was parsed. See <see cref="Failures"/> if not.</summary>
+        public bool Loaded { get { return _loaded; } }
+
+        /// <summary>Files that didn't parse, by PAK path.</summary>
+        public List<string> Failures = new List<string>();
+
+        private PAK2 _pak;
+        private bool _loaded;
+
+        public Animation(string path) : this(new PAK2(path)) { }
+
+        public Animation(PAK2 pak) : this(pak, true) { }
+
+        /// <summary>
+        /// Read the PAK.
+        ///
+        /// The four tables everything else is named through are always read - they are four files and
+        /// cost nothing. The rest is 23,000 clip sections and takes a few seconds, so
+        /// <paramref name="parseEverything"/> can defer it until something actually asks for one; the
+        /// properties below load it on first touch either way.
+        /// </summary>
+        public Animation(PAK2 pak, bool parseEverything)
+        {
+            _pak = pak;
+            _loaded = LoadIndex();
+
+            if (_loaded && parseEverything)
+                EnsureContents();
+        }
+
+        #region LOAD_SAVE
+        private bool LoadIndex()
+        {
+            if (_pak == null || !_pak.Loaded || _pak.Entries == null) return false;
+
+            Strings = LoadOne(Find("ANIM_STRING_DB.BIN"), x => new AnimationStrings(x.Content, x.Filename));
+            StringsDebug = LoadOne(Find("ANIM_STRING_DB_DEBUG.BIN"), x => new AnimationStrings(x.Content, x.Filename));
+            if (Strings == null) return false;
+
+            /* Most names in the PAK - clips, contexts, arguments - only exist in the debug table,
+             * so let every parser reach it through the plain one rather than threading both around. */
+            if (StringsDebug != null) Strings.Fallback = StringsDebug;
+
+            SkeletonIndex = LoadOne(Find(@"SKELE\DB.BIN"), x => new SkeletonDB(x.Content, Strings, x.Filename));
+            ClipIndex = LoadOne(Find(@"ANIM_SYS\ANIM_CLIP_DB.BIN"), x => new GlobalAnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
+
+            return true;
+        }
+
+        private bool _contentsLoaded;
+
+        /// <summary>
+        /// Whether everything the index doesn't cover (trees, clips, skeletons...) has been parsed yet - without parsing it,
+        /// as touching any of those properties does.
+        /// </summary>
+        public bool ContentsLoaded { get { return _contentsLoaded; } }
+
+        /// <summary>
+        /// Parse everything the index doesn't cover, once. Everything in here works on the backing
+        /// fields rather than the properties, which would come straight back round to this.
+        /// </summary>
+        private void EnsureContents()
+        {
+            if (_contentsLoaded || !_loaded) return;
+            _contentsLoaded = true;
+
+            foreach (PAK2.File file in _pak.Entries)
+            {
+                string name = (file.Filename ?? "").ToUpperInvariant();
+                if (file.Content == null) continue;
+
+                if (name.Contains("ANIM_CLIP_DB_SEC_"))
+                    Add(_sections, file, x => new AnimClipDBSec(x.Content, Strings, x.Filename, StringsDebug));
+                else if (name.EndsWith("_ANIM_CLIP_DB.BIN"))
+                    Add(_clipDatabases, file, x => new AnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
+                else if (name.EndsWith("_ANIM_TREE_DB.BIN"))
+                    Add(_trees, file, x => new AnimTreeDB(x.Content, StringsDebug, x.Filename));
+            }
+
+            LoadPaired(@"SKELE\SK\", @"SKELE\SK64\", _skeletons,
+                (file, sixtyFour) => new SkeletonAsset { Name = SkeletonName(file.Filename) },
+                (asset, file, sixtyFour) =>
+                {
+                    Skeleton skeleton = new Skeleton(file.Content, Strings, file.Filename);
+                    if (!skeleton.Loaded) return false;
+
+                    if (!sixtyFour) { asset.Skeleton = skeleton; return true; }
+
+                    asset.Skeleton64 = skeleton;
+
+                    /* The mobile and Switch builds ship no 32-bit skeletons at all, and everything
+                     * that reads a rig reads Skeleton - so the width that is present answers for both
+                     * rather than leaving those builds looking like they have no skeletons. A 32-bit
+                     * one, where there is one, still takes its own slot whichever order they load in. */
+                    if (asset.Skeleton == null) asset.Skeleton = skeleton;
+                    return true;
+                });
+
+            LoadPaired(@"SKELE\MAPS\", @"SKELE\MAPS64\", _mappings,
+                (file, sixtyFour) => new MappingAsset(),
+                (asset, file, sixtyFour) =>
+                {
+                    SkeletonMapping mapping = new SkeletonMapping(file.Content, Strings, file.Filename);
+                    if (!mapping.Loaded) return false;
+                    if (sixtyFour) asset.Mapping64 = mapping; else asset.Mapping = mapping;
+                    return true;
+                });
+
+            LoadPaired(@"SKELE\RAGS\", @"SKELE\RAGS64\", _ragdolls,
+                (file, sixtyFour) => new RagdollAsset { Name = SkeletonName(file.Filename) },
+                (asset, file, sixtyFour) =>
+                {
+                    Ragdoll ragdoll = new Ragdoll(file.Content, Strings, file.Filename);
+                    if (!ragdoll.Loaded) return false;
+                    if (sixtyFour) asset.Ragdoll64 = ragdoll; else asset.Ragdoll = ragdoll;
+                    return true;
+                });
+
+            //name the mappings now the skeletons are in, since the files are named by hash
+            foreach (MappingAsset mapping in _mappings)
+            {
+                SkeletonMapping source = mapping.Mapping ?? mapping.Mapping64;
+                if (source == null) continue;
+                mapping.SkeletonA = source.SkeletonA;
+                mapping.SkeletonB = source.SkeletonB;
+            }
+
+            BuildSets();
+        }
+
+        /// <summary>
+        /// Push every parsed file back into the PAK and write it out. Pass a path to save elsewhere.
+        /// </summary>
+        public bool Save(string path = "")
+        {
+            if (_pak == null) return false;
+
+            /* Every parsed file has to find the PAK entry it came from. Searching the entry list for
+             * each one is a linear scan, and there are 23,000 sections, so it costs about eight
+             * seconds of nothing but string comparison - far more than serialising all 427 MB and
+             * writing it to disk put together. One dictionary answers all of them; filenames are
+             * unique across the PAK, so it stands in for the search exactly. */
+            Dictionary<string, PAK2.File> entries =
+                new Dictionary<string, PAK2.File>(_pak.Entries.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (PAK2.File entry in _pak.Entries)
+            {
+                string name = entry.Filename ?? "";
+                if (!entries.ContainsKey(name)) entries[name] = entry;      //first wins, as a search would
+            }
+
+            int done = 0;
+            int total = 4 + ClipDatabases.Count + Sections.Count + Trees.Count + 2 * (Skeletons.Count + Mappings.Count + Ragdolls.Count);
+            void Put<T>(T file, Func<T, byte[]> serialise) where T : CathodeFile
+            {
+                Write(entries, file, serialise);
+                OnSaveProgress?.Invoke(++done, total);
+            }
+
+            Put(Strings, x => x.ToBytes());
+            Put(StringsDebug, x => x.ToBytes());
+            Put(SkeletonIndex, x => x.ToBytes());
+            Put(ClipIndex, x => x.ToBytes());
+            foreach (AnimClipDB clips in ClipDatabases) Put(clips, x => x.ToBytes());
+            foreach (AnimClipDBSec section in Sections) Put(section, x => x.ToBytes());
+            foreach (AnimTreeDB tree in Trees) Put(tree, x => x.ToBytes());
+
+            foreach (SkeletonAsset skeleton in Skeletons)
+            {
+                Put(skeleton.Skeleton, x => x.ToBytes());
+                Put(skeleton.Skeleton64, x => x.ToBytes());
+            }
+            foreach (MappingAsset mapping in Mappings)
+            {
+                Put(mapping.Mapping, x => x.ToBytes());
+                Put(mapping.Mapping64, x => x.ToBytes());
+            }
+            foreach (RagdollAsset ragdoll in Ragdolls)
+            {
+                Put(ragdoll.Ragdoll, x => x.ToBytes());
+                Put(ragdoll.Ragdoll64, x => x.ToBytes());
+            }
+
+            return path.Length == 0 ? _pak.Save() : _pak.Save(path);
+        }
+
+        /* Serialise one file back over the PAK entry it came from. */
+        private static void Write<T>(Dictionary<string, PAK2.File> entries, T file, Func<T, byte[]> serialise)
+            where T : CathodeFile
+        {
+            if (file == null) return;
+            if (!entries.TryGetValue(file.Filepath ?? "", out PAK2.File entry)) return;
+
+            byte[] content = serialise(file);
+            if (content != null) entry.Content = content;
+        }
+
+        private PAK2.File Find(string suffix)
+        {
+            return _pak.Entries.FirstOrDefault(x => (x.Filename ?? "").EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private T LoadOne<T>(PAK2.File file, Func<PAK2.File, T> make) where T : CathodeFile
+        {
+            if (file?.Content == null) return null;
+            T loaded = make(file);
+            if (loaded.Loaded) return loaded;
+            Failures.Add(file.Filename);
+            return null;
+        }
+
+        private void Add<T>(List<T> into, PAK2.File file, Func<PAK2.File, T> make) where T : CathodeFile
+        {
+            T loaded = make(file);
+            if (loaded.Loaded) into.Add(loaded);
+            else Failures.Add(file.Filename);
+        }
+
+        /* The 32 and 64 bit copies of a skeleton share a filename, so pair them as we go. */
+        private void LoadPaired<T>(string folder, string folder64, List<T> into,
+                                   Func<PAK2.File, bool, T> make, Func<T, PAK2.File, bool, bool> fill)
+        {
+            Dictionary<string, T> byName = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+            foreach (PAK2.File file in _pak.Entries)
+            {
+                if (file.Content == null) continue;
+                string name = (file.Filename ?? "").ToUpperInvariant();
+                bool sixtyFour = name.Contains(folder64.ToUpperInvariant());
+                if (!sixtyFour && !name.Contains(folder.ToUpperInvariant())) continue;
+
+                string key = SkeletonName(file.Filename);
+                if (!byName.TryGetValue(key, out T asset))
+                {
+                    asset = make(file, sixtyFour);
+                    byName[key] = asset;
+                    into.Add(asset);
+                }
+                if (!fill(asset, file, sixtyFour)) Failures.Add(file.Filename);
+            }
+        }
+
+        private static string SkeletonName(string path)
+        {
+            string name = (path ?? "").Replace('/', '\\');
+            int slash = name.LastIndexOf('\\');
+            return slash < 0 ? name : name.Substring(slash + 1);
+        }
+        #endregion
+
+        #region LOOKUPS
+        /// <summary>Find a skeleton by name, e.g. "MALE" or "ALIEN".</summary>
+        public SkeletonAsset GetSkeleton(string name)
+        {
+            return GetSkeleton(SkeletonIndex?.GetSkeleton(name));
+        }
+
+        /// <summary>Find a skeleton from its entry in the index.</summary>
+        public SkeletonAsset GetSkeleton(SkeletonDB.SkeletonEntry entry)
+        {
+            if (entry == null || SkeletonIndex == null) return null;
+
+            string file = SkeletonName(SkeletonIndex.GetSkeletonPath(entry));
+            return Skeletons.FirstOrDefault(x => string.Equals(x.Name, file, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// The rig a skinned character mesh was built for - the one whose bones sit where the mesh's
+        /// weights say they do. Null if the mesh isn't skinned, or no rig in the PAK fits it.
+        ///
+        /// A mesh only poses properly on its own rig: its weights are bone numbers, and two rigs number
+        /// their bones differently, so posing ASH's mesh with MALE (the rig ASH's clips are authored
+        /// on) tears it apart. Anything playing a clip on a mesh wants this rig, with the clip
+        /// retargeted onto it the way the game does it.
+        ///
+        /// Many of the human rigs share a layout, so several fit a mesh - but a rig with the right
+        /// numbering and someone else's proportions still bends the mesh about joints that aren't
+        /// where its own are. The rig the mesh is filed under wins (CHARACTERS\ASH\model0 is ASH,
+        /// HEAD_ALBERT is ALBERT), then the closest fit. <paramref name="prefer"/> only settles a tie:
+        /// FEMALEFP and SPACESUITFP, or SAMUELS and SPACESUIT_SAMUELS, are copies of one another and
+        /// score the same, and then the rig already in use, or the one a clip was authored on, will do.
+        /// </summary>
+        public Skeleton RigFor(Models.CS2 model, params string[] prefer)
+        {
+            if (model == null || Skeleton.RequiredBoneCount(model) == 0) return null;
+
+            List<Skeleton> rigs = Skeletons.Select(x => x.Skeleton ?? x.Skeleton64).Where(x => x != null).ToList();
+            List<float> fits = Skeleton.ScoreFits(model, rigs);
+            List<int> order = Enumerable.Range(0, rigs.Count)
+                .Where(i => fits[i] >= 0 && fits[i] <= Skeleton.FitLimit)
+                .OrderBy(i => fits[i]).ToList();
+            if (order.Count == 0) return null;
+            List<Skeleton> fitting = order.Select(i => rigs[i]).ToList();
+
+            MeshNames(model, out string folder, out string file);
+            Skeleton named = fitting.FirstOrDefault(x => string.Equals(x.Name, folder, StringComparison.OrdinalIgnoreCase)
+                                                      || string.Equals(x.Name, file, StringComparison.OrdinalIgnoreCase))
+                          ?? fitting.Where(x => file.EndsWith("_" + x.Name, StringComparison.OrdinalIgnoreCase))
+                                    .OrderByDescending(x => x.Name.Length).FirstOrDefault();
+            if (named != null) return named;
+
+            /* The rigs that tie are copies of one another (FEMALEFP and SPACESUITFP agree to 0.00 cm on
+             * every bone) and score the same. Anything else is a different character: ASH and MARLOW_GP
+             * fit ASH's mesh only 0.1 mm apart and still put the face 1.6 cm apart. */
+            List<Skeleton> tied = order.Where(i => fits[i] - fits[order[0]] <= 0.00001f).Select(i => rigs[i]).ToList();
+            foreach (string name in prefer ?? new string[0])
+            {
+                Skeleton preferred = tied.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (preferred != null) return preferred;
+            }
+            return fitting[0];
+        }
+
+        /// <summary>
+        /// Whether a mesh is filed under a rig's name: CHARACTERS\ASH\model0 under ASH, HEAD_ALBERT under
+        /// ALBERT. Fit can't tell apart the rigs that share a layout - a character's mesh fits ninety of
+        /// them within a tenth of a millimetre of each other - so this is the only thing that says which
+        /// of those is its own, and when <see cref="RigFor"/> picked one by fit alone.
+        /// </summary>
+        public static bool NamedFor(Models.CS2 model, string rig)
+        {
+            if (model == null || string.IsNullOrEmpty(rig)) return false;
+            MeshNames(model, out string folder, out string file);
+            return string.Equals(rig, folder, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(rig, file, StringComparison.OrdinalIgnoreCase)
+                || file.EndsWith("_" + rig, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Whether a mesh already on <paramref name="held"/> is as well off there as on <paramref name="own"/>,
+        /// the rig <see cref="RigFor"/> picked for it - so whatever chose <paramref name="held"/> (a set's own
+        /// rig, or the one a clip is authored on) can keep it.
+        ///
+        /// Fit only separates rigs by their numbering, not by sex or build: male trousers, skinned to MALE's
+        /// numbering, fit the female reference rigs 1.2 cm closer than they fit MALE, and the closest of a
+        /// hundred-odd rigs by a fraction of a millimetre is no more theirs than MALE or the NPC rig wearing
+        /// them. Measured over the NPC outfit parts and heads, the rigs that number a part's bones the same
+        /// way and share its build all fit within 2 cm of the best; any other sits 3.5 cm or more behind it
+        /// (male arms on FEMALENPC 6.8 cm, a woman's shirt on a female NPC's head rig 7 cm, a man's head on
+        /// a woman's rig 4 cm), which is a visibly bent mesh. A mesh filed under <paramref name="own"/>'s
+        /// name always goes to it.
+        /// </summary>
+        public static bool KeepsRig(Models.CS2 model, Skeleton held, Skeleton own)
+        {
+            if (model == null || held == null) return false;
+            if (own == null || ReferenceEquals(held, own)) return true;
+            if (NamedFor(model, own.Name)) return false;
+            if (held.Bones.Count < Skeleton.RequiredBoneCount(model)) return false;
+
+            float fit = held.ScoreFit(model);
+            return fit >= 0 && fit <= Skeleton.FitLimit && fit - own.ScoreFit(model) <= SameLayoutMargin;
+        }
+
+        /// <summary>How much further than the best rig another rig can sit from a mesh's weights and still be as good a home for it. See <see cref="KeepsRig"/>.</summary>
+        public const float SameLayoutMargin = 0.025f;
+
+        /* The folder a mesh is filed in and its own file name, e.g. ASH and model0 */
+        private static void MeshNames(Models.CS2 model, out string folder, out string file)
+        {
+            string path = (model.Name ?? "").Replace('/', '\\');
+            file = System.IO.Path.GetFileNameWithoutExtension(path);
+            folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path) ?? "") ?? "";
+        }
+
+        /// <summary>Find the retargeting data that plays <paramref name="from"/>'s animation on <paramref name="to"/>.</summary>
+        public MappingAsset GetMapping(string from, string to)
+        {
+            return Mappings.FirstOrDefault(x =>
+                string.Equals(x.SkeletonA, from, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(x.SkeletonB, to, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>Every skeleton this one can be retargeted onto.</summary>
+        public List<MappingAsset> GetMappingsFrom(string skeleton)
+        {
+            return Mappings.Where(x => string.Equals(x.SkeletonA, skeleton, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        /// <summary>Every clip every set can play, in set and context order.</summary>
+        public List<ClipReference> GetClips()
+        {
+            return Sets.SelectMany(x => x.Contexts).SelectMany(x => x.Clips).ToList();
+        }
+
+        /// <summary>Every clip authored against a skeleton, across all the sets that use it.</summary>
+        public List<ClipReference> GetClips(string skeleton)
+        {
+            return GetClips().Where(x => string.Equals(x.Skeleton, skeleton, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        /// <summary>
+        /// Find clips by name or authored path, e.g. "reload" or "SHOTGUN\RELOAD_OUT". Matches on
+        /// any part of either.
+        /// </summary>
+        public List<ClipReference> FindClips(string search)
+        {
+            if (string.IsNullOrEmpty(search)) return GetClips();
+            return GetClips().Where(x =>
+                x.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                x.Path.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+        }
+
+        /// <summary>
+        /// Everything tagged on a clip's timeline, flattened out of the metadata into one marker per
+        /// occurrence and sorted by time. Audio markers come back with the Wwise event resolved.
+        /// </summary>
+        public static List<ClipMarker> GetMarkers(ClipReference clip)
+        {
+            List<ClipMarker> markers = new List<ClipMarker>();
+            AnimClipDBSec.MetadataSet set = clip?.Metadata;
+            if (set == null) return markers;
+
+            //the common block holds the clip's own tags; each instance is one place it gets used
+            CollectMarkers(markers, set.Common, -1);
+            for (int i = 0; i < set.Instances.Count; i++) CollectMarkers(markers, set.Instances[i], i);
+
+            markers.Sort((a, b) => a.Time != b.Time ? a.Time.CompareTo(b.Time) : string.Compare(a.Property, b.Property, StringComparison.OrdinalIgnoreCase));
+            return markers;
+        }
+
+        private static void CollectMarkers(List<ClipMarker> into, AnimClipDBSec.MetadataBlock block, int instance)
+        {
+            if (block == null) return;
+
+            foreach (AnimClipDBSec.MetadataProperty property in block.Properties)
+            {
+                for (int i = 0; i < property.Times.Count; i++)
+                {
+                    ClipMarker marker = new ClipMarker
+                    {
+                        Property = property.Name,
+                        Time = property.Times[i],
+                        Instance = instance,
+                        Block = block,
+                    };
+
+                    if (i < property.Events.Count)
+                    {
+                        AnimClipDBSec.MetadataEvent fired = property.Events[i];
+                        marker.Event = fired.Name;
+                        marker.Type = fired.Type;
+
+                        /* A PROPERTY_REFERENCE names an argument of the same block; anything else
+                         * carries its value in that field directly. */
+                        if (fired.Type == MetadataValueType.PROPERTY_REFERENCE)
+                        {
+                            marker.Argument = block.Arguments.FirstOrDefault(x => x.Name == fired.Name);
+                            if (marker.Argument != null && marker.Argument.Type == MetadataValueType.AUDIO)
+                                marker.Audio = ParseAudioEvent(marker.Argument.Value as string);
+                        }
+                    }
+                    into.Add(marker);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Pull an audio argument apart. The value is stored as one string in the form
+        /// "[ArgumentList={},Bone={LipsUpper},Event={play_footstep},Offset={0,0,0},UseArguments={No}]".
+        /// Returns null if it isn't in that shape.
+        /// </summary>
+        public static AudioEvent ParseAudioEvent(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.IndexOf("={", StringComparison.Ordinal) < 0) return null;
+
+            AudioEvent audio = new AudioEvent { Raw = value };
+            int at = 0;
+            while (at < value.Length)
+            {
+                int equals = value.IndexOf("={", at, StringComparison.Ordinal);
+                if (equals < 0) break;
+
+                //the key runs back to whatever punctuation separated it from the field before
+                int start = equals;
+                while (start > 0 && value[start - 1] != ',' && value[start - 1] != '[') start--;
+                string key = value.Substring(start, equals - start).Trim();
+
+                int close = value.IndexOf('}', equals + 2);
+                if (close < 0) break;
+                string field = value.Substring(equals + 2, close - equals - 2);
+                at = close + 1;
+
+                switch (key)
+                {
+                    case "Event": audio.Event = field; break;
+                    case "Bone": audio.Bone = field; break;
+                    case "Offset": audio.Offset = field; break;
+                    case "ArgumentList": audio.Arguments = field; break;
+                    case "UseArguments": audio.UsesArguments = !string.Equals(field, "No", StringComparison.OrdinalIgnoreCase); break;
+                }
+            }
+            return audio.Event == null && audio.Bone == null ? null : audio;
+        }
+
+        /// <summary>The clip label a metadata set carries, or null if it has none.</summary>
+        public static string LabelOf(AnimClipDBSec.MetadataSet set)
+        {
+            return set?.Common?.Arguments
+                .FirstOrDefault(x => x.Name == "anim_label" || x.Name == "meta_label")?.Value as string;
+        }
+
+        /// <summary>Read a named argument off a metadata block, or null if it isn't there.</summary>
+        public static object ArgumentOf(AnimClipDBSec.MetadataBlock block, string name)
+        {
+            return block?.Arguments.FirstOrDefault(x => x.Name == name)?.Value;
+        }
+
+        /// <summary>The animation trees belonging to one set, e.g. "MALE".</summary>
+        public List<AnimationTree> GetTrees(string set)
+        {
+            return Trees.SelectMany(x => x.Entries)
+                        .Where(x => string.Equals(x.Set, set, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+        }
+        #endregion
+        #region SETS
+        /// <summary>
+        /// Every animation set in the PAK, resolved down to the clips it can play. This is the view
+        /// the game presents to script: pick a set, pick a context within it, play a clip by name.
+        /// </summary>
+        public List<AnimationSet> Sets { get { EnsureContents(); return _sets; } }
+
+        /// <summary>The skeleton definitions from DATA/SKELETONDEFS, keyed by skeleton name.</summary>
+        public Dictionary<string, SkeletonDef> SkeletonDefs { get { EnsureContents(); return _skeletonDefs; } }
+
+        private readonly List<AnimationSet> _sets = new List<AnimationSet>();
+        private readonly Dictionary<string, SkeletonDef> _skeletonDefs = new Dictionary<string, SkeletonDef>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Look a set up by name, e.g. "MALE" or "DOORS_DOOR_SHOPPING".</summary>
+        public AnimationSet GetSet(string name)
+        {
+            return Sets.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Resolve an authored clip path to the section holding it, and the clip's index inside it.
+        /// The global index names the section, and the file is that name hashed - a streamed clip
+        /// gets a file to itself, a resident one shares with the rest of its character's set.
+        /// </summary>
+        public AnimClipDBSec GetSection(string clipPath, out int index)
+        {
+            EnsureContents(); //the lookups below are built by it, and reading them is not
+            index = 0;
+            if (clipPath == null || _sectionOfClip == null) return null;
+            if (!_sectionOfClip.TryGetValue(clipPath, out GlobalAnimClipDB.ClipDbSection entry)) return null;
+
+            index = entry.SectionIndex < 0 ? 0 : entry.SectionIndex;
+            return _sectionByName.TryGetValue("ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(entry.SectionName), out AnimClipDBSec section)
+                ? section : null;
+        }
+
+        /* Sets and their contexts come straight out of the per-character clip DBs; the work here is
+         * pointing each clip at the section that actually holds its animation. */
+        private void BuildSets()
+        {
+            _sets.Clear();
+            _sectionOfClip = new Dictionary<string, GlobalAnimClipDB.ClipDbSection>(StringComparer.OrdinalIgnoreCase);
+            _sectionByName = new Dictionary<string, AnimClipDBSec>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (AnimClipDBSec section in Sections)
+            {
+                //the 64 bit copies hold the same clips built for the other pointer size, so index one set
+                string folder = (Path.GetDirectoryName(section.Filepath) ?? "").ToUpperInvariant();
+                if (folder.EndsWith("64")) continue;
+                _sectionByName[Path.GetFileNameWithoutExtension(section.Filepath)] = section;
+            }
+
+            /* ...but the mobile and Switch builds ship *only* the 64 bit folder, so skipping it there
+             * leaves nothing indexed and no clip can find its section. Anything still unclaimed takes
+             * whichever copy is present. */
+            foreach (AnimClipDBSec section in Sections)
+            {
+                string key = Path.GetFileNameWithoutExtension(section.Filepath);
+                if (!_sectionByName.ContainsKey(key))
+                    _sectionByName[key] = section;
+            }
+            if (ClipIndex != null)
+                foreach (GlobalAnimClipDB.ClipDbSection entry in ClipIndex.ClipDbSections)
+                    _sectionOfClip[entry.Name] = entry;
+
+            ReadSkeletonDefs();
+
+            foreach (AnimClipDB database in ClipDatabases)
+            {
+                AnimationSet set = new AnimationSet { Name = database.Character, Database = database };
+                set.Contexts.Add(MakeContext(set, "", database.Animations));
+                foreach (AnimClipDB.Context context in database.Contexts)
+                    set.Contexts.Add(MakeContext(set, context.Name, context.Animations));
+
+                set.ClipCount = set.Contexts.Sum(x => x.Clips.Count);
+                set.Skeleton = PrimarySkeleton(set);
+                set.Kind = Classify(set);
+                _sets.Add(set);
+            }
+        }
+
+        private AnimationContext MakeContext(AnimationSet set, string name, List<AnimClipDB.AnimClip> clips)
+        {
+            AnimationContext context = new AnimationContext { Name = name, Set = set };
+            foreach (AnimClipDB.AnimClip clip in clips)
+            {
+                AnimClipDBSec section = GetSection(clip.Path, out int index);
+                context.Clips.Add(new ClipReference
+                {
+                    Name = clip.Name,
+                    Path = clip.Path,
+                    Context = context,
+                    Section = section,
+                    Index = index,
+                });
+            }
+            return context;
+        }
+
+        /* Whichever skeleton the set's clips are actually authored against. Nearly every set has just
+         * one; the shared human sections list a hundred, so fall back to whichever comes up most. */
+        private string PrimarySkeleton(AnimationSet set)
+        {
+            Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (AnimationContext context in set.Contexts)
+                foreach (ClipReference clip in context.Clips)
+                {
+                    if (clip.Section == null) continue;
+                    foreach (string skeleton in clip.Section.SkeletonDependencies)
+                    {
+                        counts.TryGetValue(skeleton, out int seen);
+                        counts[skeleton] = seen + 1;
+                    }
+                }
+
+            //a set named after a skeleton is authored against it, however the shared sections are listed
+            if (counts.ContainsKey(set.Name)) return set.Name;
+            return counts.Count == 0 ? "" : counts.OrderByDescending(x => x.Value).First().Key;
+        }
+
+        /* Environment rigs live in a folder tree under ReferenceSkeletons named after the piece of set
+         * dressing they drive; character rigs sit loose at the top of it. Nothing else separates the
+         * two in the shipped data - though every rig with a ragdoll does fall on the character side.
+         *
+         * Not every set has a definition, so this falls back twice more. */
+        private AnimationKind Classify(AnimationSet set)
+        {
+            if (_skeletonDefs.TryGetValue(set.Name, out SkeletonDef named))
+                return named.IsEnvironment ? AnimationKind.Environment : AnimationKind.Character;
+            if (set.Skeleton.Length != 0 && _skeletonDefs.TryGetValue(set.Skeleton, out SkeletonDef used))
+                return used.IsEnvironment ? AnimationKind.Environment : AnimationKind.Character;
+
+            /* Go by the company it keeps. ANDROID has no definition of its own, but its 1,528 clips
+             * sit in sections alongside MALE, FEMALE and half the named cast, all of which do. */
+            int character = 0, environment = 0;
+            foreach (string skeleton in SkeletonsUsedBy(set))
+            {
+                if (!_skeletonDefs.TryGetValue(skeleton, out SkeletonDef def)) continue;
+                if (def.IsEnvironment) environment++; else character++;
+            }
+            if (character != environment)
+                return character > environment ? AnimationKind.Character : AnimationKind.Environment;
+
+            /* Last resort, the shape of the rig. Across the 395 sets the definitions do cover, every
+             * character rig carries most of these bones and not one environment rig carries any. */
+            return LooksHumanoid(GetSkeleton(set.Skeleton)?.Bones) ? AnimationKind.Character : AnimationKind.Unknown;
+        }
+
+        /// <summary>Every skeleton the sections holding a set's clips are built against.</summary>
+        public IEnumerable<string> SkeletonsUsedBy(AnimationSet set)
+        {
+            HashSet<string> used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (AnimationContext context in set.Contexts)
+                foreach (ClipReference clip in context.Clips)
+                {
+                    if (clip.Section == null) continue;
+                    foreach (string skeleton in clip.Section.SkeletonDependencies) used.Add(skeleton);
+                }
+            return used;
+        }
+
+        /* The bones every animated character has and no door, locker or fan does. */
+        private static readonly string[] _humanoidBones =
+            { "HIPS", "SPINE", "HEAD", "NECK", "LEFTARM", "RIGHTARM", "LEFTLEG", "RIGHTLEG", "PELVIS" };
+
+        private static bool LooksHumanoid(List<Skeleton.Bone> bones)
+        {
+            if (bones == null) return false;
+
+            int found = 0;
+            foreach (string landmark in _humanoidBones)
+                foreach (Skeleton.Bone bone in bones)
+                    if (bone.Name.EndsWith(":" + landmark, StringComparison.OrdinalIgnoreCase)) { found++; break; }
+            return found >= 4;
+        }
+
+        private void ReadSkeletonDefs()
+        {
+            _skeletonDefs.Clear();
+            foreach (PAK2.File file in _pak.Entries)
+            {
+                if (file.Content == null) continue;
+                if (!(file.Filename ?? "").StartsWith(@"DATA\SKELETONDEFS", StringComparison.OrdinalIgnoreCase)) continue;
+
+                SkeletonDef def = SkeletonDef.Read(file);
+                if (def != null) _skeletonDefs[def.Name] = def;
+            }
+        }
+
+        private Dictionary<string, GlobalAnimClipDB.ClipDbSection> _sectionOfClip;
+        private Dictionary<string, AnimClipDBSec> _sectionByName;
+        #endregion
+
+        #region SAMPLING
+        /// <summary>
+        /// One frame of a clip as parent-relative bone transforms, indexed by skeleton bone. Bones the
+        /// clip doesn't drive keep their bind pose, so a clip that only moves an arm still gives back
+        /// a complete, posable skeleton.
+        ///
+        /// Additive clips are layered onto the bind pose rather than replacing it, which is the only
+        /// base pose available in isolation - in game they go on top of whatever is already playing.
+        /// </summary>
+        public static List<Matrix4x4> SampleLocalPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
+        {
+            List<HavokPackfile.SampledTransform> bones = SampleBones(clip, skeleton, frame, root, retarget);
+            if (bones == null) return null;
+
+            List<Matrix4x4> pose = new List<Matrix4x4>(bones.Count);
+            for (int i = 0; i < bones.Count; i++)
+                pose.Add(Matrix4x4.CreateScale(bones[i].Scale)
+                       * Matrix4x4.CreateFromQuaternion(bones[i].Rotation)
+                       * Matrix4x4.CreateTranslation(bones[i].Translation));
+            return pose;
+        }
+
+        /// <summary>
+        /// The same frame as <see cref="SampleLocalPose"/>, but kept as separate translation, rotation
+        /// and scale per bone - which is what a keyframe wants, and avoids decomposing a matrix back
+        /// into the three parts it was built from.
+        /// </summary>
+        public static List<HavokPackfile.SampledTransform> SampleBones(ClipReference clip, Skeleton skeleton, int frame,
+            RootMotion root = RootMotion.Ignore, Retargeter retarget = null,
+            UntrackedChannels untracked = UntrackedChannels.RestPose)
+        {
+            /* With a retargeter the clip is sampled on the rig it was authored for and moved across
+             * afterwards. Anchoring happens last either way, because the bone it keys off belongs to
+             * the rig being played on. */
+            /* Nothing to sample is the rest pose of the rig being posed, whatever the clip would
+             * have been authored on: sampling the authored rig here and returning before the move
+             * across handed back a pose sized for the wrong rig. */
+            if (clip?.Animation == null) return SampleBonesRaw(clip, skeleton, frame, untracked);
+
+            Skeleton authored = retarget == null ? skeleton : retarget.From;
+
+            List<HavokPackfile.SampledTransform> pose = SampleBonesRaw(clip, authored, frame, untracked);
+            if (pose == null) return null;
+            if (retarget != null) pose = retarget.Apply(pose);
+
+            //retargeting moves the clip onto another rig, which is a real change to the data;
+            //anchoring only squares it up to be looked at, so it is the half that gets skipped here
+            if (root == RootMotion.Authored) return pose;
+
+            List<HavokPackfile.SampledTransform> start = frame == 0 ? pose : null;
+            if (start == null)
+            {
+                start = SampleBonesRaw(clip, authored, 0, untracked);
+                if (retarget != null && start != null) start = retarget.Apply(start);
+            }
+            return Anchor(pose, start, skeleton, frame, root);
+        }
+
+        /* The clip's own transforms, with nothing done about where the character ends up. */
+        private static List<HavokPackfile.SampledTransform> SampleBonesRaw(ClipReference clip, Skeleton skeleton, int frame,
+                                                                          UntrackedChannels untracked = UntrackedChannels.RestPose)
+        {
+            if (skeleton == null) return null;
+            bool engine = untracked == UntrackedChannels.EngineDefaults;
+
+            List<HavokPackfile.SampledTransform> pose = new List<HavokPackfile.SampledTransform>(skeleton.Bones.Count);
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+                pose.Add(engine
+                    ? new HavokPackfile.SampledTransform
+                    {
+                        Translation = Vector3.Zero,
+                        Rotation = Quaternion.Identity,
+                        Scale = Vector3.One,
+                    }
+                    : new HavokPackfile.SampledTransform
+                    {
+                        Translation = skeleton.Bones[i].Position,
+                        Rotation = skeleton.Bones[i].Rotation,
+                        Scale = skeleton.Bones[i].ScaleXYZ,
+                    });
+
+            HavokPackfile.AnimationClip animation = clip?.Animation;
+            if (animation == null) return pose;
+
+            List<HavokPackfile.SampledTransform> tracks = clip.Section.Havok.Sample(animation, frame);
+            for (int track = 0; track < tracks.Count && track < animation.TrackToBone.Count; track++)
+            {
+                int bone = animation.TrackToBone[track];
+                if (bone < 0 || bone >= pose.Count) continue;
+
+                HavokPackfile.SampledTransform sampled = tracks[track];
+                if (!animation.Additive)
+                {
+                    /* Only take the channels the clip actually stored. A track that leaves one out
+                     * isn't saying "put this at zero", it's saying "the rig already has it right" -
+                     * which matters for the environment rigs, where a part authored at a scale
+                     * other than 1 is animated by clips that never mention scale. */
+                    pose[bone] = new HavokPackfile.SampledTransform
+                    {
+                        Translation = sampled.HasTranslation ? sampled.Translation
+                            : engine ? Vector3.Zero : skeleton.Bones[bone].Position,
+                        Rotation = sampled.HasRotation ? sampled.Rotation
+                            : engine ? Quaternion.Identity : skeleton.Bones[bone].Rotation,
+                        Scale = sampled.HasScale ? sampled.Scale
+                            : engine ? Vector3.One : skeleton.Bones[bone].ScaleXYZ,
+                    };
+                    continue;
+                }
+
+                //an additive clip holds a delta, so lay it over the pose that's already there
+                Skeleton.Bone rest = skeleton.Bones[bone];
+                pose[bone] = new HavokPackfile.SampledTransform
+                {
+                    Translation = rest.Position + sampled.Translation,
+                    Rotation = rest.Rotation * sampled.Rotation,
+                    Scale = rest.ScaleXYZ * sampled.Scale,
+                };
+            }
+            return pose;
+        }
+
+        /// <summary>
+        /// The bones a clip never moves off the rig's rest pose, either because it holds no track
+        /// for them or because the track it holds never turns.
+        ///
+        /// A clip that drives only part of the body is completely normal - the game lays it over
+        /// whatever else is playing, so an idle can leave the arms to a weapon animation. Shown on
+        /// its own, though, those bones sit in the rest pose and read as a limb left behind, which
+        /// is worth saying out loud.
+        /// </summary>
+        public static List<int> BonesLeftAtRest(ClipReference clip, Skeleton skeleton, Retargeter retarget = null)
+        {
+            List<int> still = new List<int>();
+            if (clip?.Animation == null || skeleton == null) return still;
+
+            int frames = clip.Animation.FrameCount;
+            if (frames < 2) return still;
+
+            bool[] moved = new bool[skeleton.Bones.Count];
+            int step = Math.Max(1, (frames - 1) / 5);
+            for (int frame = 0; frame < frames; frame += step)
+            {
+                List<HavokPackfile.SampledTransform> pose = SampleBones(clip, skeleton, frame, RootMotion.Ignore, retarget);
+                if (pose == null) break;
+
+                for (int bone = 0; bone < moved.Length && bone < pose.Count; bone++)
+                {
+                    if (moved[bone]) continue;
+                    if (Quaternion.Dot(Quaternion.Normalize(pose[bone].Rotation),
+                                       Quaternion.Normalize(skeleton.Bones[bone].Rotation)) < 0.99999f
+                        || (pose[bone].Translation - skeleton.Bones[bone].Position).LengthSquared() > 1e-8f)
+                        moved[bone] = true;
+                }
+            }
+
+            for (int bone = 0; bone < moved.Length; bone++)
+                if (!moved[bone]) still.Add(bone);
+            return still;
+        }
+
+        /// <summary>
+        /// The limbs a clip never moves - an arm or leg that holds its shape while the torso carries
+        /// it about, which is what someone watching calls a limb left in the rest pose. Named in
+        /// plain words ("right arm"), ready to show.
+        ///
+        /// This asks the question the viewer asks, not the one <see cref="BonesLeftAtRest"/> asks: a
+        /// shoulder can hold its angle while the elbow below it bends, and the arm is plainly moving.
+        /// So the limb is compared against its rest shape in the frame of the bone it hangs off, and
+        /// only counts as left behind when the whole chain holds still. Fingers and toes are left out
+        /// on purpose - they carry small motions of their own.
+        /// </summary>
+        public static List<string> LimbsLeftAtRest(ClipReference clip, Skeleton skeleton, Retargeter retarget = null)
+        {
+            List<string> limbs = new List<string>();
+            if (clip?.Animation == null || skeleton == null || clip.Animation.FrameCount < 2) return limbs;
+
+            List<Matrix4x4> rest = skeleton.GetBindPose();
+            List<List<Matrix4x4>> frames = new List<List<Matrix4x4>>();
+            int step = Math.Max(1, (clip.Animation.FrameCount - 1) / 5);
+            for (int frame = 0; frame < clip.Animation.FrameCount; frame += step)
+            {
+                List<Matrix4x4> pose = SampleModelPose(clip, skeleton, frame, RootMotion.Ignore, retarget);
+                if (pose == null) return limbs;
+                frames.Add(pose);
+            }
+            if (frames.Count == 0) return limbs;
+
+            foreach (KeyValuePair<string[], string> limb in _limbChains)
+            {
+                List<int> bones = new List<int>();
+                foreach (string name in limb.Key)
+                {
+                    int bone = IndexOfBone(skeleton, name);
+                    if (bone >= 0) bones.Add(bone);
+                }
+                if (bones.Count == 0 || limbs.Contains(limb.Value)) continue;
+
+                int anchor = skeleton.Bones[bones[0]].ParentIndex;
+                if (anchor < 0 || anchor >= rest.Count) continue;
+                if (!Matrix4x4.Invert(rest[anchor], out Matrix4x4 restAnchor)) continue;
+
+                if (Held(frames, rest, restAnchor, bones, anchor)) limbs.Add(limb.Value);
+            }
+            return limbs;
+        }
+
+        /* Does every bone of the limb sit where it does at rest, in the frame of what it hangs off? */
+        private static bool Held(List<List<Matrix4x4>> frames, List<Matrix4x4> rest, Matrix4x4 restAnchor, List<int> bones, int anchor)
+        {
+            //a centimetre at the end of a 10cm probe is about half a degree, which reads as still
+            const float tolerance = 0.002f;
+            Vector3 tip = new Vector3(0.1f, 0, 0);
+
+            foreach (List<Matrix4x4> pose in frames)
+            {
+                if (anchor >= pose.Count) return false;
+                if (!Matrix4x4.Invert(pose[anchor], out Matrix4x4 poseAnchor)) return false;
+
+                foreach (int bone in bones)
+                {
+                    if (bone >= pose.Count || bone >= rest.Count) continue;
+                    Matrix4x4 now = pose[bone] * poseAnchor, was = rest[bone] * restAnchor;
+
+                    if ((now.Translation - was.Translation).Length() > tolerance) return false;
+                    if ((Vector3.Transform(tip, now) - Vector3.Transform(tip, was)).Length() > tolerance) return false;
+                }
+            }
+            return true;
+        }
+
+        private static int IndexOfBone(Skeleton skeleton, string name)
+        {
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+            {
+                string bone = skeleton.Bones[i].Name ?? "";
+                int at = bone.LastIndexOf(':');
+                if (string.Equals(at < 0 ? bone : bone.Substring(at + 1), name, StringComparison.OrdinalIgnoreCase)) return i;
+            }
+            return -1;
+        }
+
+        /* The chain each limb is made of, in the order the limbs read best. */
+        private static readonly KeyValuePair<string[], string>[] _limbChains =
+        {
+            new KeyValuePair<string[], string>(new[] { "RIGHTARM", "RIGHTFOREARM", "RIGHTHAND" }, "right arm"),
+            new KeyValuePair<string[], string>(new[] { "LEFTARM", "LEFTFOREARM", "LEFTHAND" }, "left arm"),
+            new KeyValuePair<string[], string>(new[] { "RIGHTUPLEG", "RIGHTLEG", "RIGHTFOOT" }, "right leg"),
+            new KeyValuePair<string[], string>(new[] { "LEFTUPLEG", "LEFTLEG", "LEFTFOOT" }, "left leg"),
+            new KeyValuePair<string[], string>(new[] { "SPINE", "SPINE1", "SPINE2" }, "spine"),
+            new KeyValuePair<string[], string>(new[] { "NECK", "HEAD" }, "head"),
+        };
+
+        /// <summary>The bone a rig marks its own position with, or -1. Every character rig has one.</summary>
+        public static int ReferenceBone(Skeleton skeleton)
+        {
+            if (skeleton == null) return -1;
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+                if (skeleton.Bones[i].Name.EndsWith("REFERENCE_ROOT", StringComparison.OrdinalIgnoreCase)) return i;
+            return -1;
+        }
+
+        private static int RootBone(Skeleton skeleton)
+        {
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+                if (skeleton.Bones[i].ParentIndex < 0) return i;
+            return -1;
+        }
+
+        /* Move the whole pose so the character stands where we want them.
+         *
+         * The correction rides entirely on the root bone's local transform: every other bone hangs
+         * off it, so folding it in there moves the lot and leaves the sampled data alone. */
+        private static List<HavokPackfile.SampledTransform> Anchor(List<HavokPackfile.SampledTransform> pose,
+            List<HavokPackfile.SampledTransform> start, Skeleton skeleton, int frame, RootMotion root)
+        {
+            int rootBone = RootBone(skeleton);
+            if (rootBone < 0) return pose;
+
+            int reference = ReferenceBone(skeleton);
+            if (reference < 0)
+            {
+                /* No reference bone - the environment rigs. Their clips are authored in place
+                 * already, so there is nothing to anchor and the root is left exactly as the clip
+                 * wrote it. Overwriting it with the rig's rest transform throws away the whole
+                 * animation of the 87 clips whose root IS the moving part - a ceiling fan or a
+                 * nodding bird is a single bone, and that bone is the root. */
+                return pose;
+            }
+
+            /* Put the reference bone where it started. This is a fixed transform for the whole clip,
+             * so it squares the character up without touching a frame of the animation.
+             *
+             * Taking it per frame instead would be wrong: the body does not travel with this bone.
+             * Across the retail clips where it moves more than 25 cm, the hips follow it only 13% of
+             * the way in the median case, so pinning it every frame swings the character around it. */
+            if (start == null) start = pose;
+            Matrix4x4 anchor = ModelSpaceOf(start, skeleton, reference);
+            if (!Matrix4x4.Invert(anchor, out Matrix4x4 place)) return pose;
+
+            /* Playing in place is a viewing aid on top of that: take out however far the body itself
+             * has drifted along the ground since the first frame, and leave the height alone. */
+            if (root == RootMotion.Ignore && frame != 0)
+            {
+                int body = BodyBone(skeleton, reference);
+                if (body >= 0)
+                {
+                    Vector3 now = (ModelSpaceOf(pose, skeleton, body) * place).Translation;
+                    Vector3 was = (ModelSpaceOf(start, skeleton, body) * place).Translation;
+                    place = place * Matrix4x4.CreateTranslation(new Vector3(was.X - now.X, 0, was.Z - now.Z));
+                }
+            }
+
+            /* Everything above is in model space; folding it into the root's local transform means
+             * going through the mesh-space rotation and back out again. */
+            Matrix4x4 corrected = ToMatrix(pose[rootBone]) * Skeleton.ToMeshSpace * place * _fromMeshSpace;
+            if (!Matrix4x4.Decompose(corrected, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+                return pose;
+
+            pose[rootBone] = new HavokPackfile.SampledTransform { Translation = translation, Rotation = rotation, Scale = scale };
+            return pose;
+        }
+
+        /* Whichever bone the rest of the skeleton hangs off - the pelvis on a character. Found by
+         * counting descendants rather than by name, so it works on any rig. */
+        private static int BodyBone(Skeleton skeleton, int reference)
+        {
+            int best = -1, bestCount = 0;
+            for (int i = 0; i < skeleton.Bones.Count; i++)
+            {
+                if (i == reference || skeleton.Bones[i].ParentIndex < 0) continue;
+
+                int count = 0;
+                for (int child = 0; child < skeleton.Bones.Count; child++)
+                {
+                    for (int at = skeleton.Bones[child].ParentIndex; at >= 0; at = skeleton.Bones[at].ParentIndex)
+                        if (at == i) { count++; break; }
+                }
+                if (count > bestCount) { bestCount = count; best = i; }
+            }
+            return best;
+        }
+
+        private static readonly Matrix4x4 _fromMeshSpace = Matrix4x4.Transpose(Skeleton.ToMeshSpace);
+
+        private static HavokPackfile.SampledTransform Rest(Skeleton skeleton, int bone)
+        {
+            return new HavokPackfile.SampledTransform
+            {
+                Translation = skeleton.Bones[bone].Position,
+                Rotation = skeleton.Bones[bone].Rotation,
+                Scale = skeleton.Bones[bone].ScaleXYZ,
+            };
+        }
+
+        private static Matrix4x4 ToMatrix(HavokPackfile.SampledTransform transform)
+        {
+            return Matrix4x4.CreateScale(transform.Scale)
+                 * Matrix4x4.CreateFromQuaternion(transform.Rotation)
+                 * Matrix4x4.CreateTranslation(transform.Translation);
+        }
+
+        /* One bone's transform relative to the skeleton root, walking up the parents */
+        private static Matrix4x4 ModelSpaceOf(List<HavokPackfile.SampledTransform> pose, Skeleton skeleton, int bone)
+        {
+            Matrix4x4 result = ToMatrix(pose[bone]);
+            for (int at = skeleton.Bones[bone].ParentIndex; at >= 0; at = skeleton.Bones[at].ParentIndex)
+                result = result * ToMatrix(pose[at]);
+            return result * Skeleton.ToMeshSpace;
+        }
+
+        /// <summary>
+        /// One frame of a clip as bone transforms relative to the skeleton root, rotated into mesh
+        /// space - the same space <see cref="Skeleton.GetBindPose"/> hands back, so the two compose.
+        /// </summary>
+        public static List<Matrix4x4> SampleModelPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
+        {
+            List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root, retarget);
+            //A pose that is not this rig's, bone for bone, cannot be walked up this rig's parents
+            if (local == null || local.Count != skeleton.Bones.Count) return null;
+
+            List<Matrix4x4> pose = new List<Matrix4x4>(local.Count);
+            for (int i = 0; i < local.Count; i++)
+            {
+                int parent = skeleton.Bones[i].ParentIndex;
+                pose.Add(parent >= 0 && parent < i ? local[i] * pose[parent] : local[i] * Skeleton.ToMeshSpace);
+            }
+            return pose;
+        }
+
+        /// <summary>
+        /// One frame of a clip as bone transforms relative to the skeleton root, left in the
+        /// skeleton's own space. <see cref="SampleModelPose"/> turns the same sample into the space
+        /// a character's mesh is authored in; an environment rig sits in the same space as the prop
+        /// it drives already, and wants this one.
+        /// </summary>
+        public static List<Matrix4x4> SampleRigPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
+        {
+            List<Matrix4x4> local = SampleLocalPose(clip, skeleton, frame, root, retarget);
+            if (local == null || local.Count != skeleton.Bones.Count) return null;
+
+            List<Matrix4x4> pose = new List<Matrix4x4>(local.Count);
+            for (int i = 0; i < local.Count; i++)
+            {
+                int parent = skeleton.Bones[i].ParentIndex;
+                pose.Add(parent >= 0 && parent < i ? local[i] * pose[parent] : local[i]);
+            }
+            return pose;
+        }
+
+        /// <summary>
+        /// One frame of a clip as skinning matrices - the inverse bind pose times the animated pose.
+        /// A vertex run through its bones' matrices and weighted lands where the animation puts it.
+        /// </summary>
+        public static List<Matrix4x4> SampleSkinningPose(ClipReference clip, Skeleton skeleton, int frame, RootMotion root = RootMotion.Ignore, Retargeter retarget = null)
+        {
+            List<Matrix4x4> animated = SampleModelPose(clip, skeleton, frame, root, retarget);
+            if (animated == null) return null;
+
+            List<Matrix4x4> bind = skeleton.GetBindPose();
+            List<Matrix4x4> skinning = new List<Matrix4x4>(animated.Count);
+            for (int i = 0; i < animated.Count; i++)
+                skinning.Add(Matrix4x4.Invert(bind[i], out Matrix4x4 inverse) ? inverse * animated[i] : Matrix4x4.Identity);
+            return skinning;
+        }
+        #endregion
+
+        #region EDITING
+        /// <summary>
+        /// Register a name so it can be written back out. Every name in the PAK is stored as a hash,
+        /// so anything new has to go in the string table first or it won't survive a save.
+        /// </summary>
+        public uint AddName(string name, bool debug = false)
+        {
+            AnimationStrings strings = debug ? StringsDebug : Strings;
+            if (strings == null) return 0;
+
+            uint id = Utilities.AnimationHashedString(name);
+            if (!strings.Entries.ContainsKey(id)) strings.AddString(name);
+            return id;
+        }
+
+        /// <summary>
+        /// Build a section holding one clip, registered nowhere. The import preview plays one of
+        /// these, and <see cref="AddClip"/> is this plus the paperwork.
+        ///
+        /// Which channels get stored is decided here rather than left to the caller - see
+        /// <see cref="SetCarriage"/> for why it isn't a matter of preference.
+        /// </summary>
+        public AnimClipDBSec BuildSection(List<List<HavokPackfile.SampledTransform>> frames, List<short> trackToBone,
+                                          string skeletonName, string clipPath, string metaLabel,
+                                          float frameDuration = 1f / 30f, bool additive = false,
+                                          AnimClipDBSec template = null)
+        {
+            if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) return null;
+            foreach (List<HavokPackfile.SampledTransform> pose in frames)
+                if (pose == null || pose.Count != trackToBone.Count) return null;
+
+            if (template == null) template = StreamedTemplates().FirstOrDefault();
+            if (template?.Havok == null) return null;
+
+            SetCarriage(frames);
+
+            HavokPackfile packfile = new HavokPackfile(template.Havok.ToBytes());
+            if (!packfile.Loaded) return null;
+
+            new SplineEncoder
+            {
+                SkeletonName = skeletonName,
+                TrackToBone = trackToBone,
+                FrameDuration = frameDuration,
+                Frames = frames,
+                Additive = additive,
+            }.BuildInto(packfile);
+
+            /* A tagfile clip is a whole new item and patch table written over the template's schema.
+             * Read it back from its own bytes, so what the preview plays is exactly what a save
+             * writes rather than the writer's view of it. */
+            if (packfile.IsTagfile)
+            {
+                packfile = new HavokPackfile(packfile.ToBytes());
+                if (!packfile.Loaded) return null;
+            }
+
+            string folder = Path.GetDirectoryName(template.Filepath) ?? "";
+            string filename = "ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(clipPath) + ".BIN";
+
+            AnimClipDBSec section = new AnimClipDBSec(Strings, Path.Combine(folder, filename), StringsDebug);
+            section.SkeletonDependencies.Add(skeletonName);
+            section.SetHavok(packfile);
+            section.Metadata.Add(BuildMetadata(clipPath, metaLabel, frames.Count, frameDuration));
+            return section;
+        }
+
+        /// <summary>
+        /// Add a clip the game doesn't have. It gets a streamed section of its own in both pointer
+        /// sizes (the one 64 bit tagfile section on the mobile and Switch builds), an entry in the
+        /// global index, and a line in the set's clip DB - which is the shape 11,540 of the 11,546
+        /// one-clip sections in the game already take. Nothing is changed unless all of it is built.
+        ///
+        /// The rig the poses are authored on need not be the one the character wears: a character
+        /// clip is normally built on a shared reference rig (MALE, FEMALE) and the engine retargets
+        /// it at runtime, which is how 1,272 of SAMUELS's 1,728 clips arrive. A prop's clip is
+        /// authored on the prop's own rig.
+        /// </summary>
+        /// <param name="frames">One pose per frame per track. Which channels get stored comes from
+        /// each pose's Has flags - see <see cref="SetCarriage"/>.</param>
+        public bool AddClip(AnimationSet set, string clipName, string clipPath, string skeletonName,
+                            List<short> trackToBone, List<List<HavokPackfile.SampledTransform>> frames,
+                            float frameDuration = 1f / 30f, bool additive = false)
+        {
+            return AddClip(set, clipName, clipPath, skeletonName, trackToBone, frames, frameDuration, additive, null);
+        }
+
+        /// <summary>
+        /// As <see cref="AddClip(AnimationSet, string, string, string, List{short}, List{List{HavokPackfile.SampledTransform}}, float, bool)"/>,
+        /// filed in one of the set's named contexts (WEAPON_HANDGUN, CROUCHED...): the clip DB line goes in that
+        /// context, so the game only offers the clip while the character is in that state. Null or empty files it
+        /// in the set's own unnamed context. False if the set has no such context.
+        /// </summary>
+        public bool AddClip(AnimationSet set, string clipName, string clipPath, string skeletonName,
+                            List<short> trackToBone, List<List<HavokPackfile.SampledTransform>> frames,
+                            float frameDuration, bool additive, string contextName)
+        {
+            EnsureContents(); //everything below works on the parsed contents, not the index
+            if (set?.Database == null || ClipIndex == null || _pak?.Entries == null) return false;
+
+            //where the clip DB line goes, and the resolved context that lists it
+            List<AnimClipDB.AnimClip> lines = set.Database.Animations;
+            AnimationContext context = set.Contexts.FirstOrDefault(x => x.Name.Length == 0) ?? set.Contexts.FirstOrDefault();
+            if (!string.IsNullOrEmpty(contextName))
+            {
+                AnimClipDB.Context named = set.Database.Contexts.FirstOrDefault(x => string.Equals(x.Name, contextName, StringComparison.OrdinalIgnoreCase));
+                context = set.Contexts.FirstOrDefault(x => x.Name.Length != 0 && string.Equals(x.Name, contextName, StringComparison.OrdinalIgnoreCase));
+                if (named == null || context == null) return false;
+                lines = named.Animations;
+            }
+            if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) return false;
+            if (string.IsNullOrEmpty(clipName) || string.IsNullOrEmpty(clipPath)) return false;
+            if (_sectionOfClip != null && _sectionOfClip.ContainsKey(clipPath)) return false;
+            foreach (List<HavokPackfile.SampledTransform> pose in frames)
+                if (pose == null || pose.Count != trackToBone.Count) return false;
+
+            string metaLabel = set.Name + "\\" + clipName.ToUpperInvariant();
+
+            List<AnimClipDBSec> templates = StreamedTemplates();
+            if (templates.Count == 0) return false;
+
+            /* Build every copy before touching anything, so a clip that cannot be built - or a
+             * template that refuses it - leaves the PAK and its tables exactly as they were. One copy
+             * per pointer size, since the PC ships a 32 and a 64 bit build; the mobile and Switch
+             * builds ship only the 64 bit folders, so they get one. */
+            string filename = "ANIM_CLIP_DB_SEC_" + Utilities.AnimationHashedString(clipPath) + ".BIN";
+            List<AnimClipDBSec> built = new List<AnimClipDBSec>();
+            List<byte[]> contents = new List<byte[]>();
+            foreach (AnimClipDBSec template in templates)
+            {
+                AnimClipDBSec section = BuildSection(frames, trackToBone, skeletonName, clipPath, metaLabel,
+                                                     frameDuration, additive, template);
+                if (section == null) return false;
+
+                byte[] content = section.ToBytes();
+                if (content == null) return false;
+
+                built.Add(section);
+                contents.Add(content);
+            }
+
+            //clip, path and label names only ever existed in the debug table
+            AddName(clipPath, true);
+            AddName(clipName, true);
+            AddName(metaLabel, true);
+
+            AnimClipDBSec primary = built[0];
+            for (int i = 0; i < built.Count; i++)
+            {
+                _pak.Entries.Add(new PAK2.File { Filename = built[i].Filepath, Content = contents[i] });
+                Sections.Add(built[i]);
+            }
+
+            //a section holding one clip names itself after that clip and indexes it at -1
+            GlobalAnimClipDB.ClipDbSection index = new GlobalAnimClipDB.ClipDbSection
+            {
+                Name = clipPath,
+                SectionName = clipPath,
+                SectionIndex = -1,
+            };
+            ClipIndex.ClipDbSections.Add(index);
+            lines.Add(new AnimClipDB.AnimClip { Name = clipName, Path = clipPath, MetadataInstance = 0 });
+
+            //keep the resolved view in step rather than rebuilding every set for one clip
+            if (_sectionOfClip != null) _sectionOfClip[clipPath] = index;
+            if (_sectionByName != null) _sectionByName[Path.GetFileNameWithoutExtension(filename)] = primary;
+
+            if (context != null)
+            {
+                context.Clips.Add(new ClipReference
+                {
+                    Name = clipName,
+                    Path = clipPath,
+                    Context = context,
+                    Section = primary,
+                    Index = 0,
+                });
+                set.ClipCount++;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Every copy of a section: the one the sets resolve to and its build for the other pointer size, which
+        /// shares its filename in the sibling folder (STREAMED and STREAMED64).
+        /// </summary>
+        public List<AnimClipDBSec> CopiesOf(AnimClipDBSec section)
+        {
+            if (section == null) return new List<AnimClipDBSec>();
+            string file = Path.GetFileName(section.Filepath ?? "");
+            List<AnimClipDBSec> copies = Sections.Where(x => string.Equals(Path.GetFileName(x.Filepath ?? ""), file, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (!copies.Contains(section)) copies.Insert(0, section);
+            return copies;
+        }
+
+        /// <summary>
+        /// Every clip reference, in any set, that plays out of this section (or another copy of it).
+        /// </summary>
+        public List<ClipReference> ClipsIn(AnimClipDBSec section)
+        {
+            List<AnimClipDBSec> copies = CopiesOf(section);
+            return GetClips().Where(x => x.Section != null && copies.Contains(x.Section)).ToList();
+        }
+
+        /// <summary>
+        /// Rebuild a clip's animation in place: its name, path, context and every reference to it stay, and only
+        /// what plays changes. Only a section holding this one clip can be rebuilt, in every copy it ships in; each
+        /// copy is its own template, so it keeps the build it was. The clip keeps its label and the events tagged
+        /// on it (those past its new end are dropped); its length is restated. Nothing changes unless every copy
+        /// builds. <paramref name="problem"/> says why not.
+        /// </summary>
+        public bool ReplaceClip(ClipReference clip, string skeletonName, List<short> trackToBone,
+                                List<List<HavokPackfile.SampledTransform>> frames, float frameDuration, bool additive, out string problem)
+        {
+            EnsureContents();
+            problem = null;
+            if (clip?.Section == null) { problem = "That clip's section is not in ANIMATION.PAK."; return false; }
+            if (frames == null || frames.Count == 0 || trackToBone == null || trackToBone.Count == 0) { problem = "There is nothing to build."; return false; }
+            if (clip.Section.Metadata.Count != 1 || clip.Section.GetAnimations().Count != 1)
+            {
+                problem = "Its section holds " + clip.Section.GetAnimations().Count + " clips, and only a section holding one clip can be rebuilt in place.";
+                return false;
+            }
+
+            List<AnimClipDBSec> copies = CopiesOf(clip.Section);
+            AnimClipDBSec.MetadataSet before = clip.Section.Metadata[0];
+            //A rebuild carries the first instance block only, and the clip's lines can select the others by number
+            int instances = copies.Select(x => x.Metadata.Count != 0 ? x.Metadata[0].Instances.Count : 0).DefaultIfEmpty(0).Max();
+            instances = Math.Max(instances, before.Instances.Count);
+            if (instances > 1)
+            {
+                problem = "Its metadata has " + instances + " instance blocks, which lines in its set's clip database select by number, and a rebuild keeps only the first: import it under a new name instead.";
+                return false;
+            }
+            string label = before.Instances.Count != 0 ? ArgumentOf(before.Instances[0], "meta_label") as string : null;
+            if (string.IsNullOrEmpty(label)) label = (clip.Context?.Set?.Name ?? "") + "\\" + (clip.Name ?? "").ToUpperInvariant();
+            float duration = frames.Count > 1 ? (frames.Count - 1) * frameDuration : frameDuration;
+
+            List<AnimClipDBSec> built = new List<AnimClipDBSec>();
+            List<byte[]> contents = new List<byte[]>();
+            foreach (AnimClipDBSec copy in copies)
+            {
+                AnimClipDBSec section;
+                try { section = BuildSection(Copy(frames), trackToBone, skeletonName, clip.Path, label, frameDuration, additive, copy); }
+                catch (Exception e) { problem = "The clip could not be built over " + Path.GetFileName(copy.Filepath) + ": " + e.Message; return false; }
+                if (section == null) { problem = "The clip could not be built over " + copy.Filepath + "."; return false; }
+
+                //the old events come across, so a re-import keeps its footsteps
+                AnimClipDBSec.MetadataSet old = copy.Metadata.Count != 0 ? copy.Metadata[0] : before;
+                CarryEvents(old, section.Metadata[0], duration);
+
+                //read back from its own bytes under the copy's filename, so what is held is exactly what a save writes
+                byte[] content = section.ToBytes();
+                AnimClipDBSec reread = content == null ? null : new AnimClipDBSec(content, Strings, copy.Filepath, StringsDebug);
+                if (reread == null || !reread.Loaded) { problem = "The rebuilt section could not be written out."; return false; }
+                if (reread.Metadata.Count != section.Metadata.Count) { problem = "The rebuilt clip's metadata does not read back, so the game would lose it; nothing was changed."; return false; }
+                built.Add(reread);
+                contents.Add(content);
+            }
+
+            for (int i = 0; i < copies.Count; i++)
+            {
+                PAK2.File entry = _pak.Entries.FirstOrDefault(x => string.Equals(x.Filename, copies[i].Filepath, StringComparison.OrdinalIgnoreCase));
+                if (entry != null) entry.Content = contents[i];
+                int at = Sections.IndexOf(copies[i]);
+                if (at >= 0) Sections[at] = built[i];
+                string key = Path.GetFileNameWithoutExtension(copies[i].Filepath);
+                if (_sectionByName != null && _sectionByName.TryGetValue(key, out AnimClipDBSec indexed) && ReferenceEquals(indexed, copies[i]))
+                    _sectionByName[key] = built[i];
+            }
+
+            //every reference re-reads the animation and its markers from the new section
+            foreach (AnimationSet set in Sets)
+                foreach (AnimationContext context in set.Contexts)
+                    for (int i = 0; i < context.Clips.Count; i++)
+                    {
+                        ClipReference held = context.Clips[i];
+                        int copy = copies.IndexOf(held.Section);
+                        if (copy < 0) continue;
+                        context.Clips[i] = new ClipReference { Name = held.Name, Path = held.Path, Context = held.Context, Section = built[copy], Index = held.Index };
+                    }
+            return true;
+        }
+
+        private static List<List<HavokPackfile.SampledTransform>> Copy(List<List<HavokPackfile.SampledTransform>> frames)
+        {
+            return frames.Select(x => new List<HavokPackfile.SampledTransform>(x)).ToList();
+        }
+
+        /* A rebuild keeps the clip's settings and events: every argument the fresh metadata lacks (the length it
+         * restates) and every property, in the common block and the first instance block - times past the new end
+         * are dropped. The settings include the movement measurements locomotion is chosen and blended on (linear_speed,
+         * translation, yTotalRotation, the spherical_blend anchors): retail walks and turns are in-place loops whose
+         * travel lives only there, so they cannot be measured again from new frames and are kept. KeptSettings lists
+         * them. */
+        private static void CarryEvents(AnimClipDBSec.MetadataSet from, AnimClipDBSec.MetadataSet into, float duration)
+        {
+            if (from == null || into == null) return;
+            CarryBlock(from.Common, into.Common, duration);
+            if (from.Instances.Count != 0 && into.Instances.Count != 0)
+                CarryBlock(from.Instances[0], into.Instances[0], duration);
+            FitBlocks(into);
+        }
+
+        /// <summary>
+        /// The settings <see cref="ReplaceClip"/> keeps from a clip's old metadata rather than restating them: every
+        /// argument the fresh metadata lacks (movement measurements, blend anchors...; not the audio declarations, which
+        /// are what the kept events play). They describe the old animation, so a new one that moves differently is still
+        /// chosen and blended as the old one was.
+        /// </summary>
+        public static List<string> KeptSettings(AnimClipDBSec section)
+        {
+            List<string> kept = new List<string>();
+            if (section == null || section.Metadata.Count == 0) return kept;
+            AnimClipDBSec.MetadataSet before = section.Metadata[0];
+            AnimClipDBSec.MetadataSet fresh = BuildMetadata("", "", 2, 1.0f / 30.0f);
+            void From(AnimClipDBSec.MetadataBlock old, AnimClipDBSec.MetadataBlock restated)
+            {
+                if (old == null || restated == null) return;
+                foreach (AnimClipDBSec.MetadataArgument argument in old.Arguments)
+                    if (!string.IsNullOrEmpty(argument.Name) && argument.Name != "0" && argument.Type != MetadataValueType.AUDIO && !kept.Contains(argument.Name) && !restated.Arguments.Any(x => x.Name == argument.Name))
+                        kept.Add(argument.Name);
+            }
+            From(before.Common, fresh.Common);
+            if (before.Instances.Count != 0) From(before.Instances[0], fresh.Instances[0]);
+            return kept;
+        }
+
+        private static void CarryBlock(AnimClipDBSec.MetadataBlock source, AnimClipDBSec.MetadataBlock target, float duration)
+        {
+            if (source == null || target == null) return;
+            foreach (AnimClipDBSec.MetadataArgument argument in source.Arguments)
+                if (!target.Arguments.Any(x => x.Name == argument.Name))
+                    target.Arguments.Add(argument);
+            foreach (AnimClipDBSec.MetadataProperty property in source.Properties)
+            {
+                AnimClipDBSec.MetadataProperty kept = new AnimClipDBSec.MetadataProperty { Name = property.Name, HasEvents = property.HasEvents };
+                for (int i = 0; i < property.Times.Count; i++)
+                {
+                    if (property.Times[i] > duration + 0.0001f) continue;
+                    kept.Times.Add(property.Times[i]);
+                    if (i < property.Events.Count) kept.Events.Add(property.Events[i]);
+                }
+                if (kept.Times.Count == 0) continue;
+                target.Properties.Add(kept);
+                target.HasProperties = true;
+            }
+        }
+
+        /// <summary>
+        /// Take a clip out of its set and the PAK: the line in its set's clip DB, its entry in the global index and
+        /// its section in every copy. Only a clip with a section to itself that no other set plays can go.
+        /// Strings it registered stay (they cost nothing and other things may name them). <paramref name="problem"/>
+        /// says why not.
+        /// </summary>
+        public bool RemoveClip(ClipReference clip, out string problem)
+        {
+            EnsureContents();
+            problem = null;
+            if (clip?.Context?.Set?.Database == null) { problem = "That clip is not reached through a set."; return false; }
+            AnimationSet set = clip.Context.Set;
+            if (clip.Section != null)
+            {
+                if (clip.Section.Metadata.Count > 1 || clip.Section.GetAnimations().Count > 1)
+                {
+                    problem = "Its section holds other clips too, so it cannot be taken out on its own.";
+                    return false;
+                }
+                List<ClipReference> sharing = ClipsIn(clip.Section).Where(x => !ReferenceEquals(x, clip)).ToList();
+                if (sharing.Count != 0)
+                {
+                    problem = "Its animation is also played as " + string.Join(", ", sharing.Take(5).Select(x => (x.Context?.Set?.Name ?? "?") + "\\" + x.Name)) + ".";
+                    return false;
+                }
+            }
+
+            //the clip DB line, in whichever context lists it
+            bool removed = set.Database.Animations.RemoveAll(x => string.Equals(x.Path, clip.Path, StringComparison.OrdinalIgnoreCase) && string.Equals(x.Name, clip.Name, StringComparison.OrdinalIgnoreCase)) != 0;
+            foreach (AnimClipDB.Context context in set.Database.Contexts)
+                removed |= context.Animations.RemoveAll(x => string.Equals(x.Path, clip.Path, StringComparison.OrdinalIgnoreCase) && string.Equals(x.Name, clip.Name, StringComparison.OrdinalIgnoreCase)) != 0;
+            if (!removed) { problem = set.Name + "'s clip DB does not list it."; return false; }
+
+            //nothing else plays the path any more, so its index entry and sections go
+            bool stillPlayed = GetClips().Any(x => !ReferenceEquals(x, clip) && string.Equals(x.Path, clip.Path, StringComparison.OrdinalIgnoreCase));
+            if (!stillPlayed)
+            {
+                ClipIndex?.ClipDbSections.RemoveAll(x => string.Equals(x.Name, clip.Path, StringComparison.OrdinalIgnoreCase));
+                _sectionOfClip?.Remove(clip.Path);
+                if (clip.Section != null)
+                {
+                    foreach (AnimClipDBSec copy in CopiesOf(clip.Section))
+                    {
+                        _pak.Entries.RemoveAll(x => string.Equals(x.Filename, copy.Filepath, StringComparison.OrdinalIgnoreCase));
+                        Sections.Remove(copy);
+                        string key = Path.GetFileNameWithoutExtension(copy.Filepath);
+                        if (_sectionByName != null && _sectionByName.TryGetValue(key, out AnimClipDBSec indexed) && ReferenceEquals(indexed, copy))
+                            _sectionByName.Remove(key);
+                    }
+                }
+            }
+
+            clip.Context.Clips.Remove(clip);
+            set.ClipCount = set.Contexts.Sum(x => x.Clips.Count);
+            return true;
+        }
+
+        /// <summary>
+        /// Change a clip's tagged events (or anything else in its metadata) in every copy of its section at once.
+        /// <paramref name="edit"/> runs on each copy's metadata set; the clip's markers are read afresh afterwards.
+        /// False, with <paramref name="problem"/>, for a section whose metadata a save would not write back.
+        /// </summary>
+        public bool EditMetadata(ClipReference clip, Action<AnimClipDBSec.MetadataSet> edit, out string problem)
+        {
+            EnsureContents();
+            problem = null;
+            if (clip?.Section == null || edit == null) { problem = "That clip's section is not in ANIMATION.PAK."; return false; }
+            List<AnimClipDBSec> copies = CopiesOf(clip.Section);
+            foreach (AnimClipDBSec copy in copies)
+            {
+                if (!copy.MetadataParsed) { problem = Path.GetFileName(copy.Filepath) + "'s metadata is kept byte for byte (it does not read back exactly), so it cannot be edited."; return false; }
+                if (clip.Index < 0 || clip.Index >= copy.Metadata.Count) { problem = Path.GetFileName(copy.Filepath) + " has no metadata for this clip."; return false; }
+            }
+            //Tried on a copy read from each section's bytes first: an edit whose metadata would not read back changes nothing
+            foreach (AnimClipDBSec copy in copies)
+            {
+                byte[] bytes = copy.ToBytes();
+                AnimClipDBSec trial = bytes == null ? null : new AnimClipDBSec(bytes, Strings, copy.Filepath, StringsDebug);
+                if (trial == null || !trial.Loaded || clip.Index >= trial.Metadata.Count) { problem = Path.GetFileName(copy.Filepath) + " could not be read back to try the edit on."; return false; }
+                edit(trial.Metadata[clip.Index]);
+                FitBlocks(trial.Metadata[clip.Index]);
+                byte[] after = trial.ToBytes();
+                AnimClipDBSec check = after == null ? null : new AnimClipDBSec(after, Strings, copy.Filepath, StringsDebug);
+                if (check == null || check.Metadata.Count != trial.Metadata.Count) { problem = "After that edit " + Path.GetFileName(copy.Filepath) + "'s metadata would not read back, so the game would lose it; nothing was changed."; return false; }
+            }
+            foreach (AnimClipDBSec copy in copies)
+            {
+                edit(copy.Metadata[clip.Index]);
+                FitBlocks(copy.Metadata[clip.Index]);
+            }
+            clip.Refresh();
+            return true;
+        }
+
+        /// <summary>
+        /// Leave room after each block for everything it points at. A block's data ends with its last property's times,
+        /// but a property's 48-byte entry, or its last 32-byte event header, can reach past them: the times share the
+        /// tail of the entry (no events) or of the last header. A block laid out tight against the end of the image (or
+        /// the next block) then points past it, and the reader - the game's too - throws the whole set away. Retail
+        /// blocks always carry the slack; a block given properties here gets it too. Call after changing a set's properties.
+        /// </summary>
+        public static void FitBlocks(AnimClipDBSec.MetadataSet set)
+        {
+            if (set == null) return;
+            FitBlock(set.Common);
+            foreach (AnimClipDBSec.MetadataBlock block in set.Instances) FitBlock(block);
+        }
+
+        private static void FitBlock(AnimClipDBSec.MetadataBlock block)
+        {
+            //The layout AnimClipDBSec writes: arguments (48 bytes each) from +56, the property entries (48 each) after them,
+            //then each property's event headers (32 each) and times (4 each)
+            if (block == null || !block.HasProperties || block.Properties.Count == 0) return;
+            long arrayEnd = 56 + (block.Arguments.Count * 48) + (block.Properties.Count * 48);
+            long cursor = arrayEnd - (block.Properties[0].HasEvents ? 0 : 8);
+            long reach = arrayEnd;
+            for (int i = 0; i < block.Properties.Count; i++)
+            {
+                AnimClipDBSec.MetadataProperty property = block.Properties[i];
+                int count = property.Times.Count;
+                if (i != 0 && block.Properties[i - 1].HasEvents) cursor += 8;
+                long times = cursor;
+                if (property.HasEvents)
+                {
+                    if (count != 0) reach = Math.Max(reach, cursor + (count * 32));
+                    times = count == 0 ? cursor - 8 : cursor + ((count - 1) * 32) + 24;
+                }
+                cursor = times + (count * 4);
+            }
+            long overhang = reach - cursor;
+            if (overhang > block.TrailingPadding) block.TrailingPadding = (int)((overhang + 7) / 8 * 8);
+        }
+
+        /// <summary>
+        /// The metadata a clip cannot exist without: while finalising a section it has streamed in,
+        /// the engine looks up a metadata entry per clip by the clip's path, and falls over if there
+        /// isn't one. No section in the game ships without this.
+        /// </summary>
+        public static AnimClipDBSec.MetadataSet BuildMetadata(string clipPath, string metaLabel, int frames, float frameDuration)
+        {
+            AnimClipDBSec.MetadataSet set = new AnimClipDBSec.MetadataSet();
+
+            //anim_label is the key the lookup uses, so it has to be the clip's path exactly
+            set.Common.Arguments.Add(Argument("mirror", MetadataValueType.BOOL, true));
+            set.Common.Arguments.Add(Argument("anim_label", MetadataValueType.STRING, clipPath));
+
+            //how long the clip runs is a function of how fast it is played, so these two say so
+            set.Common.Arguments.Add(Argument("duration", MetadataValueType.FLOAT32,
+                frames > 1 ? (frames - 1) * frameDuration : frameDuration, playspeed: true));
+            set.Common.Arguments.Add(Argument("numberOfFrames", MetadataValueType.UINT32, (uint)frames, playspeed: true));
+            set.Common.Arguments.Add(Argument("has_motion", MetadataValueType.BOOL, false));
+
+            /* One instance block, which is what a MetadataInstance of 0 selects. The two values in
+             * front of the label carry no name in any shipped clip either. */
+            AnimClipDBSec.MetadataBlock instance = new AnimClipDBSec.MetadataBlock();
+            instance.Arguments.Add(Argument("0", MetadataValueType.UINT32, (uint)0));
+            instance.Arguments.Add(Argument("0", MetadataValueType.UINT32, (uint)0));
+            instance.Arguments.Add(Argument("meta_label", MetadataValueType.STRING, metaLabel));
+            set.Instances.Add(instance);
+            return set;
+        }
+
+        private static AnimClipDBSec.MetadataArgument Argument(string name, MetadataValueType type, object value, bool playspeed = false)
+        {
+            return new AnimClipDBSec.MetadataArgument
+            {
+                Name = name,
+                Type = type,
+                Value = value,
+                CanModulateByPlayspeed = playspeed,
+            };
+        }
+
+        /* One section per pointer size to take the packfile header and class name table from, out of
+         * the folders the game streams single clips from. A mobile or Switch section is a tagfile
+         * carrying its own type table, and 39 of theirs were written with an interleaved-only table
+         * that has no spline class to lay a clip out with - those are passed over. */
+        private List<AnimClipDBSec> StreamedTemplates()
+        {
+            List<AnimClipDBSec> templates = new List<AnimClipDBSec>();
+            bool has32 = false, has64 = false;
+            foreach (AnimClipDBSec section in Sections)
+            {
+                if (section.Havok == null || !section.Havok.Loaded) continue;
+                string folder = (Path.GetDirectoryName(section.Filepath) ?? "").ToUpperInvariant();
+                if (!folder.EndsWith("STREAMED") && !folder.EndsWith("STREAMED64")) continue;
+
+                bool sixtyFour = section.Havok.Header.PointerSize == 8;
+                if (sixtyFour ? has64 : has32) continue;
+                if (section.Havok.IsTagfile && !SplineEncoder.CanBuildInto(section.Havok)) continue;
+                if (sixtyFour) has64 = true; else has32 = true;
+
+                templates.Add(section);
+
+                //The tagfile builds ship only the 64-bit folders, so there is no 32-bit one to wait for
+                if ((has32 && has64) || section.Havok.IsTagfile) break;
+            }
+            return templates;
+        }
+
+        /// <summary>
+        /// Decide which channels a clip stores, which is not a matter of taste: a channel the clip
+        /// leaves out is played back as the Havok default - zero, identity, one - and NOT as the
+        /// bone's rest value, so anything that is not the default has to be written. Leaving
+        /// translation out collapses every bone onto its parent; writing a rotation the clip should
+        /// not have overrides where the engine put the character.
+        /// </summary>
+        public static void SetCarriage(List<List<HavokPackfile.SampledTransform>> frames)
+        {
+            if (frames == null || frames.Count == 0) return;
+            int tracks = frames[0].Count;
+
+            for (int track = 0; track < tracks; track++)
+            {
+                bool translation = false, rotation = false, scale = false;
+                for (int frame = 0; frame < frames.Count && !(translation && rotation && scale); frame++)
+                {
+                    HavokPackfile.SampledTransform value = frames[frame][track];
+                    translation |= value.Translation.Length() > 0.0001f;
+                    rotation |= AngleBetween(value.Rotation, Quaternion.Identity) > 0.05;
+                    scale |= (value.Scale - Vector3.One).Length() > 0.0001f;
+                }
+
+                for (int frame = 0; frame < frames.Count; frame++)
+                {
+                    HavokPackfile.SampledTransform value = frames[frame][track];
+                    value.HasTranslation = translation;
+                    value.HasRotation = rotation;
+                    value.HasScale = scale;
+                    frames[frame][track] = value;
+                }
+            }
+        }
+
+        /* Normalise first: the rest quaternions are float32 and not quite unit, so comparing one
+         * against itself raw comes out at 0.056 degrees rather than zero. */
+        private static double AngleBetween(Quaternion a, Quaternion b)
+        {
+            if (a.LengthSquared() > 1e-12f) a = Quaternion.Normalize(a);
+            if (b.LengthSquared() > 1e-12f) b = Quaternion.Normalize(b);
+            return Math.Acos(Math.Min(1.0, Math.Abs(Quaternion.Dot(a, b)))) * 2.0 * 180.0 / Math.PI;
+        }
+
+        /// <summary>
+        /// Tag a moment in a clip - a footstep sound, a ragdoll trigger. The property is added to the
+        /// clip's first instance block, which is where the game looks for per-use events.
+        /// </summary>
+        public static AnimClipDBSec.MetadataProperty AddProperty(AnimClipDBSec.MetadataSet set, string name, params float[] times)
+        {
+            if (set == null) return null;
+            AnimClipDBSec.MetadataBlock block = set.Instances.Count != 0 ? set.Instances[0] : set.Common;
+
+            AnimClipDBSec.MetadataProperty property = new AnimClipDBSec.MetadataProperty { Name = name };
+            property.Times.AddRange(times);
+            block.Properties.Add(property);
+            block.HasProperties = true;
+            FitBlocks(set);
+            return property;
+        }
+
+        /// <summary>
+        /// Point a property's occurrence at one of its block's arguments - normally the audio event
+        /// that should fire at that time.
+        /// </summary>
+        public static void SetEvent(AnimClipDBSec.MetadataProperty property, int index, string argument)
+        {
+            if (property == null || index < 0) return;
+            while (property.Events.Count <= index) property.Events.Add(new AnimClipDBSec.MetadataEvent());
+            property.Events[index].Name = argument;
+            property.HasEvents = true;
+        }
+        #endregion
+
+        #region STRUCTURES
+        /// <summary>A skeleton, in both the shapes the game ships it in.</summary>
+        public class SkeletonAsset
+        {
+            /// <summary>The PAK filename, which is the hash of the skeleton's name.</summary>
+            public string Name = "";
+
+            public Skeleton Skeleton;
+            public Skeleton Skeleton64;
+
+            /// <summary>Bones come from the 32 bit copy, which is the one the tools read.</summary>
+            public List<Skeleton.Bone> Bones { get { return (Skeleton ?? Skeleton64)?.Bones; } }
+
+            public override string ToString() => (Skeleton ?? Skeleton64)?.Name ?? Name;
+        }
+
+        /// <summary>Retargeting data between two skeletons.</summary>
+        public class MappingAsset
+        {
+            public string SkeletonA = "";
+            public string SkeletonB = "";
+
+            public SkeletonMapping Mapping;
+            public SkeletonMapping Mapping64;
+
+            public override string ToString() => SkeletonA + " -> " + SkeletonB;
+        }
+
+        /// <summary>A character's physics rig.</summary>
+        public class RagdollAsset
+        {
+            /// <summary>The PAK filename, which is the hash of the skeleton's name.</summary>
+            public string Name = "";
+
+            public Ragdoll Ragdoll;
+            public Ragdoll Ragdoll64;
+
+            public List<string> Bodies { get { return (Ragdoll ?? Ragdoll64)?.GetBodyNames(); } }
+
+            public override string ToString() => Name + " (" + (Bodies?.Count ?? 0) + " bodies)";
+        }
+
+        /// <summary>One clip, tying the name a set plays it by to the Havok animation and its metadata.</summary>
+        public class ClipReference
+        {
+            /// <summary>The name the set plays this clip by, e.g. "aim_centre_down".</summary>
+            public string Name = "";
+
+            /// <summary>The authored path the clip was built from, which is what the metadata labels it.</summary>
+            public string Path = "";
+
+            /// <summary>The context this clip belongs to, or null if it wasn't reached through a set.</summary>
+            public AnimationContext Context;
+
+            /// <summary>The section file holding the animation, or null if it couldn't be resolved.</summary>
+            public AnimClipDBSec Section;
+
+            /// <summary>Which clip inside that section. Streamed clips have a section to themselves.</summary>
+            public int Index;
+
+            /// <summary>The compressed animation itself, or null if the section didn't resolve.</summary>
+            public HavokPackfile.AnimationClip Animation
+            {
+                get
+                {
+                    if (_animation != null) return _animation;
+                    if (Section?.Havok == null) return null;
+
+                    //the clips come back in section order, so the index out of the DB indexes them directly
+                    List<HavokPackfile.AnimationClip> clips = Section.GetAnimations();
+                    return _animation = Index >= 0 && Index < clips.Count ? clips[Index] : null;
+                }
+            }
+
+            /// <summary>The tags on the clip - its label, its length, and any events it fires.</summary>
+            public AnimClipDBSec.MetadataSet Metadata
+            {
+                get
+                {
+                    if (Section == null || Index < 0 || Index >= Section.Metadata.Count) return null;
+                    return Section.Metadata[Index];
+                }
+            }
+
+            /// <summary>The clip's authored label, from its metadata. Usually the same as <see cref="Path"/>.</summary>
+            public string Label { get { return LabelOf(Metadata); } }
+
+            /// <summary>Everything tagged on this clip's timeline, sorted by time.</summary>
+        public List<ClipMarker> Markers { get { return _markers ?? (_markers = GetMarkers(this)); } }
+        private List<ClipMarker> _markers;
+
+        /// <summary>Whether the clip layers deltas onto another pose rather than holding one itself.</summary>
+        public bool Additive { get { return Animation?.Additive ?? false; } }
+
+        /// <summary>Whether the animation resolved and can be sampled.</summary>
+            public bool Playable { get { return Animation != null && Animation.FrameCount > 0; } }
+
+            /// <summary>How long the clip runs, in seconds.</summary>
+            public float Duration { get { return Animation?.Duration ?? 0; } }
+
+            /// <summary>The skeleton the animation was authored against.</summary>
+            public string Skeleton { get { return Animation?.SkeletonName ?? Section?.SkeletonDependencies.FirstOrDefault() ?? ""; } }
+
+            private HavokPackfile.AnimationClip _animation;
+
+            /// <summary>Forget what was read out of the section, so the animation and markers are read again after an edit.</summary>
+            public void Refresh()
+            {
+                _animation = null;
+                _markers = null;
+            }
+
+            public override string ToString() => Name.Length != 0 ? Name : (Label ?? Path);
+        }
+
+        /// <summary>
+        /// One thing happening at one moment of a clip - a foot striking the floor, a sound firing,
+        /// a ragdoll being handed control. This is <see cref="AnimClipDBSec.MetadataProperty"/>
+        /// flattened: one marker per time, with whatever it triggers already resolved.
+        /// </summary>
+        public class ClipMarker
+        {
+            /// <summary>The property this came from, e.g. "LeftStrike" or "AUDIO_Foley".</summary>
+            public string Property = "";
+
+            /// <summary>When it fires, in seconds from the start of the clip.</summary>
+            public float Time;
+
+            /// <summary>Which use of the clip tagged it, or -1 for a tag on the clip itself.</summary>
+            public int Instance = -1;
+
+            /// <summary>The block it was found on, if you need at the rest of its arguments.</summary>
+            public AnimClipDBSec.MetadataBlock Block;
+
+            /// <summary>What fires - an argument name for a reference, otherwise a literal value.</summary>
+            public string Event;
+
+            public MetadataValueType Type = MetadataValueType.PROPERTY_REFERENCE;
+
+            /// <summary>The argument <see cref="Event"/> names, when it names one.</summary>
+            public AnimClipDBSec.MetadataArgument Argument;
+
+            /// <summary>The sound this fires, when the argument it points at is an audio one.</summary>
+            public AudioEvent Audio;
+
+            /// <summary>Whether this marker plays a sound, as opposed to flagging a moment.</summary>
+            public bool IsAudio { get { return Audio != null || Argument?.Type == MetadataValueType.AUDIO; } }
+
+            public override string ToString() => Time.ToString("0.###") + "s " + Property + (Event == null ? "" : " -> " + Event);
+        }
+
+        /// <summary>A sound an animation fires: which Wwise event, played from which bone.</summary>
+        public class AudioEvent
+        {
+            /// <summary>The Wwise event name, e.g. "play_ladder_clothing_and_rucksack".</summary>
+            public string Event;
+
+            /// <summary>The bone the sound plays from, e.g. "LipsUpper".</summary>
+            public string Bone;
+
+            /// <summary>Offset from that bone, as it was stored - "0,0,0" in nearly every case.</summary>
+            public string Offset;
+
+            /// <summary>Wwise switches/states passed with the event, usually empty.</summary>
+            public string Arguments;
+
+            public bool UsesArguments;
+
+            /// <summary>The original value, in case the parse missed a field.</summary>
+            public string Raw;
+
+            public override string ToString() => Event ?? Raw ?? "";
+        }
+
+        /// <summary>
+        /// Where a clip's pose gets placed.
+        ///
+        /// Every character rig ends with a `REFERENCE_ROOT` bone: a leaf with nothing skinned to it
+        /// and no children, which the clip drives with where the character is meant to be standing.
+        /// The engine reads it to move the entity through the world and renders the skeleton around
+        /// it. Take the clip's transforms at face value instead and the character is carried off
+        /// wherever the animator was working - across 3,260 retail clips that leaves them upright
+        /// only 1.7% of the time, because most of them are authored lying along an axis.
+        ///
+        /// Both settings square the character up by putting the reference bone back where it started,
+        /// which is a fixed transform and so costs the animation nothing. They differ only in whether
+        /// the body is then allowed to walk away from where it began.
+        /// </summary>
+        public enum RootMotion
+        {
+            /// <summary>
+            /// Hold the character on the spot: whatever ground it covers since the first frame is
+            /// taken back out, leaving it stepping in place. Handy for watching a walk cycle.
+            /// </summary>
+            Ignore,
+
+            /// <summary>
+            /// Let the clip carry the character, starting from the origin. This is the animation
+            /// exactly as authored.
+            /// </summary>
+            Follow,
+
+            /// <summary>
+            /// The clip's own transforms with no anchoring at all - what the game itself stores.
+            ///
+            /// Use this whenever the pose is going back into the game rather than onto the screen.
+            /// Anchoring squares the character up for viewing by rewriting the root bone, and a
+            /// clip exported that way and re-imported has that rewrite baked in - on ALIEN's
+            /// crouched_feasting it turns the root 180 degrees and moves it 15 cm, while leaving
+            /// every other bone alone.
+            /// </summary>
+            Authored,
+        }
+
+        /// <summary>
+        /// What to show for a channel a clip doesn.t store. The two are not the same thing, and which
+        /// one is wanted depends on whether the pose is going on screen or back into the game.
+        /// </summary>
+        public enum UntrackedChannels
+        {
+            /// <summary>
+            /// The bone.s rest transform. A clip that drives only part of the rig then still looks
+            /// like the character it belongs to, which is what a viewer wants.
+            /// </summary>
+            RestPose,
+
+            /// <summary>
+            /// Zero, identity and one - what the engine itself puts there. This is what the clip
+            /// actually holds, so it is what an export destined to come back in has to carry: a rig
+            /// rests its root a long way from identity, and writing that out as if it were animation
+            /// turns the character round on the way back.
+            /// </summary>
+            EngineDefaults,
+        }
+
+        /// <summary>What an animation set drives: a skinned character, or a piece of set dressing.</summary>
+        public enum AnimationKind
+        {
+            /// <summary>No skeleton definition names this set, so there's nothing to go on.</summary>
+            Unknown,
+
+            /// <summary>A skinned character - the rig is one of the shared reference skeletons.</summary>
+            Character,
+
+            /// <summary>A piece of environment geometry - a door, a locker, a fan.</summary>
+            Environment,
+        }
+
+        /// <summary>
+        /// One character or prop's animations, grouped the way the game asks for them: a set of clips
+        /// that always apply, plus contexts that swap parts of it out (crouched, holding a shotgun).
+        /// </summary>
+        public class AnimationSet
+        {
+            public string Name = "";
+            public AnimationKind Kind = AnimationKind.Unknown;
+
+            /// <summary>The skeleton this set's clips are authored against, or "" if none was found.</summary>
+            public string Skeleton = "";
+
+            /// <summary>The file this came from, if you need at the blend sets or want to edit it.</summary>
+            public AnimClipDB Database;
+
+            /// <summary>The set's own clips first, then one entry per named context.</summary>
+            public List<AnimationContext> Contexts = new List<AnimationContext>();
+
+            /// <summary>How many clips the set holds across every context.</summary>
+            public int ClipCount;
+
+            public override string ToString() => Name + " (" + ClipCount + " clips)";
+        }
+
+        /// <summary>
+        /// A group of clips within a set. The unnamed context holds the clips that always apply;
+        /// the rest override them while the character is in that state.
+        /// </summary>
+        public class AnimationContext
+        {
+            /// <summary>Empty for the set's own clips, otherwise e.g. "CROUCHED" or "WEAPON_HANDGUN".</summary>
+            public string Name = "";
+
+            public AnimationSet Set;
+            public List<ClipReference> Clips = new List<ClipReference>();
+
+            public override string ToString() => (Name.Length == 0 ? "(default)" : Name) + " (" + Clips.Count + ")";
+        }
+
+        /// <summary>
+        /// A skeleton definition from DATA/SKELETONDEFS - which reference rig a character uses, what
+        /// it can be retargeted from, and which ragdoll it falls into.
+        /// </summary>
+        public class SkeletonDef
+        {
+            /// <summary>The skeleton this describes, taken from the filename.</summary>
+            public string Name = "";
+
+            public string ReferenceSkeleton = "";
+            public string ReferenceSkeletonPath = "";
+            public string HiResSkeleton = "";
+            public string HiResSkeletonPath = "";
+            public string Ragdoll = "";
+
+            /// <summary>Set while a clip plays to shift the final pose, e.g. "npc_female_shift".</summary>
+            public string FinalPoseModifierAnimLabel = "";
+
+            /// <summary>Skeletons whose animation can be retargeted onto this one.</summary>
+            public List<string> MapsFrom = new List<string>();
+
+            /// <summary>The same list again for the hi-res reference rig.</summary>
+            public List<string> MapsFromHiRes = new List<string>();
+
+            /// <summary>Primary, general additive, breathing, gun or tail, look at, hand, face.</summary>
+            public float[] LayerLOD = { 100, 30, 10, 20, 100, 20, 10 };
+            public bool[] LayerUsage = { true, true, true, true, true, true, false };
+
+            public bool UseMaleIKPoints;
+
+            /// <summary>
+            /// Whether this rig drives set dressing rather than a character. The reference skeletons
+            /// for characters sit loose at the top of the ReferenceSkeletons folder; everything for
+            /// the environment is filed away under it by where the prop lives in the world.
+            /// </summary>
+            public bool IsEnvironment;
+
+            public override string ToString() => Name + (IsEnvironment ? " (environment)" : " (character)");
+
+            internal static SkeletonDef Read(PAK2.File file)
+            {
+                XmlNode root;
+                try { root = new BML(file.Content).Content?.SelectSingleNode("//SkeletonDef"); }
+                catch { return null; }
+                if (root == null) return null;
+
+                SkeletonDef def = new SkeletonDef
+                {
+                    Name = System.IO.Path.GetFileNameWithoutExtension(file.Filename),
+                    ReferenceSkeleton = root.SelectSingleNode("LoResReferenceSkeleton")?.InnerText ?? "",
+                    ReferenceSkeletonPath = root.SelectSingleNode("LoResReferenceSkeletonPath")?.InnerText ?? "",
+                    HiResSkeleton = root.SelectSingleNode("HiResReferenceSkeleton")?.InnerText ?? "",
+                    Ragdoll = root.SelectSingleNode("ragdoll")?.InnerText ?? "",
+                };
+
+                XmlNodeList maps = root.SelectNodes("maps_to_lo_res_required/maps_to_lo_res_required");
+                if (maps != null)
+                    foreach (XmlNode map in maps)
+                    {
+                        string skeleton = map.Attributes?["skeleton"]?.Value;
+                        if (!string.IsNullOrEmpty(skeleton)) def.MapsFrom.Add(skeleton);
+                    }
+
+                const string rootFolder = @"ReferenceSkeletons\";
+                int at = def.ReferenceSkeletonPath.IndexOf(rootFolder, StringComparison.OrdinalIgnoreCase);
+                def.IsEnvironment = at >= 0 && def.ReferenceSkeletonPath.IndexOf('\\', at + rootFolder.Length) >= 0;
+
+                def.HiResSkeletonPath = root.SelectSingleNode("HiResReferenceSkeletonPath")?.InnerText ?? "";
+                def.FinalPoseModifierAnimLabel = root.SelectSingleNode("FinalPoseModifierAnimLabel")?.InnerText ?? "";
+                def.UseMaleIKPoints = IsTrue(root.SelectSingleNode("use_male_ik_points")?.InnerText);
+
+                XmlNodeList hiRes = root.SelectNodes("maps_to_hi_res_required/maps_to_hi_res_required");
+                if (hiRes != null)
+                    foreach (XmlNode map in hiRes)
+                    {
+                        string skeleton = map.Attributes?["skeleton"]?.Value;
+                        if (!string.IsNullOrEmpty(skeleton)) def.MapsFromHiRes.Add(skeleton);
+                    }
+
+                XmlNode usage = root.SelectSingleNode("layerUsage"), lod = root.SelectSingleNode("layerLOD");
+                for (int i = 0; i < LayerNames.Length; i++)
+                {
+                    string flag = usage?.SelectSingleNode("use" + LayerNames[i] + "Layer")?.InnerText;
+                    if (flag != null) def.LayerUsage[i] = IsTrue(flag);
+
+                    string distance = lod?.SelectSingleNode("lodDistance" + LayerNames[i] + "Layer")?.InnerText;
+                    if (distance != null && float.TryParse(distance, NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
+                        def.LayerLOD[i] = value;
+                }
+                return def;
+            }
+
+            /* The seven animation layers, in the order both the BML's element names and the compiled
+             * record's two runs of seven use. */
+            private static readonly string[] LayerNames =
+                { "Primary", "GeneralAdditive", "Breathing", "GunOrTail", "LookAt", "Hand", "Face" };
+
+            private static bool IsTrue(string value)
+            {
+                return string.Equals(value, "True", StringComparison.OrdinalIgnoreCase) || value == "1";
+            }
+        }
+        #endregion
+    }
+}

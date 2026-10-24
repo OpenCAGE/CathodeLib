@@ -1,0 +1,448 @@
+#if !GODOT
+using CATHODE.Scripting.Internal;
+using CathodeLib;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace CATHODE.Scripting.Refactor
+{
+    /// <summary>
+    /// The script as it was before a refactor and as it is after, for everything the refactor touched,
+    /// so the whole change can be taken back and put back on the same objects.
+    /// </summary>
+    public sealed class ScriptTransaction
+    {
+        private readonly Commands _commands;
+
+        private readonly Dictionary<Entity, EntityState> _entitiesBefore = new Dictionary<Entity, EntityState>();
+        private readonly Dictionary<Entity, EntityState> _entitiesAfter = new Dictionary<Entity, EntityState>();
+        private readonly List<Entity> _entityOrder = new List<Entity>();
+
+        private readonly Dictionary<Composite, CompositeContents> _compositesBefore = new Dictionary<Composite, CompositeContents>();
+        private readonly Dictionary<Composite, CompositeContents> _compositesAfter = new Dictionary<Composite, CompositeContents>();
+        private readonly List<Composite> _compositeOrder = new List<Composite>();
+
+        private readonly Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> _pinsBefore = new Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>>();
+        private readonly Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> _pinsAfter = new Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>>();
+        private readonly Dictionary<ShortGuid, HashSet<ShortGuid>> _coloursBefore = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+        private readonly Dictionary<ShortGuid, HashSet<ShortGuid>> _coloursAfter = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+
+        private List<Composite> _entriesBefore = null;
+        private List<Composite> _entriesAfter = null;
+
+        public bool Committed { get; private set; }
+
+        public ScriptTransaction(Commands commands)
+        {
+            _commands = commands;
+        }
+
+        /// <summary>Snapshot an entity before it is first changed.</summary>
+        public void Touch(Entity entity)
+        {
+            if (entity == null || Committed || _entitiesBefore.ContainsKey(entity))
+                return;
+            _entitiesBefore.Add(entity, EntityState.Capture(entity));
+            _entityOrder.Add(entity);
+        }
+
+        /// <summary>Snapshot which entities a composite holds, and in what order, before any are added or removed.</summary>
+        public void Touch(Composite composite)
+        {
+            if (composite == null || Committed || _compositesBefore.ContainsKey(composite))
+                return;
+            _compositesBefore.Add(composite, CompositeContents.Capture(composite));
+            _compositeOrder.Add(composite);
+        }
+
+        /// <summary>Snapshot a composite's pin types (and which of its pins are shown as colours) before a pin is added, removed or retyped.</summary>
+        public void TouchPins(Composite composite)
+        {
+            if (composite == null || Committed || _pinsBefore.ContainsKey(composite.shortGUID))
+                return;
+            _pinsBefore.Add(composite.shortGUID, CopyPins(_commands.Utils.GetAllCustomPinInfo(composite.shortGUID)));
+            _coloursBefore.Add(composite.shortGUID, _commands.Utils.GetColourParameters(composite.shortGUID));
+        }
+
+        /// <summary>Snapshot the level's composite list before a composite is added or removed.</summary>
+        public void TouchEntries()
+        {
+            if (Committed || _entriesBefore != null)
+                return;
+            _entriesBefore = new List<Composite>(_commands.Entries);
+        }
+
+        /// <summary>Take the after-state of everything touched. Call once the refactor is complete.</summary>
+        public void Commit()
+        {
+            if (Committed)
+                return;
+            foreach (Entity entity in _entityOrder)
+                _entitiesAfter[entity] = EntityState.Capture(entity);
+            foreach (Composite composite in _compositeOrder)
+                _compositesAfter[composite] = CompositeContents.Capture(composite);
+            foreach (ShortGuid composite in _pinsBefore.Keys)
+                _pinsAfter[composite] = CopyPins(_commands.Utils.GetAllCustomPinInfo(composite));
+            foreach (ShortGuid composite in _coloursBefore.Keys)
+                _coloursAfter[composite] = _commands.Utils.GetColourParameters(composite);
+            if (_entriesBefore != null)
+                _entriesAfter = new List<Composite>(_commands.Entries);
+            Committed = true;
+        }
+
+        /// <summary>Put everything touched back the way it was before the refactor.</summary>
+        public void Revert()
+        {
+            Restore(_entitiesBefore, _compositesBefore, _pinsBefore, _coloursBefore, _entriesBefore, _entriesAfter);
+        }
+
+        /// <summary>Put everything touched back the way the refactor left it.</summary>
+        public void Reapply()
+        {
+            if (!Committed)
+                throw new InvalidOperationException("A transaction has to be committed before it can be reapplied");
+            Restore(_entitiesAfter, _compositesAfter, _pinsAfter, _coloursAfter, _entriesAfter, _entriesBefore);
+        }
+
+        private void Restore(Dictionary<Entity, EntityState> entities, Dictionary<Composite, CompositeContents> composites, Dictionary<ShortGuid, List<CompositePinInfoTable.PinInfo>> pins, Dictionary<ShortGuid, HashSet<ShortGuid>> colours, List<Composite> entries, List<Composite> otherEntries)
+        {
+            if (entries != null)
+            {
+                /* Only the composites this transaction added or removed change. Anything added to the level or
+                   taken out of it since, outside the undo history (an import, a model's composite), stays as it
+                   is. A run that failed before its after-snapshot added everything that is not in the before one. */
+                HashSet<Composite> target = new HashSet<Composite>(entries);
+                HashSet<Composite> other = otherEntries == null ? null : new HashSet<Composite>(otherEntries);
+                _commands.Entries.RemoveAll(o => !target.Contains(o) && (other == null || other.Contains(o)));
+                HashSet<Composite> live = new HashSet<Composite>(_commands.Entries);
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    if (live.Contains(entries[i]) || (other != null && other.Contains(entries[i])))
+                        continue;
+                    _commands.Entries.Insert(Math.Min(i, _commands.Entries.Count), entries[i]);
+                    live.Add(entries[i]);
+                }
+            }
+            foreach (Composite composite in _compositeOrder)
+            {
+                //Entities added since without an undo record (a viewer deep-select alias) are in neither snapshot: keep them
+                List<Entity> extras = Committed ? composite.GetEntities().Where(o => !_compositesBefore[composite].Holds(o) && !_compositesAfter[composite].Holds(o)).ToList() : new List<Entity>();
+                //And ones this transaction left alone that have gone since without an undo record (that alias, released) stay gone
+                List<Entity> goneSince = Committed ? _compositesBefore[composite].All().Where(o => _compositesAfter[composite].Holds(o) && composite.GetEntityByID(o.shortGUID) != o).ToList() : new List<Entity>();
+                composites[composite].Apply(composite);
+                foreach (Entity extra in extras)
+                    if (composite.GetEntityByID(extra.shortGUID) == null)
+                        CompositeContents.Add(composite, extra);
+                foreach (Entity gone in goneSince)
+                    if (composite.GetEntityByID(gone.shortGUID) == gone)
+                        composite.RemoveEntity(gone);
+            }
+            foreach (Entity entity in _entityOrder)
+            {
+                //Likewise parameters the inspector added since (defaults filled in when first shown)
+                List<Parameter> extras = Committed ? entity.parameters.Where(o => !_entitiesBefore[entity].Holds(o) && !_entitiesAfter[entity].Holds(o)).ToList() : new List<Parameter>();
+                entities[entity].Apply(entity);
+                foreach (Parameter extra in extras)
+                    if (entity.GetParameter(extra.name) == null)
+                        entity.parameters.Add(extra);
+            }
+            foreach (KeyValuePair<ShortGuid, List<CompositePinInfoTable.PinInfo>> row in pins)
+                _commands.Utils.ReplaceCustomPinInfos(row.Key, CopyPins(row.Value));
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> row in colours)
+                _commands.Utils.ReplaceColourParameters(row.Key, row.Value);
+        }
+
+        private static List<CompositePinInfoTable.PinInfo> CopyPins(List<CompositePinInfoTable.PinInfo> pins)
+        {
+            List<CompositePinInfoTable.PinInfo> copy = new List<CompositePinInfoTable.PinInfo>();
+            if (pins == null)
+                return copy;
+            foreach (CompositePinInfoTable.PinInfo pin in pins)
+            {
+                if (pin == null) continue;
+                copy.Add(new CompositePinInfoTable.PinInfo() { VariableGUID = pin.VariableGUID, PinTypeGUID = pin.PinTypeGUID, PinEnumTypeGUID = pin.PinEnumTypeGUID });
+            }
+            return copy;
+        }
+
+        #region What changed
+        /// <summary>The composites whose entity set was snapshotted.</summary>
+        public IReadOnlyList<Composite> TouchedComposites => _compositeOrder;
+
+        /// <summary>The entities that were snapshotted.</summary>
+        public IReadOnlyList<Entity> TouchedEntities => _entityOrder;
+
+        /// <summary>Composites the refactor added to the level (or, <paramref name="reverted"/>, the ones undoing it removes).</summary>
+        public List<Composite> AddedComposites(bool reverted = false)
+        {
+            if (_entriesBefore == null || _entriesAfter == null)
+                return new List<Composite>();
+            HashSet<Composite> from = new HashSet<Composite>(reverted ? _entriesAfter : _entriesBefore);
+            return (reverted ? _entriesBefore : _entriesAfter).Where(o => !from.Contains(o)).ToList();
+        }
+
+        /// <summary>Composites the refactor took out of the level (or, <paramref name="reverted"/>, the ones undoing it brings back).</summary>
+        public List<Composite> RemovedComposites(bool reverted = false)
+        {
+            return AddedComposites(!reverted);
+        }
+
+        /// <summary>Entities in <paramref name="composite"/> after the refactor that were not there before it, in composite order (or the reverse, <paramref name="reverted"/>).</summary>
+        public List<Entity> AddedEntities(Composite composite, bool reverted = false)
+        {
+            if (!_compositesBefore.TryGetValue(composite, out CompositeContents before) || !_compositesAfter.TryGetValue(composite, out CompositeContents after))
+                return new List<Entity>();
+            CompositeContents from = reverted ? after : before;
+            CompositeContents to = reverted ? before : after;
+            HashSet<Entity> had = new HashSet<Entity>(from.All());
+            return to.All().Where(o => !had.Contains(o)).ToList();
+        }
+
+        /// <summary>Entities in <paramref name="composite"/> before the refactor that are gone after it (or the reverse, <paramref name="reverted"/>).</summary>
+        public List<Entity> RemovedEntities(Composite composite, bool reverted = false)
+        {
+            return AddedEntities(composite, !reverted);
+        }
+
+        /// <summary>
+        /// Entities that are in the same composite before and after, whose parameters or stored path
+        /// changed - what a copy of the script that ignores links (the viewer's) has to be told again.
+        /// </summary>
+        public List<Entity> EntitiesWithChangedState()
+        {
+            List<Entity> changed = new List<Entity>();
+            foreach (Entity entity in _entityOrder)
+            {
+                if (!_entitiesAfter.TryGetValue(entity, out EntityState after))
+                    continue;
+                if (!_entitiesBefore[entity].SameParametersAndPaths(after))
+                    changed.Add(entity);
+            }
+            return changed;
+        }
+        #endregion
+
+        /// <summary>One entity's links, parameters and stored paths.</summary>
+        private sealed class EntityState
+        {
+            private List<EntityConnector> _links;
+            private List<(Parameter parameter, ShortGuid name, ParameterData content, ParameterVariant variant)> _parameters;
+            private ShortGuid[] _path;
+            private ShortGuid _function;            //what a function entity is (a type, or the composite an instance places)
+            private ShortGuid _proxyFunction;
+            private List<TriggerSequence.SequenceEntry> _sequence;
+            private List<TriggerSequence.MethodEntry> _methods;
+            private List<CAGEAnimation.Connection> _connections;
+            private List<CAGEAnimation.EventTrack> _eventTracks;
+
+            public static EntityState Capture(Entity entity)
+            {
+                EntityState state = new EntityState();
+                state._links = new List<EntityConnector>(entity.childLinks);
+                //The Parameter objects are kept, not copied: the inspector holds them, and a restore should leave it holding live ones
+                state._parameters = entity.parameters.Select(o => (o, o.name, o.content, o.variant)).ToList();
+                if (entity is FunctionEntity function)
+                    state._function = function.function;
+                switch (entity)
+                {
+                    case AliasEntity alias:
+                        state._path = CopyPath(alias.alias?.path);
+                        break;
+                    case ProxyEntity proxy:
+                        state._path = CopyPath(proxy.proxy?.path);
+                        state._proxyFunction = proxy.function;
+                        state._sequence = CopySequence(proxy.sequence);
+                        state._methods = CopyMethods(proxy.methods);
+                        break;
+                    case TriggerSequence trigger:
+                        state._sequence = CopySequence(trigger.sequence);
+                        state._methods = CopyMethods(trigger.methods);
+                        break;
+                    case CAGEAnimation animation:
+                        state._connections = CopyConnections(animation.connections);
+                        state._eventTracks = CopyEventTracks(animation.eventTracks);
+                        break;
+                }
+                return state;
+            }
+
+            public void Apply(Entity entity)
+            {
+                entity.childLinks = new List<EntityConnector>(_links);
+                entity.parameters = new List<Parameter>(_parameters.Count);
+                foreach (var saved in _parameters)
+                {
+                    saved.parameter.name = saved.name;
+                    saved.parameter.content = saved.content;
+                    saved.parameter.variant = saved.variant;
+                    entity.parameters.Add(saved.parameter);
+                }
+                if (entity is FunctionEntity function)
+                    function.function = _function;
+                switch (entity)
+                {
+                    case AliasEntity alias:
+                        alias.alias = new EntityPath() { path = CopyPath(_path) };
+                        break;
+                    case ProxyEntity proxy:
+                        proxy.proxy = new EntityPath() { path = CopyPath(_path) };
+                        proxy.function = _proxyFunction;
+                        proxy.sequence = CopySequence(_sequence);
+                        proxy.methods = CopyMethods(_methods);
+                        break;
+                    case TriggerSequence trigger:
+                        trigger.sequence = CopySequence(_sequence);
+                        trigger.methods = CopyMethods(_methods);
+                        break;
+                    case CAGEAnimation animation:
+                        animation.connections = CopyConnections(_connections);
+                        animation.eventTracks = CopyEventTracks(_eventTracks);
+                        break;
+                }
+            }
+
+            public bool Holds(Parameter parameter) => _parameters.Any(o => ReferenceEquals(o.parameter, parameter));
+
+            public bool SameParametersAndPaths(EntityState other)
+            {
+                if (_parameters.Count != other._parameters.Count)
+                    return false;
+                for (int i = 0; i < _parameters.Count; i++)
+                {
+                    if (!ReferenceEquals(_parameters[i].parameter, other._parameters[i].parameter)) return false;
+                    if (_parameters[i].name != other._parameters[i].name) return false;
+                    if (!ReferenceEquals(_parameters[i].content, other._parameters[i].content)) return false;
+                }
+                if (!SamePath(_path, other._path))
+                    return false;
+                //An instance switched to another composite is a different thing to place
+                if (_function != other._function)
+                    return false;
+                return true;
+            }
+
+            private static bool SamePath(ShortGuid[] a, ShortGuid[] b)
+            {
+                if (a == null || b == null) return a == b;
+                if (a.Length != b.Length) return false;
+                for (int i = 0; i < a.Length; i++)
+                    if (a[i] != b[i]) return false;
+                return true;
+            }
+
+            private static ShortGuid[] CopyPath(ShortGuid[] path)
+            {
+                if (path == null) return new ShortGuid[0];
+                ShortGuid[] copy = new ShortGuid[path.Length];
+                Array.Copy(path, copy, path.Length);
+                return copy;
+            }
+
+            private static List<TriggerSequence.SequenceEntry> CopySequence(List<TriggerSequence.SequenceEntry> sequence)
+            {
+                if (sequence == null) return new List<TriggerSequence.SequenceEntry>();
+                return sequence.Select(o => new TriggerSequence.SequenceEntry()
+                {
+                    timing = o.timing,
+                    connectedEntity = new EntityPath() { path = CopyPath(o.connectedEntity?.path) },
+                }).ToList();
+            }
+
+            private static List<TriggerSequence.MethodEntry> CopyMethods(List<TriggerSequence.MethodEntry> methods)
+            {
+                if (methods == null) return new List<TriggerSequence.MethodEntry>();
+                return methods.Select(o => new TriggerSequence.MethodEntry(o.method, o.relay, o.finished)).ToList();
+            }
+
+            private static List<CAGEAnimation.Connection> CopyConnections(List<CAGEAnimation.Connection> connections)
+            {
+                if (connections == null) return new List<CAGEAnimation.Connection>();
+                return connections.Select(o => new CAGEAnimation.Connection()
+                {
+                    binding_guid = o.binding_guid,
+                    target_track = o.target_track,
+                    binding_type = o.binding_type,
+                    target_param = o.target_param,
+                    target_param_type = o.target_param_type,
+                    target_sub_param = o.target_sub_param,
+                    connectedEntity = new EntityPath() { path = CopyPath(o.connectedEntity?.path) },
+                }).ToList();
+            }
+
+            private static List<CAGEAnimation.EventTrack> CopyEventTracks(List<CAGEAnimation.EventTrack> tracks)
+            {
+                if (tracks == null) return new List<CAGEAnimation.EventTrack>();
+                return tracks.Select(o => new CAGEAnimation.EventTrack()
+                {
+                    shortGUID = o.shortGUID,
+                    track_type = o.track_type,
+                    keyframes = o.keyframes?.Select(k => new CAGEAnimation.EventTrack.Keyframe()
+                    {
+                        time = k.time,
+                        forward = k.forward,
+                        reverse = k.reverse,
+                        track_type = k.track_type,
+                        duration = k.duration,
+                    }).ToList() ?? new List<CAGEAnimation.EventTrack.Keyframe>(),
+                }).ToList();
+            }
+        }
+
+        /// <summary>Which entities a composite holds, in dictionary order.</summary>
+        private sealed class CompositeContents
+        {
+            private List<VariableEntity> _variables;
+            private List<FunctionEntity> _functions;
+            private List<AliasEntity> _aliases;
+            private List<ProxyEntity> _proxies;
+
+            public static CompositeContents Capture(Composite composite)
+            {
+                return new CompositeContents()
+                {
+                    _variables = composite.variables_dictionary.Values.ToList(),
+                    _functions = composite.functions_dictionary.Values.ToList(),
+                    _aliases = composite.aliases_dictionary.Values.ToList(),
+                    _proxies = composite.proxies_dictionary.Values.ToList(),
+                };
+            }
+
+            private HashSet<Entity> _set;
+            public bool Holds(Entity entity) => (_set ?? (_set = new HashSet<Entity>(All()))).Contains(entity);
+
+            public static void Add(Composite composite, Entity entity)
+            {
+                switch (entity)
+                {
+                    case VariableEntity variable: composite.variables_dictionary.Add(variable.shortGUID, variable); break;
+                    case FunctionEntity function: composite.functions_dictionary.Add(function.shortGUID, function); break;
+                    case AliasEntity alias: composite.aliases_dictionary.Add(alias.shortGUID, alias); break;
+                    case ProxyEntity proxy: composite.proxies_dictionary.Add(proxy.shortGUID, proxy); break;
+                }
+            }
+
+            public IEnumerable<Entity> All()
+            {
+                foreach (Entity entity in _variables) yield return entity;
+                foreach (Entity entity in _functions) yield return entity;
+                foreach (Entity entity in _aliases) yield return entity;
+                foreach (Entity entity in _proxies) yield return entity;
+            }
+
+            public void Apply(Composite composite)
+            {
+                //Clear then add: a cleared Dictionary hands out its slots from the start again, so enumeration comes back in this order
+                composite.variables_dictionary.Clear();
+                foreach (VariableEntity entity in _variables) composite.variables_dictionary.Add(entity.shortGUID, entity);
+                composite.functions_dictionary.Clear();
+                foreach (FunctionEntity entity in _functions) composite.functions_dictionary.Add(entity.shortGUID, entity);
+                composite.aliases_dictionary.Clear();
+                foreach (AliasEntity entity in _aliases) composite.aliases_dictionary.Add(entity.shortGUID, entity);
+                composite.proxies_dictionary.Clear();
+                foreach (ProxyEntity entity in _proxies) composite.proxies_dictionary.Add(entity.shortGUID, entity);
+            }
+        }
+    }
+}
+#endif

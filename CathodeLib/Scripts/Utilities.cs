@@ -65,9 +65,126 @@ namespace CathodeLib
         }
         public static T[] ConsumeArray<T>(BinaryReader reader, int count)
         {
+            //Read in one go, where the stream can be put back if that doesn't work out: anything else (short of the end, a type
+            //the marshaller refuses part-way) is read as it always was, element by element from where it started, so what
+            //comes back, where the stream is left and what is thrown are all as they were
+            if (count > 0 && reader.BaseStream.CanSeek)
+            {
+                long start = reader.BaseStream.Position;
+                try
+                {
+                    //Where the bytes are the values as they sit in memory (see BlockCopy): the same array, without a buffer, a
+                    //pin and a marshal per element - which, for the radiosity, model and texture tables, is a lot
+                    if (BlockCopy<T>.Supported)
+                    {
+                        long total = (long)BlockCopy<T>.Size * count;
+                        if (total <= int.MaxValue)
+                        {
+                            byte[] bytes = reader.ReadBytes((int)total);
+                            if (bytes.Length == total)
+                            {
+                                T[] block = new T[count];
+                                GCHandle handle = GCHandle.Alloc(block, GCHandleType.Pinned);
+                                try { Marshal.Copy(bytes, 0, handle.AddrOfPinnedObject(), bytes.Length); }
+                                finally { handle.Free(); }
+                                return block;
+                            }
+                        }
+                    }
+                    //Marshalled still (a class laid out sequentially, or a struct a byte copy wouldn't match), but read in one go
+                    //and pinned once: each element is marshalled from where it lies, not read into a buffer of its own and pinned
+                    else
+                    {
+                        int size = Marshal.SizeOf(typeof(T));
+                        long total = (long)size * count;
+                        if (size > 0 && total <= int.MaxValue)
+                        {
+                            byte[] bytes = reader.ReadBytes((int)total);
+                            if (bytes.Length == total)
+                            {
+                                T[] marshalled = new T[count];
+                                GCHandle handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                                try
+                                {
+                                    IntPtr first = handle.AddrOfPinnedObject();
+                                    for (int i = 0; i < count; i++)
+                                        marshalled[i] = (T)Marshal.PtrToStructure(first + i * size, typeof(T));
+                                }
+                                finally
+                                {
+                                    handle.Free();
+                                }
+                                return marshalled;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                }
+                reader.BaseStream.Position = start;
+            }
+
             T[] toReturn = new T[count];
             for (int i = 0; i < count; i++) toReturn[i] = Consume<T>(reader);
             return toReturn;
+        }
+
+        /// <summary>
+        /// Whether whole arrays of T can be copied as bytes, in one go, instead of marshalled an element at a time - giving
+        /// exactly what the marshaller would. That needs a struct of plain numbers with its fields laid out back to back:
+        /// pinnable (no references, bool or char, which marshal differently to how they sit in memory), its array stride
+        /// what Marshal.SizeOf says, and no padding (the marshaller leaves a struct's padding zeroed on a read, where a copy
+        /// would bring the file's bytes into it, and those would then be written back out).
+        /// </summary>
+        private static class BlockCopy<T>
+        {
+            public static readonly bool Supported;
+            public static readonly int Size;
+
+            static BlockCopy()
+            {
+                try
+                {
+                    Type type = typeof(T);
+                    if (!type.IsValueType || type.IsEnum || type == typeof(bool) || type == typeof(char) || type.IsGenericType)
+                        return;
+                    Size = Marshal.SizeOf(type);
+                    T[] probe = new T[2];
+                    GCHandle handle = GCHandle.Alloc(probe, GCHandleType.Pinned);
+                    try
+                    {
+                        long stride = Marshal.UnsafeAddrOfPinnedArrayElement(probe, 1).ToInt64() - Marshal.UnsafeAddrOfPinnedArrayElement(probe, 0).ToInt64();
+                        Supported = stride == Size && Size > 0 && FieldBytes(type) == Size;
+                    }
+                    finally
+                    {
+                        handle.Free();
+                    }
+                }
+                catch
+                {
+                    Supported = false;
+                }
+            }
+
+            //The bytes of a value's fields alone, without padding: -1 for anything but plain numbers and structs of them
+            private static long FieldBytes(Type type)
+            {
+                if (type.IsPrimitive)
+                    return type == typeof(bool) || type == typeof(char) || type == typeof(IntPtr) || type == typeof(UIntPtr) ? -1 : Marshal.SizeOf(type);
+                if (!type.IsValueType || type.IsEnum)
+                    return -1;
+                long total = 0;
+                foreach (FieldInfo field in type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    long bytes = FieldBytes(field.FieldType);
+                    if (bytes < 0)
+                        return -1;
+                    total += bytes;
+                }
+                return total;
+            }
         }
         public static T[] ConsumeArray<T>(byte[] bytes, int count)
         {
@@ -169,6 +286,105 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Reads a string up to a trailing 0x00 byte as Windows-1252, the codepage of the game's script strings
+        /// (retail text has 0x92 for an apostrophe). Every byte comes back unchanged from <see cref="GetBytesWindows1252"/>,
+        /// so text read this way re-saves byte for byte.
+        /// </summary>
+        public static string ReadStringWindows1252(BinaryReader reader)
+        {
+            List<byte> bytes = new List<byte>();
+            while (true)
+            {
+                byte b = reader.ReadByte();
+                if (b == 0x00)
+                    break;
+                bytes.Add(b);
+            }
+            char[] chars = new char[bytes.Count];
+            for (int i = 0; i < chars.Length; i++)
+                chars[i] = bytes[i] >= 0x80 && bytes[i] < 0xA0 ? _windows1252[bytes[i] - 0x80] : (char)bytes[i];
+            return new string(chars);
+        }
+        public static string ReadStringWindows1252(BinaryReader reader, int position, bool resetPosition = true)
+        {
+            long startPos = reader.BaseStream.Position;
+            reader.BaseStream.Position = position;
+            string str = ReadStringWindows1252(reader);
+            if (resetPosition) reader.BaseStream.Position = startPos;
+            return str;
+        }
+
+        /// <summary>
+        /// Encodes a string as Windows-1252, without a trailing 0x00. C1 control characters keep their own byte value,
+        /// and a character the codepage cannot hold becomes '?' (<see cref="GetNonWindows1252Characters"/> lists them).
+        /// A null string is written as an empty one.
+        /// </summary>
+        public static byte[] GetBytesWindows1252(string str)
+        {
+            if (str == null)
+                return new byte[0];
+
+            //One byte per character, except a surrogate pair, which becomes a single '?'
+            byte[] bytes = new byte[str.Length];
+            int count = 0;
+            for (int i = 0; i < str.Length; i++)
+            {
+                char c = str[i];
+                if (c < 0x100)
+                {
+                    bytes[count++] = (byte)c;
+                    continue;
+                }
+                int index = Array.IndexOf(_windows1252, c);
+                if (index != -1)
+                {
+                    bytes[count++] = (byte)(0x80 + index);
+                    continue;
+                }
+                if (char.IsHighSurrogate(c) && i + 1 < str.Length && char.IsLowSurrogate(str[i + 1])) i++;
+                bytes[count++] = (byte)'?';
+            }
+            if (count != bytes.Length)
+                Array.Resize(ref bytes, count);
+            return bytes;
+        }
+
+        /// <summary>
+        /// The characters of a string that Windows-1252 cannot hold, each listed once (empty if it all fits). These are the
+        /// ones <see cref="GetBytesWindows1252"/> saves as '?'. A surrogate pair (an emoji, say) is listed as one character.
+        /// </summary>
+        public static List<string> GetNonWindows1252Characters(string str)
+        {
+            List<string> found = new List<string>();
+            if (str == null)
+                return found;
+
+            for (int i = 0; i < str.Length; i++)
+            {
+                char c = str[i];
+                if (c < 0x100 || Array.IndexOf(_windows1252, c) != -1)
+                    continue;
+                string character = c.ToString();
+                if (char.IsHighSurrogate(c) && i + 1 < str.Length && char.IsLowSurrogate(str[i + 1]))
+                {
+                    character = str.Substring(i, 2);
+                    i++;
+                }
+                if (!found.Contains(character))
+                    found.Add(character);
+            }
+            return found;
+        }
+
+        //Windows-1252 0x80-0x9F (the rest of it matches Latin-1). Its five unassigned bytes map to the C1 control of the same value.
+        //Written out rather than using Encoding.GetEncoding(1252), which needs a codepage provider registered on .NET Core.
+        private static readonly char[] _windows1252 = new char[]
+        {
+            '\u20AC', '\u0081', '\u201A', '\u0192', '\u201E', '\u2026', '\u2020', '\u2021', '\u02C6', '\u2030', '\u0160', '\u2039', '\u0152', '\u008D', '\u017D', '\u008F',
+            '\u0090', '\u2018', '\u2019', '\u201C', '\u201D', '\u2022', '\u2013', '\u2014', '\u02DC', '\u2122', '\u0161', '\u203A', '\u0153', '\u009D', '\u017E', '\u0178',
+        };
+
+        /// <summary>
         /// Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
         /// </summary>
         public static byte[] RemoveLeadingNulls(byte[] extracted_file)
@@ -194,6 +410,30 @@ namespace CathodeLib
         /// </summary>
         public static void Write<T>(BinaryWriter stream, T aux)
         {
+            /* ShortGuids and EntityHandles are most of what comes through here - COMMANDS.BIN alone is millions of ShortGuids -
+             * and an unmanaged block per value goes through the process heap's lock while the save writes on several threads
+             * at once (2.2 s of AllocHGlobal in a HAB_Airport save, ~0.9 s of it on COMMANDS.BIN's critical path). Both marshal
+             * as their uints in memory order (ShortGuid is one, EntityHandle two ShortGuids, sequential and packed), so those
+             * bytes are written as they are, through the same Write(byte[]). Anything else, and an EntityHandle subclass, is
+             * marshalled as before. */
+            if (BitConverter.IsLittleEndian)
+            {
+                if (typeof(T) == typeof(ShortGuid))
+                {
+                    stream.Write(BitConverter.GetBytes(((ShortGuid)(object)aux).AsUInt32));
+                    return;
+                }
+                if (typeof(T) == typeof(EntityHandle) && aux != null && aux.GetType() == typeof(EntityHandle))
+                {
+                    EntityHandle handle = (EntityHandle)(object)aux;
+                    uint entity = handle.entity_id.AsUInt32, instance = handle.composite_instance_id.AsUInt32;
+                    stream.Write(new byte[] {
+                        (byte)entity, (byte)(entity >> 8), (byte)(entity >> 16), (byte)(entity >> 24),
+                        (byte)instance, (byte)(instance >> 8), (byte)(instance >> 16), (byte)(instance >> 24) });
+                    return;
+                }
+            }
+
             int length = Marshal.SizeOf(aux);
             IntPtr ptr = Marshal.AllocHGlobal(length);
             byte[] myBuffer = new byte[length];
@@ -206,7 +446,63 @@ namespace CathodeLib
         }
         public static void Write<T>(BinaryWriter stream, T[] aux)
         {
+            //In one go where the marshaller would only copy the bytes anyway (see BlockCopy)
+            if (aux.Length > 0 && BlockCopy<T>.Supported && (long)BlockCopy<T>.Size * aux.Length <= int.MaxValue)
+            {
+                byte[] bytes = new byte[BlockCopy<T>.Size * aux.Length];
+                GCHandle handle = GCHandle.Alloc(aux, GCHandleType.Pinned);
+                try { Marshal.Copy(handle.AddrOfPinnedObject(), bytes, 0, bytes.Length); }
+                finally { handle.Free(); }
+                stream.Write(bytes);
+                return;
+            }
+            //Marshalled still, but into one buffer, pinned once - not an unmanaged block, a buffer and a copy for each element.
+            //Only when every element is exactly a T (each is otherwise sized as whatever it is), and nothing is written unless
+            //all of them marshal: one the marshaller refuses goes element by element as before, writing what it always wrote
+            //ahead of the same exception
+            if (aux.Length > 0 && AllExactly(aux))
+            {
+                byte[] bytes = null;
+                try
+                {
+                    int size = Marshal.SizeOf(typeof(T));
+                    if ((long)size * aux.Length <= int.MaxValue)
+                    {
+                        byte[] buffer = new byte[size * aux.Length];
+                        GCHandle handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                        try
+                        {
+                            IntPtr start = handle.AddrOfPinnedObject();
+                            for (int i = 0; i < aux.Length; i++)
+                                Marshal.StructureToPtr(aux[i], start + i * size, true);
+                        }
+                        finally
+                        {
+                            handle.Free();
+                        }
+                        bytes = buffer;
+                    }
+                }
+                catch
+                {
+                    bytes = null;
+                }
+                if (bytes != null)
+                {
+                    stream.Write(bytes);
+                    return;
+                }
+            }
             for (int i = 0; i < aux.Length; i++) Write<T>(stream, aux[i]);
+        }
+        private static bool AllExactly<T>(T[] items)
+        {
+            if (typeof(T).IsValueType)
+                return true;
+            for (int i = 0; i < items.Length; i++)
+                if (items[i] == null || items[i].GetType() != typeof(T))
+                    return false;
+            return true;
         }
         public static void Write<T>(BinaryWriter stream, List<T> aux)
         {
@@ -440,6 +736,75 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Clear radiosity data from the level's directory - this directly modifies the files on disk, not the files in the Level object.
+        /// </summary>
+        public static void ClearRadiosityOnDisk(Level level)
+        {
+            ClearRadiosityAt(level.Filepath);
+            if (level.Patched)
+                ClearRadiosityPatchOnDisk(level);
+        }
+
+        /// <summary>
+        /// Clear radiosity data from the level's patch directory - this directly modifies the files on disk, not the files in the Level object.
+        /// </summary>
+        public static void ClearRadiosityPatchOnDisk(Level level)
+        {
+            ClearRadiosityAt(level.Filepath.TrimEnd('/').TrimEnd('\\') + "_PATCH");
+        }
+
+        private static void ClearRadiosityAt(string root)
+        {
+            string world = root + "/WORLD/";
+            if (Directory.Exists(world))
+                File.WriteAllBytes(world + "RADIOSITY_COLLISION_MAPPING.BIN", new byte[4]);
+
+            string renderable = root + "/RENDERABLE/";
+            if (Directory.Exists(renderable))
+            {
+                string compressed = renderable + "RADIOSITY_RUNTIME.BIN.GZ";
+                if (File.Exists(compressed))
+                {
+                    File.WriteAllBytes(compressed, new byte[0]);
+                    GZIPCompress(compressed);
+                }
+                else
+                {
+                    File.WriteAllBytes(renderable + "RADIOSITY_RUNTIME.BIN", new byte[0]);
+                }
+                File.Delete(renderable + "RADIOSITY_INSTANCE_MAP.TXT");
+                File.Delete(RadiosityRuntime.GetOwnershipMarkerPath(renderable + "RADIOSITY_RUNTIME.BIN"));
+                File.Delete(RadiosityRuntime.GetOwnershipMarkerPath(renderable + "RADIOSITY_RUNTIME.BIN.GZ"));
+            }
+        }
+
+        /// <summary>
+        /// Checks a given filepath to see if it's a valid path to the Alien: Isolation root folder
+        /// </summary>
+        public static bool IsGameDirectoryValid(string directory)
+        {
+            //NOTE: No longer checking for AI.exe to support non-Windows versions of the game.
+
+            if (string.IsNullOrWhiteSpace(directory))
+                return false;
+
+            if (!Directory.Exists(directory + "/data"))
+                return false;
+            if (!Directory.Exists(directory + "/data/env"))
+                return false;
+            if (!File.Exists(directory + "/data/tasks.txt"))
+                return false;
+            if (!File.Exists(directory + "/data/gbl_item.bml"))
+                return false;
+            if (!File.Exists(directory + "/data/packages/main.pkg"))
+                return false;
+            if (!File.Exists(directory + "/data/env/global/world/global_textures.all.pak"))
+                return false;
+
+            return true;
+        }
+
+        /// <summary>
         /// Convert a model component to a renderable element using its default materials
         /// </summary>
         public static List<RenderableElements.Element> ToRenderableElements(this Models.CS2.Component model)
@@ -478,9 +843,7 @@ namespace CathodeLib
         /// </summary>
         public static Level LoadLevel(string pathToAI, string level)
         {
-            PAK2 animPAK = new PAK2(pathToAI + "\\DATA\\GLOBAL\\ANIMATION.PAK");
-            Global global = new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\", animPAK);
-            return new Level(pathToAI + "\\DATA\\ENV\\" + level, global);
+            return new Level(pathToAI + "\\DATA\\ENV\\" + level, new Global(pathToAI + "\\DATA\\ENV\\GLOBAL\\"));
         }
 
         /// <summary>
@@ -543,10 +906,17 @@ namespace CathodeLib
 
 #if GODOT
         /// <summary>
-        /// Loads lookup tables from streaming_assets/ (or data/) beside the exported exe, .NET output folder, or Godot project root.
+        /// Loads a lookup table: the copy compiled into the build, else one in streaming_assets/ (or data/) beside the exported exe,
+        /// .NET output folder, or Godot project root.
         /// </summary>
         internal static byte[] ReadStreamingAsset(string fileName)
         {
+            //The copy compiled into this build is the current one: a file of the same name on disk (an older export's
+            //streaming_assets, say, which once shipped a July info.dat that won over the embedded one) is only looked for
+            //when the build has none
+            if (TryReadEmbeddedStreamingAsset(fileName, out byte[] embedded))
+                return embedded;
+
             List<string> searchedPaths = new List<string>();
             foreach (string directory in GetStreamingAssetSearchDirectories())
             {
@@ -555,9 +925,6 @@ namespace CathodeLib
                 if (File.Exists(path))
                     return File.ReadAllBytes(path);
             }
-
-            if (TryReadEmbeddedStreamingAsset(fileName, out byte[] embedded))
-                return embedded;
 
             throw new FileNotFoundException(
                 $"Streaming asset '{fileName}' was not found on disk or as an embedded resource. Checked:\n{string.Join(System.Environment.NewLine, searchedPaths)}");
@@ -573,17 +940,41 @@ namespace CathodeLib
                     case "info.dat":
                         content = Properties.Resources.info;
                         break;
-                    case "sound_names.bin":
-                        content = Properties.Resources.sound_names;
-                        break;
                 }
             }
             catch
             {
                 content = null;
             }
+            if (content != null && content.Length > 0)
+                return true;
 
-            return content != null && content.Length > 0;
+            /* Not under the name the Resources class asks for: a host project that compiles these sources embeds the resx
+               under its own namespace unless told otherwise (the viewer once did, so this copy was never found and the
+               build only worked while a loose copy sat beside the exe). Found by the end of its name instead. */
+            if (fileName == "info.dat")
+            {
+                string[] resources;
+                try { resources = typeof(Utilities).Assembly.GetManifestResourceNames(); }
+                catch { resources = new string[0]; }
+                foreach (string resource in resources)
+                {
+                    if (!resource.EndsWith("Properties.Resources.resources", StringComparison.Ordinal))
+                        continue;
+                    try
+                    {
+                        System.Resources.ResourceManager manager = new System.Resources.ResourceManager(resource.Substring(0, resource.Length - ".resources".Length), typeof(Utilities).Assembly);
+                        content = manager.GetObject("info") as byte[];
+                        if (content != null && content.Length > 0)
+                            return true;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            content = null;
+            return false;
         }
 
         private static IEnumerable<string> GetStreamingAssetSearchDirectories()
@@ -732,20 +1123,17 @@ namespace CathodeLib
     public static class Paths
     {
         public static string CustomInfoDat = "data/info.dat"; //Set this path to a local CustomTable to override the one embedded in CathodeLib
-        public static string CustomSoundBin = "data/sound_names.bin"; //Set this path to a local sound name BIN to override the one embedded in CathodeLib
     }
 
     public static class MathsUtils
     {
         public static (decimal, decimal, decimal) ToYawPitchRoll(this Quaternion q)
         {
-            // Helper function to safely convert double to decimal
             decimal SafeConvertToDecimal(double value)
             {
                 if (double.IsNaN(value) || double.IsInfinity(value))
                     return 0m;
 
-                // Clamp to decimal range to prevent overflow
                 const double maxDecimal = (double)decimal.MaxValue;
                 const double minDecimal = (double)decimal.MinValue;
 
@@ -762,14 +1150,12 @@ namespace CathodeLib
                 }
             }
 
-            // Check for invalid quaternion
             if (float.IsNaN(q.X) || float.IsNaN(q.Y) || float.IsNaN(q.Z) || float.IsNaN(q.W) ||
                 float.IsInfinity(q.X) || float.IsInfinity(q.Y) || float.IsInfinity(q.Z) || float.IsInfinity(q.W))
             {
                 return (0m, 0m, 0m);
             }
 
-            // Calculate yaw, pitch, roll with safe conversion
             double yawRad = Math.Atan2(2 * (q.Y * q.W + q.X * q.Z), 1 - 2 * (q.Y * q.Y + q.X * q.X));
             double pitchRad = Math.Asin(Math.Max(-1, Math.Min(1, 2 * (q.X * q.W - q.Z * q.Y)))); // Clamp to [-1, 1] to prevent domain error
             double rollRad = Math.Atan2(2 * (q.Z * q.W + q.X * q.Y), 1 - 2 * (q.X * q.X + q.Z * q.Z));
@@ -1061,6 +1447,58 @@ namespace CathodeLib
         {
             return new string(V);
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class ColourRGBA8
+    {
+        public byte R;
+        public byte G;
+        public byte B;
+        public byte A;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector2u8
+    {
+        public byte X;
+        public byte Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector4u8
+    {
+        public byte X;
+        public byte Y;
+        public byte Z;
+        public byte W;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector4u16
+    {
+        public ushort X;
+        public ushort Y;
+        public ushort Z;
+        public ushort W;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class Vector3u32
+    {
+        public uint X;
+        public uint Y;
+        public uint Z;
+    }
+
+    /// <summary>
+    /// A ushort offset/count pair.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public class SliceU16
+    {
+        public ushort Offset;
+        public ushort Count;
     }
 
 }

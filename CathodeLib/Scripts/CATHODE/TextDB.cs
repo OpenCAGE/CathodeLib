@@ -32,11 +32,6 @@ namespace CATHODE
 
         public TextDB(string path) : base(path) { }
 
-        ~TextDB()
-        {
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -46,19 +41,20 @@ namespace CATHODE
 
             CurrentReadState state = CurrentReadState.NONE;
             string content = File.ReadAllText(_filepath);
-            string id = "";
-            string value = "";
+            //Built up a character at a time: as strings, each character copied everything read so far
+            StringBuilder id = new StringBuilder();
+            StringBuilder value = new StringBuilder();
             bool isInInternalBracket = false;
             for (int i = 0; i < content.Length; i++)
             {
                 switch (state)
                 {
                     case CurrentReadState.READING_ID:
-                        id += content[i];
+                        id.Append(content[i]);
                         if (content[i] == ']') state = CurrentReadState.NONE;
                         break;
                     case CurrentReadState.READING_VALUE:
-                        value += content[i];
+                        value.Append(content[i]);
                         if (content[i] == '{') isInInternalBracket = true;
                         break;
                     case CurrentReadState.NONE:
@@ -80,13 +76,15 @@ namespace CATHODE
                         }
                         state = CurrentReadState.NONE;
 
-                        id = id.Substring(0, id.Length - 1);
-                        value = value.Substring(0, value.Length - 1);
-                        if (!Entries.ContainsKey(id))
-                            Entries.Add(id, value);
+                        string entryId = id.ToString();
+                        entryId = entryId.Substring(0, entryId.Length - 1);
+                        string entryValue = value.ToString();
+                        entryValue = entryValue.Substring(0, entryValue.Length - 1);
+                        if (!Entries.ContainsKey(entryId))
+                            Entries.Add(entryId, entryValue);
 
-                        id = "";
-                        value = "";
+                        id.Clear();
+                        value.Clear();
                         isInInternalBracket = false;
                         break;
                 }
@@ -96,12 +94,12 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            string content = "";
+            StringBuilder content = new StringBuilder();
             foreach (KeyValuePair<string, string> entry in Entries)
             {
-                content += "[" + entry.Key + "]\n{" + entry.Value + "}\n\n";
+                content.Append("[").Append(entry.Key).Append("]\n{").Append(entry.Value).Append("}\n\n");
             }
-            File.WriteAllText(_filepath, content, Encoding.Unicode);
+            File.WriteAllText(_filepath, content.ToString(), Encoding.Unicode);
             return true;
         }
         #endregion

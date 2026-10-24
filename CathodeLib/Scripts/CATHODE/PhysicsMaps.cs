@@ -3,11 +3,8 @@ using CathodeLib;
 using System.Collections.Generic;
 using CATHODE.Scripting;
 using System;
-using static CATHODE.EnvironmentAnimations;
 using CathodeLib.ObjectExtensions;
-using static CATHODE.CollisionMaps;
 using System.Linq;
-
 
 
 
@@ -29,8 +26,6 @@ using System.Numerics;
 
 namespace CATHODE
 {
-    //This file defines additional info for entities with DYNAMIC_PHYSICS_SYSTEM resources.
-
     /// <summary>
     /// DATA/ENV/x/WORLD/PHYSICS.MAP
     /// </summary>
@@ -39,16 +34,33 @@ namespace CATHODE
         public List<DYNAMIC_PHYSICS_SYSTEM> Entries = new List<DYNAMIC_PHYSICS_SYSTEM>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
-        public PhysicsMaps(string path) : base(path) { }
-        public PhysicsMaps(MemoryStream stream, string path = "") : base(stream, path) { }
-        public PhysicsMaps(byte[] data, string path = "") : base(data, path) { }
+        protected override bool HandlesLoadingManually => true;
 
+        private HavokPackfile _physicsHKX;
         private List<DYNAMIC_PHYSICS_SYSTEM> _writeList = new List<DYNAMIC_PHYSICS_SYSTEM>();
 
-        ~PhysicsMaps()
+        public PhysicsMaps(string path, HavokPackfile physicsHKX = null) : base(path)
         {
-            Entries.Clear();
-            _writeList.Clear();
+            _physicsHKX = physicsHKX;
+            _loaded = Load();
+        }
+        public PhysicsMaps(MemoryStream stream, HavokPackfile physicsHKX = null, string path = "") : base(stream, path)
+        {
+            _physicsHKX = physicsHKX;
+            _loaded = Load(stream);
+        }
+        public PhysicsMaps(byte[] data, HavokPackfile physicsHKX = null, string path = "") : base(data, path)
+        {
+            _physicsHKX = physicsHKX;
+            using (MemoryStream stream = new MemoryStream(data))
+            {
+                _loaded = Load(stream);
+            }
+        }
+
+        public void ClearReferences()
+        {
+            _physicsHKX = null;
         }
 
         #region FILE_IO
@@ -61,7 +73,8 @@ namespace CATHODE
                 for (int i = 0; i < entryCount; i++)
                 {
                     DYNAMIC_PHYSICS_SYSTEM entry = new DYNAMIC_PHYSICS_SYSTEM();
-                    entry.physics_system_index = reader.ReadInt32();
+                    int systemIndex = reader.ReadInt32();
+                    entry.PhysicsSystem = _physicsHKX?.GetPhysicsSystem(systemIndex);
                     reader.BaseStream.Position += 8;
                     entry.composite_instance_id = Utilities.Consume<ShortGuid>(reader); 
                     entry.entity = Utilities.Consume<EntityHandle>(reader);
@@ -97,9 +110,9 @@ namespace CATHODE
                     entry.Rotation = Quaternion.LookRotation(matrix4x4.GetColumn(2), matrix4x4.GetColumn(1));
 #else
                     entry.Rotation = Quaternion.CreateFromRotationMatrix(new Matrix4x4(
-                        (float)matrix[0, 0], (float)matrix[0, 1], (float)matrix[0, 2], 0,
-                        (float)matrix[1, 0], (float)matrix[1, 1], (float)matrix[1, 2], 0,
-                        (float)matrix[2, 0], (float)matrix[2, 1], (float)matrix[2, 2], 0,
+                        (float)matrix[0, 0], (float)matrix[1, 0], (float)matrix[2, 0], 0,
+                        (float)matrix[0, 1], (float)matrix[1, 1], (float)matrix[2, 1], 0,
+                        (float)matrix[0, 2], (float)matrix[1, 2], (float)matrix[2, 2], 0,
                         0, 0, 0, 1
                     ));
 #endif
@@ -114,8 +127,6 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
-            //Entries = Entries.OrderBy(o => o.physics_system_index).ToList();
-
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
@@ -123,7 +134,7 @@ namespace CATHODE
                 writer.Write(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
                 {
-                    writer.Write(Entries[i].physics_system_index);
+                    writer.Write(Entries[i].PhysicsSystemIndex);
                     writer.Write(new byte[4]);
                     Utilities.Write(writer, ShortGuids.DYNAMIC_PHYSICS_SYSTEM);
                     Utilities.Write(writer, Entries[i].composite_instance_id);
@@ -136,9 +147,9 @@ namespace CATHODE
                     Vector4 Row2 = new Vector4(rotationMatrix4x4.m31, rotationMatrix4x4.m32, rotationMatrix4x4.m33, Entries[i].Position.z);
 #else
                     Matrix4x4 rotationMatrix4x4 = Matrix4x4.CreateFromQuaternion(Entries[i].Rotation);
-                    Vector4 Row0 = new Vector4(rotationMatrix4x4.M11, rotationMatrix4x4.M12, rotationMatrix4x4.M13, Entries[i].Position.X);
-                    Vector4 Row1 = new Vector4(rotationMatrix4x4.M21, rotationMatrix4x4.M22, rotationMatrix4x4.M23, Entries[i].Position.Y);
-                    Vector4 Row2 = new Vector4(rotationMatrix4x4.M31, rotationMatrix4x4.M32, rotationMatrix4x4.M33, Entries[i].Position.Z);
+                    Vector4 Row0 = new Vector4(rotationMatrix4x4.M11, rotationMatrix4x4.M21, rotationMatrix4x4.M31, Entries[i].Position.X);
+                    Vector4 Row1 = new Vector4(rotationMatrix4x4.M12, rotationMatrix4x4.M22, rotationMatrix4x4.M32, Entries[i].Position.Y);
+                    Vector4 Row2 = new Vector4(rotationMatrix4x4.M13, rotationMatrix4x4.M23, rotationMatrix4x4.M33, Entries[i].Position.Z);
 #endif
 
                     Utilities.Write<Vector4>(writer, Row0);
@@ -160,8 +171,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(DYNAMIC_PHYSICS_SYSTEM envAnim)
         {
-            if (!_writeList.Contains(envAnim)) return -1;
-            return _writeList.IndexOf(envAnim);
+            return _writeList.IndexOf(envAnim); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>
@@ -187,6 +197,7 @@ namespace CATHODE
                 return existing;
 
             DYNAMIC_PHYSICS_SYSTEM newPhysMap = physMap.Copy();
+            newPhysMap.PhysicsSystem = physMap.PhysicsSystem;
             Entries.Add(newPhysMap);
             return newPhysMap;
         }
@@ -195,8 +206,9 @@ namespace CATHODE
         #region STRUCTURES
         public class DYNAMIC_PHYSICS_SYSTEM : IEquatable<DYNAMIC_PHYSICS_SYSTEM>, IComparable<DYNAMIC_PHYSICS_SYSTEM>
         {
-            //Should match system_index on the PhysicsSystem entity.
-            public int physics_system_index; // the proxy index for the system to clone
+            //Havok data - should match system_index on PhysicsSystem entities
+            public HavokPackfile.PhysicsSystem PhysicsSystem;
+            public int PhysicsSystemIndex => PhysicsSystem?.SystemIndex ?? -1;
 
             //This is the instance ID for the composite containing the PhysicsSystem.
             //We do not need to worry about the entity ID for the PhysicsSystem as the resources are written to the composite that contains it.
@@ -213,7 +225,7 @@ namespace CATHODE
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
-                if (x.physics_system_index != y.physics_system_index) return false;
+                if (x.PhysicsSystemIndex != y.PhysicsSystemIndex) return false;
                 if (x.composite_instance_id != y.composite_instance_id) return false;
                 if (x.entity != y.entity) return false;
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
@@ -244,7 +256,7 @@ namespace CATHODE
             public override int GetHashCode()
             {
                 int hashCode = -1234567890;
-                hashCode = hashCode * -1521134295 + physics_system_index.GetHashCode();
+                hashCode = hashCode * -1521134295 + PhysicsSystemIndex.GetHashCode();
                 hashCode = hashCode * -1521134295 + composite_instance_id.GetHashCode();
                 hashCode = hashCode * -1521134295 + EqualityComparer<EntityHandle>.Default.GetHashCode(entity);
                 hashCode = hashCode * -1521134295 + Position.GetHashCode();
@@ -256,7 +268,7 @@ namespace CATHODE
             {
                 if (other == null) return 1;
 
-                int comparison = physics_system_index.CompareTo(other.physics_system_index);
+                int comparison = PhysicsSystemIndex.CompareTo(other.PhysicsSystemIndex);
                 if (comparison != 0) return comparison;
                 comparison = composite_instance_id.CompareTo(other.composite_instance_id);
                 if (comparison != 0) return comparison;

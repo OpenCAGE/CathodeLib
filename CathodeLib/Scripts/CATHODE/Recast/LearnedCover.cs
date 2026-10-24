@@ -1,0 +1,521 @@
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.IO.Compression;
+using System.Numerics;
+using System.Reflection;
+using NanoRT;
+
+namespace CathodeLib.NavMesh
+{
+    /// <summary>
+    /// The raw geometric description of a rim station that a learned cover selector reads: ray
+    /// distances outward at seven heights and five bearings, inward at two heights and five
+    /// bearings, along the obstacle face both ways at two heights, the obstacle top and thickness
+    /// at thirteen offsets along the rim (a 3 m window at 0.25 m), the floor drop beyond the
+    /// obstacle at three distances, and the run length, distance to the run end and edge length;
+    /// then (appended, so older models keep their indices) the obstacle top and thickness further
+    /// along the run at 2.5-6.5 m either way, floor probes 1-5 m into the walkable side with two
+    /// summaries, the position fraction along the run, side-step rays 0.6 m along the run looking
+    /// outward at two heights, an over-the-top ray from 0.6 m inside, and the ceiling height.
+    /// The training tables (<c>diag coverml build</c>) and the baker call this same method, so a
+    /// model trained on retail's navmesh reads identical numbers off ours.
+    /// </summary>
+    public static class LearnedCoverFeatures
+    {
+        public static readonly float[] OutHeights = { 0.2f, 0.5f, 0.8f, 1.1f, 1.4f, 1.7f, 2.0f };
+        public static readonly float[] Bearings = { -60f, -30f, 0f, 30f, 60f };
+        public static readonly float[] InHeights = { 0.5f, 1.2f };
+        public static readonly float[] AlongHeights = { 0.5f, 1.2f };
+        public static readonly float[] AlongOffsets = { -1.5f, -1.25f, -1.0f, -0.75f, -0.5f, -0.25f, 0f, 0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f };
+        public static readonly float[] DropDistances = { 0.75f, 1.5f, 3.0f };
+        public static readonly float[] FarAlongOffsets = { -6.5f, -5.0f, -3.5f, -2.5f, 2.5f, 3.5f, 5.0f, 6.5f };
+        public static readonly float[] FrontDistances = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
+        public static readonly float[] PeekOffsets = { -0.6f, 0.6f };
+        public static readonly float[] PeekHeights = { 0.5f, 1.4f };
+        public const float RayMax = 6f;
+        const float FloorTolerance = 0.3f;
+
+        //Where the four entries that read the station's place in its run sit; every other entry reads only the point, the
+        //inward normal, the BVH, the probe and the settings (see WriteRunPosition). Declared after the arrays they count.
+        internal static readonly int RunLenIndex = OutHeights.Length * Bearings.Length + InHeights.Length * Bearings.Length
+                                                   + AlongHeights.Length * 2 + AlongOffsets.Length * 2 + DropDistances.Length;
+        internal static readonly int PosFracIndex = RunLenIndex + 3 + FarAlongOffsets.Length * 2 + FrontDistances.Length + 2;
+
+        public static List<string> Names()
+        {
+            var n = new List<string>();
+            foreach (float h in OutHeights) foreach (float b in Bearings) n.Add(string.Format(CultureInfo.InvariantCulture, "out_h{0:0.0}_b{1:+0;-0}", h, b));
+            foreach (float h in InHeights) foreach (float b in Bearings) n.Add(string.Format(CultureInfo.InvariantCulture, "in_h{0:0.0}_b{1:+0;-0}", h, b));
+            foreach (float h in AlongHeights) { n.Add(string.Format(CultureInfo.InvariantCulture, "alongL_h{0:0.0}", h)); n.Add(string.Format(CultureInfo.InvariantCulture, "alongR_h{0:0.0}", h)); }
+            foreach (float o in AlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "top_{0:+0.00;-0.00}", o));
+            foreach (float o in AlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "thick_{0:+0.00;-0.00}", o));
+            foreach (float d in DropDistances) n.Add(string.Format(CultureInfo.InvariantCulture, "dropBeyond_{0:0.00}", d));
+            n.Add("runLen"); n.Add("distEnd"); n.Add("edgeLen");
+            foreach (float o in FarAlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "fartop_{0:+0.0;-0.0}", o));
+            foreach (float o in FarAlongOffsets) n.Add(string.Format(CultureInfo.InvariantCulture, "farthick_{0:+0.0;-0.0}", o));
+            foreach (float d in FrontDistances) n.Add(string.Format(CultureInfo.InvariantCulture, "front_{0:0.0}", d));
+            n.Add("frontFloorCount"); n.Add("frontFloorEnds");
+            n.Add("posFrac");
+            foreach (float o in PeekOffsets) foreach (float h in PeekHeights) n.Add(string.Format(CultureInfo.InvariantCulture, "peek_{0:+0.0;-0.0}_h{1:0.0}", o, h));
+            n.Add("overTop"); n.Add("ceiling");
+            return n;
+        }
+
+        public static int Count => OutHeights.Length * Bearings.Length + InHeights.Length * Bearings.Length + AlongHeights.Length * 2 + AlongOffsets.Length * 2 + DropDistances.Length + 3
+                                   + FarAlongOffsets.Length * 2 + FrontDistances.Length + 2 + 1 + PeekOffsets.Length * PeekHeights.Length + 2;
+
+        /// <summary>
+        /// Describe the rim station at <paramref name="p"/> (a point ON the rim, floor height), with
+        /// <paramref name="inward"/> the unit XZ normal toward the walkable side.
+        /// </summary>
+        public static float[] Describe(Vector3 p, Vector3 inward, float edgeLen, float runLen, float posAlong,
+                                       BVHAccel bvh, RimCoverGenerator.DepthProbe probe, CoverBakeSettings cs)
+        {
+            var f = new float[Count];
+            int k = 0;
+            Vector3 outward = -inward;
+            foreach (float h in OutHeights) foreach (float b in Bearings) f[k++] = Cast(bvh, p, h, Rot(outward, b));
+            foreach (float h in InHeights) foreach (float b in Bearings) f[k++] = Cast(bvh, p, h, Rot(inward, b));
+            var alongDir = new Vector3(outward.Z, 0f, -outward.X);
+            foreach (float h in AlongHeights)
+            {
+                Vector3 q = p + outward * 0.15f;
+                f[k++] = Cast(bvh, q, h, -alongDir);
+                f[k++] = Cast(bvh, q, h, alongDir);
+            }
+            foreach (float o in AlongOffsets) f[k++] = probe.TopAlong(p + alongDir * o, outward, p.Y, cs);
+            foreach (float o in AlongOffsets) f[k++] = Math.Min(6f, probe.Thickness(p + alongDir * o, outward, p.Y, cs));
+            foreach (float d in DropDistances) f[k++] = Drop(bvh, p + outward * d, p.Y);
+            k += 3;   //runLen, distEnd, edgeLen - WriteRunPosition, below
+            // Appended context (see the class summary).
+            foreach (float o in FarAlongOffsets) f[k++] = probe.TopAlong(p + alongDir * o, outward, p.Y, cs);
+            foreach (float o in FarAlongOffsets) f[k++] = Math.Min(6f, probe.Thickness(p + alongDir * o, outward, p.Y, cs));
+            int floorCount = 0; float floorEnds = 6f;
+            foreach (float d in FrontDistances)
+            {
+                float drop = Drop(bvh, p + inward * d, p.Y);
+                f[k++] = drop;
+                if (Math.Abs(drop) < FloorTolerance) floorCount++;
+                else if (floorEnds >= 6f) floorEnds = d;
+            }
+            f[k++] = floorCount;
+            f[k++] = floorEnds;
+            k++;      //posFrac - WriteRunPosition, below
+            foreach (float o in PeekOffsets) foreach (float h in PeekHeights) f[k++] = Cast(bvh, p + alongDir * o, h, outward);
+            f[k++] = Cast(bvh, p + inward * 0.6f, 1.7f, outward);
+            f[k++] = Cast(bvh, p, 0.1f, new Vector3(0f, 1f, 0f));
+            WriteRunPosition(f, edgeLen, runLen, posAlong);
+            return f;
+        }
+
+        /// <summary>
+        /// The descriptor entries that read the station's run rather than the geometry: run length, distance to the nearer run
+        /// end, edge length and position fraction. A description re-placed in another run has exactly these rewritten.
+        /// </summary>
+        internal static void WriteRunPosition(float[] f, float edgeLen, float runLen, float posAlong)
+        {
+            f[RunLenIndex] = runLen;
+            f[RunLenIndex + 1] = Math.Min(posAlong, runLen - posAlong);
+            f[RunLenIndex + 2] = edgeLen;
+            f[PosFracIndex] = runLen > 1e-3f ? Math.Min(posAlong, runLen - posAlong) / runLen : 0f;
+        }
+
+        static Vector3 Rot(Vector3 d, float deg)
+        {
+            double a = deg * Math.PI / 180.0;
+            float c = (float)Math.Cos(a), s = (float)Math.Sin(a);
+            return Vector3.Normalize(new Vector3(d.X * c - d.Z * s, 0f, d.X * s + d.Z * c));
+        }
+
+        static float Cast(BVHAccel bvh, Vector3 p, float h, Vector3 dir)
+        {
+            if (bvh == null) return RayMax;
+            var ray = new Ray(new Vector3(p.X, p.Y + h, p.Z), dir, 0.02f, RayMax);
+            return bvh.Traverse(ref ray, out Hit hit) ? hit.T : RayMax;
+        }
+
+        /// <summary>How far the floor lies below the rim height at a point beyond the obstacle: 0 = same floor, 5 = nothing within 5 m down, negative = solid above.</summary>
+        static float Drop(BVHAccel bvh, Vector3 q, float rimY)
+        {
+            if (bvh == null) return 5f;
+            var ray = new Ray(new Vector3(q.X, rimY + 1.5f, q.Z), new Vector3(0f, -1f, 0f), 0.01f, 6.5f);
+            if (!bvh.Traverse(ref ray, out Hit hit)) return 5f;
+            float y = rimY + 1.5f - hit.T;
+            return Math.Max(-1.5f, Math.Min(5f, rimY - y));
+        }
+    }
+
+    /// <summary>
+    /// A gradient-boosted tree ensemble (binary logistic) in the plain text format the diag
+    /// trainer writes. Binned features: each feature has ascending bin edges and a node tests
+    /// <c>bin(x) &lt;= node.Bin</c>.
+    /// </summary>
+    public sealed class CoverGbdtModel
+    {
+        struct Node { public int Feature, Bin, Left, Right; public float Value; }
+
+        float _bias, _shrink;
+        float[][] _edges;
+        readonly List<Node[]> _trees = new List<Node[]>();
+        public float Threshold = 0.33f;
+        public int FeatureCount => _edges?.Length ?? 0;
+
+        public static CoverGbdtModel Load(string path)
+        {
+            using (FileStream fs = File.OpenRead(path)) return Load(fs);
+        }
+
+        /// <summary>
+        /// Load from any stream: gzip-wrapped or raw binary (magic "CGBM") or the trainer's text.
+        /// The binary form is what CathodeLib embeds - a third the size of the text.
+        /// </summary>
+        public static CoverGbdtModel Load(Stream s)
+        {
+            var head = new byte[4];
+            int got = 0;
+            while (got < 4) { int r = s.Read(head, got, 4 - got); if (r <= 0) break; got += r; }
+            var rest = new MemoryStream();
+            rest.Write(head, 0, got);
+            s.CopyTo(rest);
+            rest.Position = 0;
+            if (got >= 2 && head[0] == 0x1f && head[1] == 0x8b)
+            {
+                //Inflated in one go and parsed from memory: a reader straight over the GZipStream sent every one-to-four
+                //byte field through the inflater on its own (~0.13 s a model). The same bytes reach LoadBinary. A file
+                //that only reads cleanly up to the end of the model (a damaged gzip trailer) is parsed as it streams, as before.
+                var inflated = new MemoryStream();
+                bool whole;
+                try
+                {
+                    using (var gz = new GZipStream(rest, CompressionMode.Decompress, true)) gz.CopyTo(inflated);
+                    whole = true;
+                }
+                catch
+                {
+                    whole = false;
+                }
+                if (whole)
+                {
+                    inflated.Position = 0;
+                    return LoadBinary(inflated);
+                }
+                rest.Position = 0;
+                using (var gz = new GZipStream(rest, CompressionMode.Decompress)) return LoadBinary(gz);
+            }
+            if (got >= 4 && head[0] == (byte)'C' && head[1] == (byte)'G' && head[2] == (byte)'B' && head[3] == (byte)'M')
+                return LoadBinary(rest);
+            using (var reader = new StreamReader(rest)) return Load(reader);
+        }
+
+        const uint BinaryMagic = 0x4D424743; // "CGBM" little-endian
+        const byte BinaryVersion = 1;
+        const byte LeafFeature = 0xFF;
+
+        /// <summary>
+        /// Binary layout, little-endian: "CGBM", version byte, bias / shrink / threshold floats,
+        /// ushort feature count then per feature a ushort edge count and its floats, ushort tree
+        /// count then per tree a ushort node count and its nodes - a feature byte (0xFF = leaf,
+        /// followed by the float value) or the split (bin byte, ushort left, ushort right).
+        /// </summary>
+        public static CoverGbdtModel LoadBinary(Stream s)
+        {
+            var m = new CoverGbdtModel();
+            using (var r = new BinaryReader(s))
+            {
+                if (r.ReadUInt32() != BinaryMagic) throw new InvalidDataException("not a CGBM model");
+                byte version = r.ReadByte();
+                if (version != BinaryVersion) throw new InvalidDataException("CGBM version " + version + " unsupported");
+                m._bias = r.ReadSingle(); m._shrink = r.ReadSingle(); m.Threshold = r.ReadSingle();
+                int features = r.ReadUInt16();
+                m._edges = new float[features][];
+                for (int f = 0; f < features; f++)
+                {
+                    int n = r.ReadUInt16();
+                    var e = new float[n];
+                    for (int i = 0; i < n; i++) e[i] = r.ReadSingle();
+                    m._edges[f] = e;
+                }
+                int trees = r.ReadUInt16();
+                for (int t = 0; t < trees; t++)
+                {
+                    int n = r.ReadUInt16();
+                    var nodes = new Node[n];
+                    for (int i = 0; i < n; i++)
+                    {
+                        byte feature = r.ReadByte();
+                        if (feature == LeafFeature) nodes[i] = new Node { Feature = -1, Bin = 0, Left = -1, Right = -1, Value = r.ReadSingle() };
+                        else nodes[i] = new Node { Feature = feature, Bin = r.ReadByte(), Left = r.ReadUInt16(), Right = r.ReadUInt16(), Value = 0f };
+                    }
+                    m._trees.Add(nodes);
+                }
+            }
+            return m;
+        }
+
+        /// <summary>Write the binary form (see <see cref="LoadBinary"/>), gzip-wrapped when asked.</summary>
+        public void SaveBinary(Stream s, bool gzip = true)
+        {
+            Stream target = gzip ? new GZipStream(s, CompressionLevel.Optimal, leaveOpen: true) : s;
+            using (var w = new BinaryWriter(target, System.Text.Encoding.UTF8, leaveOpen: !gzip))
+            {
+                w.Write(BinaryMagic); w.Write(BinaryVersion);
+                w.Write(_bias); w.Write(_shrink); w.Write(Threshold);
+                w.Write((ushort)_edges.Length);
+                foreach (float[] e in _edges) { w.Write((ushort)e.Length); foreach (float v in e) w.Write(v); }
+                w.Write((ushort)_trees.Count);
+                foreach (Node[] tree in _trees)
+                {
+                    w.Write((ushort)tree.Length);
+                    foreach (Node nd in tree)
+                    {
+                        if (nd.Feature < 0) { w.Write(LeafFeature); w.Write(nd.Value); }
+                        else
+                        {
+                            if (nd.Feature >= LeafFeature || nd.Bin > 255 || nd.Left > ushort.MaxValue || nd.Right > ushort.MaxValue)
+                                throw new InvalidDataException("model does not fit the CGBM field widths");
+                            w.Write((byte)nd.Feature); w.Write((byte)nd.Bin); w.Write((ushort)nd.Left); w.Write((ushort)nd.Right);
+                        }
+                    }
+                }
+            }
+            if (gzip) target.Dispose();
+        }
+
+        /// <summary>Parse a model from any text source - a file, or an embedded resource stream.</summary>
+        public static CoverGbdtModel Load(TextReader r)
+        {
+            var m = new CoverGbdtModel();
+            {
+                string line;
+                var inv = CultureInfo.InvariantCulture;
+                string[] Next() { line = r.ReadLine(); return line == null ? null : line.Split(' '); }
+                string[] t;
+                while ((t = Next()) != null)
+                {
+                    if (t.Length == 0 || t[0].Length == 0) continue;
+                    switch (t[0])
+                    {
+                        case "bias": m._bias = float.Parse(t[1], inv); break;
+                        case "shrink": m._shrink = float.Parse(t[1], inv); break;
+                        case "threshold": m.Threshold = float.Parse(t[1], inv); break;
+                        case "features": m._edges = new float[int.Parse(t[1], inv)][]; break;
+                        case "bins":
+                        {
+                            int f = int.Parse(t[1], inv), n = int.Parse(t[2], inv);
+                            var e = new float[n];
+                            for (int i = 0; i < n; i++) e[i] = float.Parse(t[3 + i], inv);
+                            m._edges[f] = e;
+                            break;
+                        }
+                        case "tree":
+                        {
+                            int n = int.Parse(t[1], inv);
+                            var nodes = new Node[n];
+                            for (int i = 0; i < n; i++)
+                            {
+                                string[] u = Next();
+                                nodes[i] = new Node
+                                {
+                                    Feature = int.Parse(u[1], inv), Bin = int.Parse(u[2], inv),
+                                    Value = float.Parse(u[3], inv), Left = int.Parse(u[4], inv), Right = int.Parse(u[5], inv)
+                                };
+                            }
+                            m._trees.Add(nodes);
+                            break;
+                        }
+                    }
+                }
+            }
+            return m;
+        }
+
+        int BinOf(int f, float v)
+        {
+            float[] e = _edges[f];
+            int lo = 0, hi = e.Length;
+            while (lo < hi) { int mid = (lo + hi) >> 1; if (v <= e[mid]) hi = mid; else lo = mid + 1; }
+            return lo;
+        }
+
+        public float Predict(float[] x)
+        {
+            int d = _edges.Length;
+            var xb = new int[d];
+            for (int f = 0; f < d; f++) xb[f] = BinOf(f, x[f]);
+            float s = _bias;
+            foreach (Node[] tree in _trees)
+            {
+                int i = 0;
+                while (tree[i].Feature >= 0) i = xb[tree[i].Feature] <= tree[i].Bin ? tree[i].Left : tree[i].Right;
+                s += _shrink * tree[i].Value;
+            }
+            return 1f / (1f + (float)Math.Exp(-s));
+        }
+    }
+
+    /// <summary>
+    /// What a SECOND-stage cover selector reads: the first stage's probability at this station, the
+    /// profile of probabilities either side of it along the run, and summaries of the whole run.
+    /// </summary>
+    public static class LearnedCoverStage2
+    {
+        /// <summary>Station offsets along the run whose probability is read, clamped at the ends.</summary>
+        public static readonly int[] Neighbours = { -8, -6, -4, -3, -2, -1, 1, 2, 3, 4, 6, 8 };
+
+        /// <summary>Probability a station must reach to count toward the run's "share over" feature.</summary>
+        public const float ShareThreshold = 0.40f;
+
+        public static int Count => 1 + Neighbours.Length + 11;
+
+        public static List<string> Names()
+        {
+            var n = new List<string> { "p" };
+            foreach (int o in Neighbours) n.Add(string.Format(CultureInfo.InvariantCulture, "p{0:+0;-0}", o));
+            n.Add("runMean"); n.Add("runMax"); n.Add("runMin"); n.Add("runP75"); n.Add("runShare");
+            n.Add("win4Mean"); n.Add("win4Max");
+            n.Add("runStations"); n.Add("runLen"); n.Add("posFrac"); n.Add("distEnd");
+            return n;
+        }
+
+        /// <summary>
+        /// Describe station <paramref name="i"/> of a run whose first-stage probabilities are
+        /// <paramref name="probs"/>, at <paramref name="posAlong"/> metres along a run of
+        /// <paramref name="runLen"/> metres.
+        /// </summary>
+        public static float[] Describe(IReadOnlyList<float> probs, int i, float runLen, float posAlong, float[] sortedScratch = null)
+        {
+            var f = new float[Count];
+            int n = probs.Count;
+            int k = 0;
+            f[k++] = probs[i];
+            foreach (int o in Neighbours)
+            {
+                int j = i + o;
+                f[k++] = probs[j < 0 ? 0 : j >= n ? n - 1 : j];
+            }
+
+            float sum = 0f, max = 0f, min = 1f;
+            int over = 0;
+            for (int j = 0; j < n; j++)
+            {
+                float p = probs[j];
+                sum += p;
+                if (p > max) max = p;
+                if (p < min) min = p;
+                if (p >= ShareThreshold) over++;
+            }
+            float[] sorted = sortedScratch != null && sortedScratch.Length >= n ? sortedScratch : new float[n];
+            for (int j = 0; j < n; j++) sorted[j] = probs[j];
+            Array.Sort(sorted, 0, n);
+            f[k++] = sum / n;
+            f[k++] = max;
+            f[k++] = min;
+            f[k++] = sorted[(int)(0.75 * (n - 1))];
+            f[k++] = (float)over / n;
+
+            float wsum = 0f, wmax = 0f; int wn = 0;
+            for (int j = i - 4; j <= i + 4; j++)
+            {
+                if (j < 0 || j >= n) continue;
+                wsum += probs[j];
+                if (probs[j] > wmax) wmax = probs[j];
+                wn++;
+            }
+            f[k++] = wn == 0 ? 0f : wsum / wn;
+            f[k++] = wmax;
+
+            f[k++] = n;
+            f[k++] = runLen;
+            f[k++] = runLen > 1e-3f ? Math.Min(posAlong, runLen - posAlong) / runLen : 0f;
+            f[k++] = Math.Min(posAlong, runLen - posAlong);
+            return f;
+        }
+    }
+
+    /// <summary>Loads the learned selector named by the settings, or the one CathodeLib embeds, once per path.</summary>
+    public static class LearnedCover
+    {
+        static readonly Dictionary<string, CoverGbdtModel> _cache = new Dictionary<string, CoverGbdtModel>();
+
+        /// <summary>Logical names of the selectors CathodeLib ships inside itself (see the csproj).</summary>
+        public const string EmbeddedCover = "CathodeLib.Learned.cover";
+        public const string EmbeddedSpot = "CathodeLib.Learned.spot";
+        public const string EmbeddedAssault = "CathodeLib.Learned.assault";
+
+        public static CoverGbdtModel TryLoad(CoverBakeSettings settings, Action<string> log = null)
+            => TryLoadPath(settings.LearnedSelectorPath, "Cover", log,
+                           settings.UseEmbeddedLearnedSelector ? EmbeddedCover : null);
+
+        /// <summary>
+        /// The selector CathodeLib ships as an embedded resource (the all-twelve-level models of
+        /// 2 Sep 2026 - `results/models/*_all12.txt` in the parity harness). Cached per name; null
+        /// when the resource is missing or malformed, in which case the caller falls back to rules.
+        /// </summary>
+        public static CoverGbdtModel TryLoadEmbedded(string name, string what, Action<string> log = null)
+        {
+            lock (_cache)
+            {
+                if (_cache.TryGetValue(name, out CoverGbdtModel cached)) return cached;
+                CoverGbdtModel model = null;
+                try
+                {
+                    using (Stream s = typeof(CoverGbdtModel).Assembly.GetManifestResourceStream(name))
+                    {
+                        if (s == null) log?.Invoke(what + ": no embedded learned selector '" + name + "' - using the rule set.");
+                        else model = CoverGbdtModel.Load(s);
+                    }
+                    if (model != null && model.FeatureCount > LearnedCoverFeatures.Count)
+                    {
+                        // A model may read a PREFIX of the descriptor (features are only ever appended), never past its end.
+                        log?.Invoke(what + ": embedded learned selector has " + model.FeatureCount + " features, the descriptor only " + LearnedCoverFeatures.Count + " - ignored.");
+                        model = null;
+                    }
+                    else if (model != null)
+                        log?.Invoke(what + ": learned selector (embedded " + name + ", threshold " + model.Threshold.ToString("0.00") + ")");
+                }
+                catch (Exception e)
+                {
+                    log?.Invoke(what + ": embedded learned selector failed to load: " + e.Message);
+                    model = null;
+                }
+                _cache[name] = model;
+                return model;
+            }
+        }
+
+        /// <summary>Load the model at <paramref name="path"/>, or the embedded selector when that names no file; cached per path; null when nothing names a readable, well-formed model.</summary>
+        public static CoverGbdtModel TryLoadPath(string path, string what, Action<string> log = null, string embedded = null)
+        {
+            // "none" is the explicit off switch: no file, no embedded fallback.
+            if (string.Equals(path, "none", StringComparison.OrdinalIgnoreCase)) return null;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                return embedded != null ? TryLoadEmbedded(embedded, what, log) : null;
+            lock (_cache)
+            {
+                if (_cache.TryGetValue(path, out CoverGbdtModel cached)) return cached;
+                CoverGbdtModel model = null;
+                try
+                {
+                    using (FileStream fs = File.OpenRead(path)) model = CoverGbdtModel.Load(fs);
+                    if (model.FeatureCount > LearnedCoverFeatures.Count)
+                    {
+                        log?.Invoke(what + ": learned selector at " + path + " has " + model.FeatureCount + " features, the descriptor only " + LearnedCoverFeatures.Count + " - ignored.");
+                        model = null;
+                    }
+                    else log?.Invoke(what + ": learned selector " + path + " (threshold " + model.Threshold.ToString("0.00") + ")");
+                }
+                catch (Exception e)
+                {
+                    log?.Invoke(what + ": learned selector failed to load: " + e.Message);
+                    model = null;
+                }
+                _cache[path] = model;
+                return model;
+            }
+        }
+    }
+}
+#endif

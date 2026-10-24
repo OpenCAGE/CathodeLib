@@ -13,7 +13,7 @@ namespace CATHODE.Scripting
     /// </summary>
     [Serializable]
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ShortGuid : IComparable<ShortGuid>
+    public struct ShortGuid : IComparable<ShortGuid>, IEquatable<ShortGuid>
     {
         public static readonly ShortGuid InstanceGuid = new ShortGuid(1257266174);  //The base GUID for composite instance IDs within a level's root
         public static readonly ShortGuid GlobalGuid = new ShortGuid(4074205553);    //The base GUID for composite instance IDs within GLOBAL
@@ -77,9 +77,13 @@ namespace CATHODE.Scripting
             if (!(obj is ShortGuid)) return false;
             return ((ShortGuid)obj).val == this.val;
         }
+        //What dictionaries and hash sets keyed by ShortGuid compare with: without it, each lookup boxed both keys
+        public bool Equals(ShortGuid other)
+        {
+            return other.val == this.val;
+        }
         public static bool operator ==(ShortGuid x, ShortGuid y)
         {
-            if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
             return x.val == y.val;
         }
         public static bool operator !=(ShortGuid x, ShortGuid y)
@@ -113,8 +117,6 @@ namespace CATHODE.Scripting
 
         public int CompareTo(ShortGuid x)
         {
-            if (x == null) return 1;
-
             if (this.val > x.val)
                 return 1;
             else if (this.val < x.val)
@@ -132,40 +134,48 @@ namespace CATHODE.Scripting
 
         public uint AsUInt32 => val;
 
-        public bool IsFunctionType => Enum.IsDefined(typeof(FunctionType), val);
+        public bool IsFunctionType => DefinedValues<FunctionType>.Contains(val);
         public FunctionType AsFunctionType => (FunctionType)val;
         public static bool operator ==(ShortGuid x, FunctionType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, FunctionType y) => x.val != (uint)y;
 
-        public bool IsDataType => Enum.IsDefined(typeof(DataType), val);
+        public bool IsDataType => DefinedValues<DataType>.Contains(val);
         public DataType AsDataType => (DataType)val;
         public static bool operator ==(ShortGuid x, DataType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, DataType y) => x.val != (uint)y;
 
-        public bool IsObjectType => Enum.IsDefined(typeof(ObjectType), val);
+        public bool IsObjectType => DefinedValues<ObjectType>.Contains(val);
         public ObjectType AsObjectType => (ObjectType)val;
         public static bool operator ==(ShortGuid x, ObjectType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, ObjectType y) => x.val != (uint)y;
 
-        public bool IsResourceType => Enum.IsDefined(typeof(ResourceType), val);
+        public bool IsResourceType => DefinedValues<ResourceType>.Contains(val);
         public ResourceType AsResourceType => (ResourceType)val;
         public static bool operator ==(ShortGuid x, ResourceType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, ResourceType y) => x.val != (uint)y;
 
-        public bool IsEnumType => Enum.IsDefined(typeof(EnumType), val);
+        public bool IsEnumType => DefinedValues<EnumType>.Contains(val);
         public EnumType AsEnumType => (EnumType)val;
         public static bool operator ==(ShortGuid x, EnumType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, EnumType y) => x.val != (uint)y;
 
-        public bool IsEnumStringType => Enum.IsDefined(typeof(EnumStringType), val);
+        public bool IsEnumStringType => DefinedValues<EnumStringType>.Contains(val);
         public EnumStringType AsEnumStringType => (EnumStringType)val;
         public static bool operator ==(ShortGuid x, EnumStringType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, EnumStringType y) => x.val != (uint)y;
 
-        public bool IsCompositePinType => Enum.IsDefined(typeof(CompositePinType), val);
+        public bool IsCompositePinType => DefinedValues<CompositePinType>.Contains(val);
         public CompositePinType AsCompositePinType => (CompositePinType)val;
         public static bool operator ==(ShortGuid x, CompositePinType y) => x.val == (uint)y;
         public static bool operator !=(ShortGuid x, CompositePinType y) => x.val != (uint)y;
+
+        /* The values an enum names, as the uints they are: the same answer as Enum.IsDefined for these (all uint-based), which
+           looked the value up by reflection, boxed, on every call - and IsFunctionType is asked of most entities, often. */
+        private static class DefinedValues<T> where T : struct
+        {
+            private static readonly System.Collections.Generic.HashSet<uint> _values = new System.Collections.Generic.HashSet<uint>(Enum.GetValues(typeof(T)).Cast<T>().Select(o => Convert.ToUInt32(o)));
+            public static bool Contains(uint value) => _values.Contains(value);
+        }
 
         public string ToByteString()
         {

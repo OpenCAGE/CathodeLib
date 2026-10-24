@@ -15,17 +15,14 @@ namespace CATHODE
     /// </summary>
     public class SoundBankData : CathodeFile
     {
+        // note - this file is the same across all levels, so does not need to be regenerated unless adding in new sounds
+
         public List<SoundBank> Entries = new List<SoundBank>();
         public static new Implementation Implementation = Implementation.CREATE | Implementation.LOAD | Implementation.SAVE;
 
         public SoundBankData(string path) : base(path) { }
         public SoundBankData(MemoryStream stream, string path = "") : base(stream, path) { }
         public SoundBankData(byte[] data, string path = "") : base(data, path) { }
-
-        ~SoundBankData()
-        {
-            Entries.Clear();
-        }
 
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
@@ -43,7 +40,7 @@ namespace CATHODE
                     SoundBank soundbank = new SoundBank();
                     soundbank.Name = name;
                     soundbank.Localised = reader.ReadBoolean();
-                    soundbank.UsesRSX = reader.ReadBoolean();
+                    reader.BaseStream.Position += 1;
                     Entries.Add(soundbank);
                 }
             }
@@ -62,7 +59,7 @@ namespace CATHODE
                     writer.Write(Entries[i].Name.Length);
                     Utilities.WriteString(Entries[i].Name, writer);
                     writer.Write(Entries[i].Localised);
-                    writer.Write(Entries[i].UsesRSX);
+                    writer.Write(false);
                 }
             }
             return true;
@@ -74,7 +71,6 @@ namespace CATHODE
         {
             public string Name;
             public bool Localised;
-            public bool UsesRSX;
         }
         #endregion
     }

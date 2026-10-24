@@ -7,8 +7,8 @@ using CATHODE.Scripting;
 using CathodeLib;
 using CathodeLib.ObjectExtensions;
 using System.Linq;
-using System.Collections.Concurrent;
 using static CATHODE.Lights;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -36,6 +36,14 @@ namespace CATHODE
         public List<MOVER_DESCRIPTOR> Entries = new List<MOVER_DESCRIPTOR>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
 
+        //WORLD/ENVIRONMENTMAP.BIN rows index the level's EnvironmentMap ENTITIES (see
+        //Commands.RankEnvironmentMaps), which this file cannot see. The rows are kept here, by mover
+        //position, only until Level hands over that ranking through SetEnvironmentMapIndexing; from
+        //then on a mover carries just its cubemap and the save recomputes its row from it.
+        private int[] _loadedEnvMapIndices = null;
+        private IReadOnlyList<Textures.TEX4> _envMapIndexToTexture = null;
+        private IReadOnlyDictionary<Textures.TEX4, int> _envMapTextureToIndex = null;
+
         protected override bool HandlesLoadingManually => true;
         private RenderableElements _reds;
         private Resources _resources;
@@ -62,13 +70,6 @@ namespace CATHODE
             _textures = null;
         }
 
-        ~Movers()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -78,24 +79,39 @@ namespace CATHODE
 
             _compressed = _filepath != null && _filepath != "" && Path.GetExtension(_filepath).ToLower() == ".gz";
 
-            //note: first 12 always renderable but not linked to commands -> they are always the same models across every level. is it the content of GLOBAL?
-
             using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
                 reader.BaseStream.Position += 4;
                 int entryCount = reader.ReadInt32();
                 reader.BaseStream.Position += 24;
 
-                Textures.TEX4[] environmentMaps = new Textures.TEX4[entryCount]; 
+                Textures.TEX4[] environmentMaps = new Textures.TEX4[entryCount];
+                int[] environmentMapIndices = new int[entryCount];
+                for (int i = 0; i < entryCount; i++)
+                    environmentMapIndices[i] = -1;
                 using (BinaryReader envMapReader = new BinaryReader(File.OpenRead(GetEnvMapPath())))
                 {
                     envMapReader.BaseStream.Position += 8;
                     int envMapEntryCount = envMapReader.ReadInt32();
+                    //The cube maps in write order, gathered for the first row that wants one: GetAtWriteIndexForEnvMap
+                    //counts through every texture for each row, and a level has thousands of rows
+                    List<Textures.TEX4> cubes = null;
                     for (int i = 0; i < envMapEntryCount; i++)
                     {
-                        environmentMaps[envMapReader.ReadInt32()] = _textures.GetAtWriteIndex(envMapReader.ReadInt32());
+                        int mover = envMapReader.ReadInt32();
+                        int index = envMapReader.ReadInt32();
+                        if (mover < 0 || mover >= entryCount)
+                            continue;
+                        environmentMapIndices[mover] = index;
+                        //Placeholder until SetEnvironmentMapIndexing resolves the row properly: the
+                        //cube ordinal only coincides with the entity index while no two entities
+                        //share a cubemap.
+                        if (cubes == null)
+                            cubes = _textures.GetEnvMapsInWriteOrder();
+                        environmentMaps[mover] = index >= 0 && index < cubes.Count ? cubes[index] : null;
                     }
                 }
+                _loadedEnvMapIndices = environmentMapIndices;
 
                 for (int i = 0; i < entryCount; i++)
                 {
@@ -107,10 +123,15 @@ namespace CATHODE
                     int redsCount = reader.ReadInt32();
                     mvr.RenderableElements = _reds.GetAtWriteIndex(redsIndex, redsCount);
                     mvr.Resource = _resources.GetAtWriteIndex(reader.ReadInt32());
-                    reader.BaseStream.Position += 12;
+                    // Three undecoded runtime reference words: retail populates them on EVERY
+                    // mover (0 all-zero entries of 12,485 on ChallengeMap9, values 404..65k).
+                    // Zeroing them on save was part of what killed script-driven FX.
+                    mvr.RuntimeRefs = reader.ReadBytes(12);
                     mvr.CullFlags = (CullFlag)reader.ReadInt32();
                     mvr.Entity = Utilities.Consume<EntityHandle>(reader);
-                    reader.BaseStream.Position += 4;
+                    // Undecoded: -1 on most retail movers, a unique sequential id on the rest
+                    // (0..N each exactly once). Writing the mover's own index here was wrong.
+                    mvr.RuntimeIndex = reader.ReadInt32();
                     mvr.EnvironmentMap = environmentMaps[i];
                     mvr.EmissiveTint = new Vector3(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
                     mvr.EmissiveFlags = (EmissiveFlag)reader.ReadByte();
@@ -130,6 +151,39 @@ namespace CATHODE
             return true;
         }
 
+        /// <summary>Whether any of the mover's materials samples the mover's cubemap (EnvironmentMapIndex 255 = none).</summary>
+        private static bool SamplesEnvironmentMap(MOVER_DESCRIPTOR mover)
+        {
+            if (mover?.RenderableElements == null)
+                return false;
+            foreach (RenderableElements.Element red in mover.RenderableElements)
+                if (red?.Material != null && red.Material.EnvironmentMapIndex != 255)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Hand over the script's EnvironmentMap ranking (see <see cref="Commands.BuildEnvironmentMapIndexing"/>).
+        /// The first call after a load resolves every loaded row to its cubemap; the save uses the
+        /// latest call to turn each mover's cubemap back into a row. Level calls this after the
+        /// script loads and again before saving, so a texture-table edit between the two cannot
+        /// leave the rows and the entities' environmentmap_index parameters disagreeing.
+        /// </summary>
+        public void SetEnvironmentMapIndexing(IReadOnlyList<Textures.TEX4> indexToTexture, IReadOnlyDictionary<Textures.TEX4, int> textureToIndex)
+        {
+            _envMapIndexToTexture = indexToTexture;
+            _envMapTextureToIndex = textureToIndex;
+
+            if (_loadedEnvMapIndices == null || indexToTexture == null)
+                return;
+            for (int i = 0; i < Entries.Count && i < _loadedEnvMapIndices.Length; i++)
+            {
+                int index = _loadedEnvMapIndices[i];
+                Entries[i].EnvironmentMap = index >= 0 && index < indexToTexture.Count ? indexToTexture[index] : null;
+            }
+            _loadedEnvMapIndices = null;
+        }
+
         override protected bool SaveInternal()
         {
             if (_compressed && Path.GetExtension(_filepath).ToLower() != ".gz")
@@ -137,23 +191,65 @@ namespace CATHODE
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
 
-            int totalEnvMaps = 0;
-            foreach (Textures.TEX4 tex in _textures.Entries)
+            //Rows are keyed by MVR index and carry the EnvironmentMap ENTITY index of the mover's
+            //cubemap, recomputed here from the ranking Level supplied (the cube-texture ordinal is
+            //only a fallback for a Movers nobody handed a ranking to). Retail writes a row for
+            //exactly the movers that carry a RuntimeIndex (its renderable environment instances),
+            //most of them -1, and none for lights, FX or fog; anything carrying a map gets a row too.
+            int totalEnvMaps;
+            if (_envMapIndexToTexture != null)
+                totalEnvMaps = _envMapIndexToTexture.Count;
+            else
             {
-                if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
-                    totalEnvMaps++;
+                totalEnvMaps = 0;
+                foreach (Textures.TEX4 tex in _textures.Entries)
+                    if (tex.StateFlags.HasFlag(Textures.TextureStateFlag.CUBE))
+                        totalEnvMaps++;
             }
+
+            int EnvMapIndexOf(Textures.TEX4 tex)
+            {
+                if (tex == null)
+                    return -1;
+                if (_envMapTextureToIndex != null)
+                    return _envMapTextureToIndex.TryGetValue(tex, out int index) ? index : -1;
+                return _textures.GetWriteIndexForEnvMap(tex);
+            }
+
+            //A mover with no RuntimeIndex gets a row only if its material samples the cubemap: the
+            //claimed map rides on every mover (see Instancing), and retail writes no row for the
+            //~18,500 HAB_Airport movers that are claimed but have neither
+            List<int> envMapRows = new List<int>(Entries.Count);
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i].RuntimeIndex != -1 || (Entries[i].EnvironmentMap != null && SamplesEnvironmentMap(Entries[i])))
+                    envMapRows.Add(i);
+
+            /* RuntimeIndex IS the mover's handle into these rows: the game's environment, environment-extra and misc
+               instances read it (as a ushort, 0xFFFF = none) and look up row [handle] with no bounds check. Retail numbers
+               them in row order, but an instanced build carries each handle over from the level it loaded while the rows
+               are written in the rebuilt mover order - so a row answered for another mover (most environment movers drew
+               someone else's cubemap), and once a handle-carrying mover was gone (a model deleted, or moved to another
+               composite) the survivors' handles ran past the end of the rows and the game crashed opening the level.
+               Numbering each row's mover with its own position makes handle == row by construction, and gives a new mover
+               that samples a cubemap a handle it never had. */
+            if (envMapRows.Count > 0xFFFF)
+                throw new InvalidOperationException("The level has " + envMapRows.Count + " environment-mapped movers; the game's handles stop at 65,534.");
+            for (int i = 0; i < Entries.Count; i++)
+                Entries[i].RuntimeIndex = -1;
+            for (int r = 0; r < envMapRows.Count; r++)
+                Entries[envMapRows[r]].RuntimeIndex = r;
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(GetEnvMapPath())))
             {
                 writer.BaseStream.SetLength(0);
                 Utilities.WriteString("envm", writer);
                 writer.Write(1);
-                writer.Write(Entries.Count);
-                for (int i = 0; i < Entries.Count; i++)
+                writer.Write(envMapRows.Count);
+                for (int r = 0; r < envMapRows.Count; r++)
                 {
+                    int i = envMapRows[r];
                     writer.Write(i);
-                    writer.Write(Entries[i].EnvironmentMap == null ? -1 : _textures.GetWriteIndexForEnvMap(Entries[i].EnvironmentMap));
+                    writer.Write(EnvMapIndexOf(Entries[i].EnvironmentMap));
                 }
                 writer.Write(totalEnvMaps);
             }
@@ -212,10 +308,10 @@ namespace CATHODE
                     writer.Write(entry.RenderableElements.Count);
                 }
                 writer.Write(_resources.GetWriteIndex(entry.Resource));
-                writer.Write(new byte[12]);
+                writer.Write(entry.RuntimeRefs != null && entry.RuntimeRefs.Length == 12 ? entry.RuntimeRefs : new byte[12]);
                 writer.Write((int)entry.CullFlags);
                 Utilities.Write<EntityHandle>(writer, entry.Entity);
-                writer.Write(index);
+                writer.Write(entry.RuntimeIndex);
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
                 writer.Write((byte)entry.EmissiveTint.x);
                 writer.Write((byte)entry.EmissiveTint.y);
@@ -247,8 +343,7 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(MOVER_DESCRIPTOR mover)
         {
-            if (!_writeList.Contains(mover)) return -1;
-            return _writeList.IndexOf(mover);
+            return _writeList.IndexOf(mover); //-1 when it isn't there: one scan, not Contains and then the same scan again
         }
 
         /// <summary>
@@ -264,14 +359,14 @@ namespace CATHODE
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
         /// </summary>
-        public MOVER_DESCRIPTOR ImportEntry(MOVER_DESCRIPTOR mover, Models models)
+        public MOVER_DESCRIPTOR ImportEntry(MOVER_DESCRIPTOR mover, Models models, bool overwriteExisting = false)
         {
             if (mover == null)
                 return null;
 
             MOVER_DESCRIPTOR newMover = mover.Copy();
 
-            newMover.RenderableElements = _reds.ImportEntry(newMover.RenderableElements, models);
+            newMover.RenderableElements = _reds.ImportEntry(newMover.RenderableElements, models, overwriteExisting);
             newMover.Resource = _resources.ImportEntry(newMover.Resource);
 
             //todo: do something with entity reference
@@ -327,7 +422,8 @@ namespace CATHODE
                 }
                 set
                 {
-                    flags |= 0x0004;
+                    if (value) flags |= 0x0004;
+                    else flags = (short)(flags & ~0x0004);
                 }
             }
             public bool Visible
@@ -338,7 +434,8 @@ namespace CATHODE
                 }
                 set
                 {
-                    flags |= 0x0001;
+                    if (value) flags |= 0x0001;
+                    else flags = (short)(flags & ~0x0001);
                 }
             }
             public bool Stationary
@@ -349,7 +446,8 @@ namespace CATHODE
                 }
                 set
                 {
-                    flags |= 0x0002;
+                    if (value) flags |= 0x0002;
+                    else flags = (short)(flags & ~0x0002);
                 }
             }
             private short flags;
@@ -386,11 +484,30 @@ namespace CATHODE
 
             public MoverFlag Flags = new MoverFlag();
 
+            /// <summary>Undecoded per-mover runtime reference words (12 bytes at entry+256).
+            /// Retail populates them on every mover; preserved verbatim on load/save and carried
+            /// from pristine data by instancing.</summary>
+            public byte[] RuntimeRefs = null;
+
+            /// <summary>Undecoded word at entry+280: -1 on most retail movers, a unique
+            /// sequential id on the rest.</summary>
+            public int RuntimeIndex = -1;
+
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
             public class GPU_CONSTANTS : IEquatable<GPU_CONSTANTS>
             {
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 96)]
                 private byte[] buffer = new byte[96];
+
+                public byte[] RawBytes => (byte[])buffer.Clone();
+
+                public void SetRawBytes(byte[] value)
+                {
+                    if (value == null) return;
+                    byte[] replacement = new byte[96];
+                    Array.Copy(value, replacement, Math.Min(96, value.Length));
+                    buffer = replacement;
+                }
 
                 public T GetAs<T>()
                 {
@@ -575,6 +692,16 @@ namespace CATHODE
                 [MarshalAs(UnmanagedType.ByValArray, SizeConst = 84)]
                 private byte[] buffer = new byte[84];
 
+                public byte[] RawBytes => (byte[])buffer.Clone();
+
+                public void SetRawBytes(byte[] value)
+                {
+                    if (value == null) return;
+                    byte[] replacement = new byte[84];
+                    Array.Copy(value, replacement, Math.Min(84, value.Length));
+                    buffer = replacement;
+                }
+
                 public T GetAs<T>()
                 {
                     using (MemoryStream stream = new MemoryStream(buffer))
@@ -687,7 +814,10 @@ namespace CATHODE
 
                     public LightFeature Features;
 
-                    private byte _unused;
+                    // Not unused: retail writes 6 here on 4107 of the 4109 light movers across
+                    // ChallengeMap3, Solace and BSP_Torrens (the other two carry 8), independent
+                    // of the material's flag word. Meaning unknown; the constant is matched.
+                    private byte _unused = 6;
 
                     public LightFadeType LightFadeType
                     {
@@ -741,7 +871,9 @@ namespace CATHODE
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class DYNAMIC_PFX_PARAMS //CPU Particles
                 {
-                    public float DrawPass;
+                    // Retail stores this as an integer (415 of 415 CPU-particle movers on
+                    // ChallengeMap3); a float here wrote 0x41700000 where the engine reads 15.
+                    public int DrawPass;
 
                     [MarshalAs(UnmanagedType.ByValArray, SizeConst = 12)]
                     private byte[] _unused;
@@ -754,10 +886,12 @@ namespace CATHODE
                 [StructLayout(LayoutKind.Sequential, Pack = 1)]
                 public class PARTICLE_PARAMS //GPU Particles
                 {
-                    public float DrawPass;
-                    public float NumVerts;
-                    public float PrimitiveCount;
-                    public float VertexOffset;
+                    // All four are integers on disk (173 of 173 GPU-particle movers on
+                    // ChallengeMap3); floats here wrote 0x40000000 where the engine reads 2.
+                    public int DrawPass;
+                    public int NumVerts;
+                    public int PrimitiveCount;
+                    public int VertexOffset;
 
                     public EntityHandle Entity;
 
@@ -834,8 +968,8 @@ namespace CATHODE
                 if (Math.Abs(EmissiveIntensityMultiplier - other.EmissiveIntensityMultiplier) > float.Epsilon) return false;
                 if (Math.Abs(EmissiveRadiosityMultiplier - other.EmissiveRadiosityMultiplier) > float.Epsilon) return false;
 
-                if (PrimaryZoneID != other.PrimaryZoneID) return false;
-                if (SecondaryZoneID != other.SecondaryZoneID) return false;
+                if (!SameZonePair(PrimaryZoneID, SecondaryZoneID, other.PrimaryZoneID, other.SecondaryZoneID))
+                    return false;
                 if (LightingMasterID != other.LightingMasterID) return false;
 
                 if (Flags.RequiresScript != other.Flags.RequiresScript) return false;
@@ -843,6 +977,40 @@ namespace CATHODE
                 if (Flags.Stationary != other.Flags.Stationary) return false;
 
                 return true;
+            }
+
+            public static bool SameZonePair(ShortGuid aPri, ShortGuid aSec, ShortGuid bPri, ShortGuid bSec)
+            {
+                bool aHasPri = aPri != ShortGuid.Invalid;
+                bool aHasSec = aSec != ShortGuid.Invalid && aSec != aPri;
+                bool bHasPri = bPri != ShortGuid.Invalid;
+                bool bHasSec = bSec != ShortGuid.Invalid && bSec != bPri;
+
+                int aCount = (aHasPri ? 1 : 0) + (aHasSec ? 1 : 0);
+                int bCount = (bHasPri ? 1 : 0) + (bHasSec ? 1 : 0);
+                if (aCount != bCount) return false;
+                if (aCount == 0) return true;
+                if (aCount == 1)
+                {
+                    ShortGuid a = aHasPri ? aPri : aSec;
+                    ShortGuid b = bHasPri ? bPri : bSec;
+                    return a == b;
+                }
+                return (aPri == bPri && aSec == bSec) || (aPri == bSec && aSec == bPri);
+            }
+
+            static int ZonePairHash(ShortGuid pri, ShortGuid sec)
+            {
+                uint a = pri == ShortGuid.Invalid ? 0u : pri.AsUInt32;
+                uint b = (sec == ShortGuid.Invalid || sec == pri) ? 0u : sec.AsUInt32;
+                if (b != 0 && (a == 0 || b < a))
+                {
+                    uint t = a; a = b; b = t;
+                }
+                unchecked
+                {
+                    return (int)(a * 397u) ^ (int)b;
+                }
             }
 
             public override bool Equals(object obj)
@@ -893,21 +1061,13 @@ namespace CATHODE
                     hash = hash * 23 + EmissiveFlags.GetHashCode();
                     hash = hash * 23 + EmissiveIntensityMultiplier.GetHashCode();
                     hash = hash * 23 + EmissiveRadiosityMultiplier.GetHashCode();
-                    hash = hash * 23 + PrimaryZoneID.GetHashCode();
-                    hash = hash * 23 + SecondaryZoneID.GetHashCode();
+                    hash = hash * 23 + ZonePairHash(PrimaryZoneID, SecondaryZoneID);
                     hash = hash * 23 + LightingMasterID.GetHashCode();
                     hash = hash * 23 + Flags.RequiresScript.GetHashCode();
                     hash = hash * 23 + Flags.Visible.GetHashCode();
                     hash = hash * 23 + Flags.Stationary.GetHashCode();
                     return hash;
                 }
-            }
-
-            ~MOVER_DESCRIPTOR()
-            {
-                GPUConstants = null;
-                RenderConstants = null;
-                Entity = null;
             }
         };
 #endregion

@@ -70,6 +70,8 @@ namespace CATHODE.ShaderTypes
         CA_WATER_CAUSTICS_OVERLAY = 63,
         CA_SPACESUIT_VISOR = 64,
         CA_CAMERA_MAP = 65,
+
+        BESPOKE_SHADER = 66, //This type is not actually an Ubershader, and can only be contained within BespokeShaders.
     };
 
     public enum SHADER_REQUIREMENTS

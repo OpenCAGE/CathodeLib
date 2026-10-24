@@ -38,7 +38,9 @@ namespace CATHODE.Scripting
         private CompositePurgeTable _compPurges = new CompositePurgeTable();
         private EntityNameTable _entityNames = new EntityNameTable();
         private CompositeModificationInfoTable _modificationInfo = new CompositeModificationInfoTable();
+        private AssetModificationInfoTable _assetModificationInfo = new AssetModificationInfoTable();
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
+        private ColourParameterTable _colourParameters = new ColourParameterTable();
 
         public FlagTable Flags => _flagTable;
         private FlagTable _flagTable = new FlagTable();
@@ -56,29 +58,53 @@ namespace CATHODE.Scripting
                 return;
 
             _commands.OnLoadSuccess += LoadInfo;
+            _commands.OnSaveBegin += ApplyEntityTransformsToResources;
             _commands.OnSaveSuccess += SaveInfo;
 
             if (_commands.Loaded)
                 LoadInfo(_commands.Filepath);
         }
 
-        ~CommandsUtils()
+        #region Generic Utility Functions
+        /// <summary>
+        /// True if adding an instance of <paramref name="compositeToInstance"/> inside
+        /// <paramref name="parentComposite"/> would create a circular instance chain
+        /// (A→A or A→B→…→A).
+        /// </summary>
+        public bool WouldCreateCompositeInstanceCycle(Composite parentComposite, Composite compositeToInstance)
         {
-            if (_commands == null)
-                return;
+            if (parentComposite == null || compositeToInstance == null || _commands == null)
+                return false;
 
-            _commands.OnLoadSuccess -= LoadInfo;
-            _commands.OnSaveSuccess -= SaveInfo;
+            if (parentComposite.shortGUID == compositeToInstance.shortGUID)
+                return true;
 
-            _compPurges?.purged?.Clear();
-            _entityNames?.names?.Clear();
-            _modificationInfo?.modification_info?.Clear();
-            _pinInfo?.composite_pin_infos?.Clear();
-
-            _commands = null;
+            // Instancing compositeToInstance inside parent closes a cycle if
+            // compositeToInstance already reaches parent through nested instances.
+            return CompositeTransitivelyInstances(compositeToInstance, parentComposite.shortGUID, new HashSet<ShortGuid>());
         }
 
-        #region Generic Utility Functions
+        private bool CompositeTransitivelyInstances(Composite composite, ShortGuid targetId, HashSet<ShortGuid> visited)
+        {
+            if (composite == null || !visited.Add(composite.shortGUID))
+                return false;
+
+            foreach (FunctionEntity function in composite.functions)
+            {
+                if (function.function.IsFunctionType)
+                    continue;
+
+                if (function.function == targetId)
+                    return true;
+
+                Composite child = _commands.GetComposite(function.function);
+                if (child != null && CompositeTransitivelyInstances(child, targetId, visited))
+                    return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Gets the composite that contains the entity
         /// </summary>
@@ -139,11 +165,30 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// Resolve a stored path - an alias target, a CAGEAnimation binding, a TriggerSequence
+        /// entry - by every reading the format allows.
+        /// </summary>
+        public List<Tuple<Composite, Entity>> ResolveEntityPath(EntityPath path, Composite composite)
+        {
+            return ResolveEntityPath(path?.path, composite);
+        }
+        public List<Tuple<Composite, Entity>> ResolveEntityPath(ShortGuid[] hierarchy, Composite composite)
+        {
+            List<Tuple<Composite, Entity>> path = ResolveAlias(hierarchy, composite);
+            if (CouldResolve(path))
+                return path;
+            path = ResolveHierarchy(hierarchy);
+            if (CouldResolve(path))
+                return path;
+            return ResolveProxy(hierarchy);
+        }
+
+        /// <summary>
         /// Resolve an alias
         /// </summary>
         public List<Tuple<Composite, Entity>> ResolveAlias(AliasEntity alias, Composite composite)
         {
-            return ResolveAlias(alias?.alias?.path, composite);
+            return ResolveEntityPath(alias?.alias?.path, composite);
         }
         public List<Tuple<Composite, Entity>> ResolveAlias(EntityPath path, Composite composite)
         {
@@ -156,7 +201,7 @@ namespace CATHODE.Scripting
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
-            
+
             // Pre-allocate list with estimated capacity
             var path = new List<Tuple<Composite, Entity>>(maxIndex);
 
@@ -201,7 +246,9 @@ namespace CATHODE.Scripting
                 return new List<Tuple<Composite, Entity>>();
 
             Composite initialComp = _commands.GetComposite(hierarchy[0]); //NOTE: This isn't always the initial comp, so we check from the entry point first.
-            Composite currentComp = _commands.EntryPoints[0];
+            Composite currentComp = _commands.EntryPoints?[0] ?? initialComp;
+            if (currentComp == null)
+                return new List<Tuple<Composite, Entity>>(); //A Commands with no root yet (a scratch level mid-port) resolves nothing
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
@@ -257,7 +304,9 @@ namespace CATHODE.Scripting
             if (hierarchy == null || hierarchy.Length == 0)
                 return new List<Tuple<Composite, Entity>>();
 
-            Composite currentComp = _commands.EntryPoints[0];
+            Composite currentComp = _commands.EntryPoints?[0];
+            if (currentComp == null)
+                return new List<Tuple<Composite, Entity>>(); //A Commands with no root yet resolves nothing
 
             bool hasTerminator = hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid;
             int maxIndex = hierarchy.Length - (hasTerminator ? 1 : 0);
@@ -296,6 +345,50 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// A dead proxy is one whose path no longer reaches an entity: its target was deleted, or the composite
+        /// was ported to a level that never had it (a mission script's door proxies only resolve in the level
+        /// the script was written for). No retail level ships one, so a dead proxy is always something a user
+        /// did, and it is kept rather than purged - along with every link through it - so it can be re-pointed
+        /// instead of the script silently losing its wiring. The proxy still knows its target's function type
+        /// (ProxyEntity.function), which is what its parameters and pins are derived from until it resolves again.
+        /// </summary>
+        public bool IsDeadProxy(ProxyEntity proxy)
+        {
+            return proxy != null && !CouldResolve(ResolveProxy(proxy));
+        }
+
+        /// <summary>
+        /// The dead proxies in a composite, in proxy order - see IsDeadProxy.
+        /// </summary>
+        public List<ProxyEntity> GetDeadProxies(Composite composite)
+        {
+            List<ProxyEntity> dead = new List<ProxyEntity>();
+            if (composite == null)
+                return dead;
+            foreach (ProxyEntity proxy in composite.proxies)
+                if (IsDeadProxy(proxy))
+                    dead.Add(proxy);
+            return dead;
+        }
+
+        /// <summary>
+        /// The dead proxies across every composite, keyed by composite - see IsDeadProxy.
+        /// </summary>
+        public Dictionary<Composite, List<ProxyEntity>> GetDeadProxies(IEnumerable<Composite> composites)
+        {
+            Dictionary<Composite, List<ProxyEntity>> dead = new Dictionary<Composite, List<ProxyEntity>>();
+            if (composites == null)
+                return dead;
+            foreach (Composite composite in composites)
+            {
+                List<ProxyEntity> proxies = GetDeadProxies(composite);
+                if (proxies.Count != 0)
+                    dead.Add(composite, proxies);
+            }
+            return dead;
+        }
+
+        /// <summary>
         /// Checks a resolved alias or proxy to get the pointed Entity and Composite
         /// </summary>
         public (Composite, Entity) GetResolvedTarget(List<Tuple<Composite, Entity>> path)
@@ -317,13 +410,15 @@ namespace CATHODE.Scripting
             var sb = new StringBuilder();
             for (int i = 0; i < path.Count; i++)
             {
+                Composite composite = path[i]?.Item1;
+                Entity entity = path[i]?.Item2;
                 if (includeGuids) 
                 {
                     sb.Append('[');
-                    sb.Append(path[i].Item2.shortGUID.ToByteString());
+                    sb.Append(entity != null ? entity.shortGUID.ToByteString() : "????????");
                     sb.Append("] ");
                 }
-                sb.Append(GetEntityName(path[i].Item1, path[i].Item2));
+                sb.Append(GetEntityName(composite, entity));
                 if (i != path.Count - 1) 
                     sb.Append(" -> ");
             }
@@ -359,7 +454,8 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
-        /// CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion
+        /// CA's CAGE doesn't properly tidy up hierarchies pointing to deleted entities - so we can do that to save confusion.
+        /// Proxies are the exception: see IsDeadProxy.
         /// </summary>
         public bool PurgeDeadLinks(Composite composite, bool force = false)
         {
@@ -370,7 +466,6 @@ namespace CATHODE.Scripting
             }
 
             int originalUnknownCount = 0;
-            int originalProxyCount = 0;
             int originalAliasCount = 0;
             int newTriggerCount = 0;
             int originalTriggerCount = 0;
@@ -395,21 +490,20 @@ namespace CATHODE.Scripting
                 composite.functions_dictionary.Remove(guid);
             }
 
-            // Aliases must point to children of the Composite that still exist
-            // Also remove aliases that don't have any links in or out, or any parameters
+            // Aliases must point to an entity that still exists.
+            //
+            // Only that. This used to also drop any alias carrying no links and no parameters, which
+            // read as tidying but deleted 7,135 working aliases across the campaign - retail uses
+            // exactly that shape to surface a nested entity in its parent, like Tech_Hub's
+            // "Ceiling_8_6m_9 -> Ceiling_Rectangle_1 -> LightReference_1". They hold no override
+            // today, but they are the handle you reach that entity by, and sixteen of them were the
+            // target of a path that still resolved. An alias that resolves is not a dead link.
             var aliasesToRemove = new List<ShortGuid>();
             foreach (var kvp in composite.aliases_dictionary)
             {
-                var alias = kvp.Value;
-                // Remove if alias cannot be resolved
-                if (!CouldResolve(ResolveAlias(alias, composite)))
-                {
-                    aliasesToRemove.Add(kvp.Key);
-                }
-                // Remove if alias has no child links, no parameters, and no parent links
-                else if (alias.childLinks.Count == 0 && 
-                         alias.parameters.Count == 0 && 
-                         alias.GetParentLinks(composite).Count == 0)
+                // An alias is normally local, but retail writes a handful root-relative, and deleting
+                // something a valid reading still reaches is not a tidy-up, it is data loss.
+                if (!CouldResolve(ResolveEntityPath(kvp.Value?.alias?.path, composite)))
                 {
                     aliasesToRemove.Add(kvp.Key);
                 }
@@ -420,20 +514,7 @@ namespace CATHODE.Scripting
                 composite.aliases_dictionary.Remove(guid);
             }
 
-            // Proxies must be able to be resolved in some form
-            var proxiesToRemove = new List<ShortGuid>();
-            foreach (var kvp in composite.proxies_dictionary)
-            {
-                if (!CouldResolve(ResolveProxy(kvp.Value)))
-                {
-                    proxiesToRemove.Add(kvp.Key);
-                }
-            }
-            originalProxyCount = composite.proxies_dictionary.Count;
-            foreach (var guid in proxiesToRemove)
-            {
-                composite.proxies_dictionary.Remove(guid);
-            }
+            // Proxies that no longer resolve are deliberately kept, links and all - see IsDeadProxy.
 
             // Process special function types (TriggerSequence and CAGEAnimation)
             foreach (var kvp in composite.functions_dictionary)
@@ -447,7 +528,7 @@ namespace CATHODE.Scripting
                         var sequenceToRemove = new List<TriggerSequence.SequenceEntry>();
                         foreach (var entry in trig.sequence)
                         {
-                            if (!CouldResolve(ResolveAlias(entry.connectedEntity.path, composite)))
+                            if (!CouldResolve(ResolveEntityPath(entry.connectedEntity.path, composite)))
                             {
                                 sequenceToRemove.Add(entry);
                             }
@@ -468,7 +549,7 @@ namespace CATHODE.Scripting
                             //TODO: Worth also removing connections that have no event/float tracks?
                             //List<CAGEAnimation.FloatTrack> floatTracks = anim.animations.FindAll(o => o.shortGUID == connection.target_track);
                             //List<CAGEAnimation.EventTrack> eventTracks = anim.events.FindAll(o => o.shortGUID == connection.target_track);
-                            if (!CouldResolve(ResolveAlias(connection.connectedEntity.path, composite)))
+                            if (!CouldResolve(ResolveEntityPath(connection.connectedEntity.path, composite)))
                             {
                                 connectionsToRemove.Add(connection);
                             }
@@ -506,7 +587,6 @@ namespace CATHODE.Scripting
 
             int totalRemoved = originalUnknownCount +
                 (originalFuncCount - composite.functions_dictionary.Count) +
-                (originalProxyCount - composite.proxies_dictionary.Count) +
                 (originalAliasCount - composite.aliases_dictionary.Count) +
                 (originalTriggerCount - newTriggerCount) +
                 (originalAnimCount - newAnimCount) +
@@ -522,7 +602,6 @@ namespace CATHODE.Scripting
                 "Purged all dead hierarchies and entities in " + composite.name + "!" +
                 "\n - " + originalUnknownCount + " unknown entities" +
                 "\n - " + (originalFuncCount - composite.functions_dictionary.Count) + " functions (of " + originalFuncCount + ")" +
-                "\n - " + (originalProxyCount - composite.proxies_dictionary.Count) + " proxies (of " + originalProxyCount + ")" +
                 "\n - " + (originalAliasCount - composite.aliases_dictionary.Count) + " aliases (of " + originalAliasCount + ")" +
                 "\n - " + (originalTriggerCount - newTriggerCount) + " triggers (of " + originalTriggerCount + ")" +
                 "\n - " + (originalAnimCount - newAnimCount) + " anim connections (of " + originalAnimCount + ")" +
@@ -562,6 +641,7 @@ namespace CATHODE.Scripting
 
         /// <summary>
         /// Add all parameters to a given entity with default values (NOTE: you only need to pass in composite if Entity is an Alias or Variable, otherwise feel free to pass null)
+        /// Only parameters of the given variants are added, bar a function's own data, which is added whatever the variants: its default 'resource' and on-entity resources, and an empty 'points' path on a SplinePath that has none
         /// </summary>
         public void AddAllDefaultParameters(Entity entity, Composite composite, bool overwrite = true, ParameterVariant variants = ParameterVariant.STATE_PARAMETER | ParameterVariant.INPUT_PIN | ParameterVariant.PARAMETER, bool includeInherited = true)
         {
@@ -577,7 +657,7 @@ namespace CATHODE.Scripting
                     {
                         (Composite proxiedComposite, Entity proxiedEntity) = _commands.Utils.GetResolvedTarget(_commands.Utils.ResolveProxy((ProxyEntity)entity));
                         if (includeInherited)
-                            ApplyDefaults(proxiedEntity, entity, overwrite, variants, FunctionType.ProxyInterface);
+                            ApplyDefaults(proxiedEntity ?? entity, entity, overwrite, variants, FunctionType.ProxyInterface);
                         if (proxiedEntity != null && proxiedComposite != null)
                         {
                             switch (proxiedEntity.variant)
@@ -591,6 +671,13 @@ namespace CATHODE.Scripting
                                 default:
                                     throw new Exception("Unexpected!"); //we can't proxy to proxies or aliases
                             }
+                        }
+                        else
+                        {
+                            //A dead proxy (see IsDeadProxy) still knows what it pointed at
+                            ProxyEntity proxy = (ProxyEntity)entity;
+                            if (proxy.function.IsFunctionType || _commands.GetComposite(proxy.function) != null)
+                                ApplyDefaultFunction(new FunctionEntity(ShortGuid.Invalid) { function = proxy.function }, entity, composite, variants, overwrite, includeInherited);
                         }
                     }
                     break;
@@ -641,13 +728,26 @@ namespace CATHODE.Scripting
             {
                 if (!variants.HasFlag(variant)) continue;
                 ParameterData defaultValue = baseEntity.GetParameter(guid)?.content;
-                targetEntity.AddParameter(guid, defaultValue != null ? defaultValue : CreateDefaultParameterData(function, guid, variant), variant, overwrite);
+                if (defaultValue is cResource existingResource && (existingResource.value == null || existingResource.value.Count == 0))
+                    defaultValue = null;
+                if (type == DataType.RESOURCE && guid != ShortGuids.resource && defaultValue is cResource)
+                    defaultValue = null;
+                if (defaultValue == null)
+                    defaultValue = CreateDefaultParameterData(function, guid, variant);
+                else if (!ReferenceEquals(baseEntity, targetEntity) && defaultValue is cResource)
+                    defaultValue = (ParameterData)defaultValue.Clone();
+                if (defaultValue == null)
+                    continue; //nothing to store for it (a link-only pin): a parameter with no content is worse than none
+                targetEntity.AddParameter(guid, defaultValue, variant, overwrite);
             }
         }
         private void ApplyDefaultVariable(VariableEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite)
         {
             var pinInfo = _commands.Utils.GetPinInfo(composite, baseEntity);
             ParameterData defaultValue = baseEntity.GetParameter(baseEntity.name)?.content;
+
+            if (defaultValue != null && !ReferenceEquals(baseEntity, targetEntity))
+                defaultValue = (ParameterData)defaultValue.Clone();
             if (defaultValue != null)
             {
                 if (pinInfo == null)
@@ -674,6 +774,11 @@ namespace CATHODE.Scripting
             }
             else
             {
+                //No value of its own, and a type that holds none (OBJECT, ZONE, ZONE_LINK, ANIMATION_INFO, NONE...): the pin only
+                //takes links. AddParameter(name, type) would fall back to a FLOAT 0, writing a wrongly typed value into the level
+                if (!HoldsValue(baseEntity.type))
+                    return;
+
                 if (pinInfo == null)
                 {
                     if (variants.HasFlag(ParameterVariant.PARAMETER))
@@ -697,6 +802,26 @@ namespace CATHODE.Scripting
                 }
             }
         }
+        /* The types Entity.AddParameter can make a value of (anything else falls back to FLOAT) */
+        private static bool HoldsValue(DataType type)
+        {
+            switch (type)
+            {
+                case DataType.STRING:
+                case DataType.FLOAT:
+                case DataType.INTEGER:
+                case DataType.BOOL:
+                case DataType.VECTOR:
+                case DataType.TRANSFORM:
+                case DataType.ENUM:
+                case DataType.ENUM_STRING:
+                case DataType.SPLINE:
+                case DataType.RESOURCE:
+                    return true;
+            }
+            return false;
+        }
+
         private void ApplyDefaultFunction(FunctionEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite, bool includeInherited)
         {
             if (baseEntity.function.IsFunctionType)
@@ -709,6 +834,9 @@ namespace CATHODE.Scripting
                     functionType = GetInheritedFunction(functionType.Value);
                     if (functionType == null) break;
                 }
+                ApplyDefaultResourceParameter(baseEntity, targetEntity, overwrite, includeInherited);
+                ApplyDefaultSplinePath(baseEntity, targetEntity, includeInherited);
+                ApplyDefaultEntityResources(baseEntity, targetEntity);
             }
             else
             {
@@ -725,6 +853,148 @@ namespace CATHODE.Scripting
                 {
                     ApplyDefaultVariable(variable, targetEntity, compositeInstance, variants, overwrite);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Populate the default resources for the entity (via 'resources' parameter)
+        /// </summary>
+        private void ApplyDefaultResourceParameter(FunctionEntity baseEntity, Entity targetEntity, bool overwrite, bool includeInherited)
+        {
+            if (baseEntity == null || !baseEntity.function.IsFunctionType)
+                return;
+
+            FunctionType? functionType = baseEntity.function.AsFunctionType;
+            while (functionType != null)
+            {
+                ParameterData defaultValue = baseEntity.GetParameter(ShortGuids.resource)?.content;
+                if (defaultValue is cResource existingResource && (existingResource.value == null || existingResource.value.Count == 0))
+                    defaultValue = null;
+                bool carried = defaultValue != null;
+                if (defaultValue == null)
+                    defaultValue = CreateDefaultParameterData(functionType.Value, ShortGuids.resource, ParameterVariant.INTERNAL);
+                if (defaultValue == null)
+                    return;
+
+                if (defaultValue is cResource)
+                {
+                    cResource targetResource = targetEntity.GetParameter(ShortGuids.resource)?.content as cResource;
+                    bool targetPopulated = targetResource != null && targetResource.value != null && targetResource.value.Count > 0;
+
+                    // Nothing to fill in - and it matters that this returns BEFORE AddParameter.
+                    // AddParameter binds a resource to the entity (rewrites the cResource's id and
+                    // every ref's resource_id to the entity id) ahead of its own overwrite check,
+                    // and when the base entity IS the target that cResource is the entity's live
+                    // parameter. Retail ids are name hashes for some functions - the ModelReference
+                    // in AYZ\Science\Lighting\Small_Floor_Light carries "Light", not its entity id -
+                    // so a plain defaults pass from the inspector silently re-identified the
+                    // resource; every mover instancing then emitted for it wore the new id and
+                    // retail's radiosity rows for the old one dangled (BSP_Torrens, 2026-09-01).
+                    if (!overwrite && targetPopulated)
+                        return;
+
+                    bool fromTemplate = !ReferenceEquals(baseEntity, targetEntity);
+                    if (fromTemplate)
+                        defaultValue = (ParameterData)defaultValue.Clone();
+
+                    // A resource copied from a template entity, or created fresh, belongs to the
+                    // entity receiving it and is bound to it. One the entity already carried keeps
+                    // its id, for the reason above.
+                    bool own = carried && !fromTemplate;
+                    targetEntity.AddParameter(ShortGuids.resource, defaultValue, ParameterVariant.INTERNAL, true, bindResourceToEntity: !own);
+                    return;
+                }
+
+                if (!includeInherited) break;
+                functionType = GetInheritedFunction(functionType.Value);
+            }
+        }
+
+        /// <summary>
+        /// Give a SplinePath its own path (an empty spline) when it has none, whichever variants were asked for
+        /// </summary>
+        private void ApplyDefaultSplinePath(FunctionEntity baseEntity, Entity targetEntity, bool includeInherited)
+        {
+            /* A SplinePath's points are INTERNAL, which the defaults passes leave out: most INTERNAL parameters are
+               indices the level build writes (system_index, environmentmap_index) or values only the engine sets, so
+               adding them would invent data. The points are the entity's own data instead - stored on all 11,960
+               SplinePaths across the shipped levels, never wired - and without them a new SplinePath had no row to
+               author its path on. Only the entity itself gets one: a proxy or alias showing a SplinePath reads the
+               path from it, and a copy would be an override that never follows the original. SplinePath.points is
+               the only INTERNAL spline in the definitions, and nothing inherits from SplinePath, so every other
+               function returns before the definitions are read: this runs on every defaults pass. */
+            if (!(targetEntity is FunctionEntity) || baseEntity.function != FunctionType.SplinePath)
+                return;
+
+            FunctionType? functionType = FunctionType.SplinePath;
+            while (functionType != null)
+            {
+                foreach ((ShortGuid guid, ParameterVariant variant, DataType type) in GetAllParameters(functionType.Value))
+                {
+                    if (variant != ParameterVariant.INTERNAL || type != DataType.SPLINE || targetEntity.GetParameter(guid) != null)
+                        continue;
+                    ParameterData path = CreateDefaultParameterData(functionType.Value, guid, ParameterVariant.INTERNAL);
+                    if (path != null)
+                        targetEntity.AddParameter(guid, path, ParameterVariant.INTERNAL);
+                }
+
+                if (!includeInherited) break;
+                functionType = GetInheritedFunction(functionType.Value);
+            }
+        }
+
+        /// <summary>
+        /// Populate the default resources for the entity (via on-entity resources)
+        /// </summary>
+        private void ApplyDefaultEntityResources(FunctionEntity baseEntity, Entity targetEntity)
+        {
+            if (!(targetEntity is FunctionEntity functionEntity) || baseEntity == null)
+                return;
+            if (baseEntity.function != functionEntity.function)
+                return;
+
+            if (baseEntity.function == FunctionType.PhysicsSystem)
+            {
+                functionEntity.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+                return;
+            }
+            if (baseEntity.function == FunctionType.ExclusiveMaster)
+            {
+                functionEntity.AddResource(ResourceType.EXCLUSIVE_MASTER_STATE_RESOURCE);
+                return;
+            }
+            if (baseEntity.function == FunctionType.NavMeshBarrier)
+            {
+                functionEntity.AddResource(ResourceType.NAV_MESH_BARRIER_RESOURCE);
+                return;
+            }
+            if (IsTraversalSegmentFunction(baseEntity.function))
+                functionEntity.AddResource(ResourceType.TRAVERSAL_SEGMENT);
+        }
+
+        static bool IsTraversalSegmentFunction(ShortGuid function)
+        {
+            if (!function.IsFunctionType)
+                return false;
+            switch (function.AsFunctionType)
+            {
+                case FunctionType.TRAV_1ShotClimbUnder:
+                case FunctionType.TRAV_1ShotFloorVentEntrance:
+                case FunctionType.TRAV_1ShotFloorVentExit:
+                case FunctionType.TRAV_1ShotLeap:
+                case FunctionType.TRAV_1ShotSpline:
+                case FunctionType.TRAV_1ShotVentEntrance:
+                case FunctionType.TRAV_1ShotVentExit:
+                case FunctionType.TRAV_ContinuousBalanceBeam:
+                case FunctionType.TRAV_ContinuousCinematicSidle:
+                case FunctionType.TRAV_ContinuousClimbingWall:
+                case FunctionType.TRAV_ContinuousLadder:
+                case FunctionType.TRAV_ContinuousLedge:
+                case FunctionType.TRAV_ContinuousPipe:
+                case FunctionType.TRAV_ContinuousTightGap:
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -763,9 +1033,12 @@ namespace CATHODE.Scripting
                             }
                         }
                         Composite compositeInstance = _commands.GetComposite((functionEntity).function);
-                        foreach (VariableEntity variable in compositeInstance.variables)
+                        if (compositeInstance != null)
                         {
-                            parameters.AddRange(GetAllParameters(variable, compositeInstance, includeInherited));
+                            foreach (VariableEntity variable in compositeInstance.variables)
+                            {
+                                parameters.AddRange(GetAllParameters(variable, compositeInstance, includeInherited));
+                            }
                         }
                     }
                     break;
@@ -784,6 +1057,13 @@ namespace CATHODE.Scripting
                     (Composite proxiedComposite, Entity proxiedEntity) = GetResolvedTarget(ResolveProxy((ProxyEntity)entity));
                     if (proxiedEntity != null)
                         parameters.AddRange(GetAllParameters(proxiedEntity, composite)); //note while reading through again, shouldn't these be Proxied/Aliased composites?
+                    else
+                    {
+                        //A dead proxy (see IsDeadProxy) still knows its target's type, so its pins stay drawable
+                        ProxyEntity proxy = (ProxyEntity)entity;
+                        if (proxy.function.IsFunctionType || _commands.GetComposite(proxy.function) != null)
+                            parameters.AddRange(GetAllParameters(new FunctionEntity(ShortGuid.Invalid) { function = proxy.function }, composite, includeInherited));
+                    }
                     break;
                 case EntityVariant.ALIAS:
                     (Composite aliasedComposite, Entity aliasedEntity) = GetResolvedTarget(ResolveAlias((AliasEntity)entity, composite));
@@ -809,6 +1089,14 @@ namespace CATHODE.Scripting
         /// Get all possible parameters for a given function type (not including inherited)
         /// </summary>
         public List<(ShortGuid, ParameterVariant, DataType)> GetAllParameters(FunctionType function)
+        {
+            //Decoded from the vanilla table once per function type (it doesn't change): a copy of that each time, as the caller may add to it
+            return new List<(ShortGuid, ParameterVariant, DataType)>(_functionParameters.GetOrAdd(function, o => ReadAllParameters(o).ToArray()));
+        }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<FunctionType, (ShortGuid, ParameterVariant, DataType)[]> _functionParameters
+            = new System.Collections.Concurrent.ConcurrentDictionary<FunctionType, (ShortGuid, ParameterVariant, DataType)[]>();
+
+        private static List<(ShortGuid, ParameterVariant, DataType)> ReadAllParameters(FunctionType function)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
@@ -964,6 +1252,9 @@ namespace CATHODE.Scripting
                         Entity proxiedEntity = GetResolvedTarget(ResolveProxy(proxyEntity)).Item2;
                         if (proxiedEntity != null)
                             return GetParameterMetadata(proxiedEntity, parameter, composite);
+                        //A dead proxy (see IsDeadProxy) still knows its target's type - the same answer GetAllParameters gives
+                        if (proxyEntity.function.IsFunctionType || _commands.GetComposite(proxyEntity.function) != null)
+                            return GetParameterMetadata(new FunctionEntity(ShortGuid.Invalid) { function = proxyEntity.function }, parameter, composite);
                         break;
                     }
                 case EntityVariant.ALIAS:
@@ -1144,7 +1435,7 @@ namespace CATHODE.Scripting
                     {
                         ParameterData data;
                         Composite comp = _commands.GetComposite(functionEntity.function);
-                        if (composite != null)
+                        if (comp != null)
                         {
                             VariableEntity var = comp.variables.FirstOrDefault(o => o.name == parameter);
                             if (var != null)
@@ -1180,6 +1471,12 @@ namespace CATHODE.Scripting
                         (Composite proxiedComposite, Entity proxiedEntity) = GetResolvedTarget(ResolveProxy((ProxyEntity)entity));
                         if (proxiedEntity != null)
                             return CreateDefaultParameterData(proxiedEntity, proxiedComposite, parameter);
+                        //A dead proxy (see IsDeadProxy) still knows its target's type. This must answer for every
+                        //parameter GetAllParameters lists for it: instancing takes the default of each one the
+                        //proxy does not carry, and dereferences the result.
+                        ProxyEntity deadProxy = (ProxyEntity)entity;
+                        if (deadProxy.function.IsFunctionType || _commands.GetComposite(deadProxy.function) != null)
+                            return CreateDefaultParameterData(new FunctionEntity(ShortGuid.Invalid) { function = deadProxy.function }, composite, parameter);
                         break;
                     }
                 case EntityVariant.ALIAS:
@@ -1211,9 +1508,30 @@ namespace CATHODE.Scripting
         }
         public ParameterData CreateDefaultParameterData(FunctionType function, ShortGuid parameter, ParameterVariant variant)
         {
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function].TryGetValue(variant, out int offset))
+                return null;
+
+            /* Where the scan below stops for a parameter, and what it reads there, is the same on every call - so each block
+             * is walked once (DefaultStops) and the answer built from what was read. Instancing asks this for every default of
+             * every entity template, through every variant of every class up the chain, and each question allocated a reader,
+             * a stream and an encoding: ~1.4 KB a default, millions of defaults on a large level. Whatever threw goes back to
+             * the scan, which throws it again. */
+            DefaultStops stops = GetDefaultStops(function, variant, offset, CustomTable.Vanilla.CathodeEntities.content);
+            if (stops.Stops.TryGetValue(parameter.AsUInt32, out DefaultStop stop))
+            {
+                if (stop.Read)
+                    return DefaultFromStop(stop, parameter, variant);
+            }
+            else if (stops.Complete)
+                return null;
+            return ScanDefaultParameterData(function, parameter, variant, offset);
+        }
+
+        private ParameterData ScanDefaultParameterData(FunctionType function, ShortGuid parameter, ParameterVariant variant, int offset)
+        {
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
             {
-                reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function][variant];
+                reader.BaseStream.Position = offset;
                 int paramCount = reader.ReadInt32();
                 for (int i = 0; i < paramCount; i++)
                 {
@@ -1302,13 +1620,27 @@ namespace CATHODE.Scripting
                                     break;
                                 case DataType.RESOURCE:
                                     if (isCorrectParam)
-                                        return new cResource((ResourceType)reader.ReadInt32());
+                                        return parameter == ShortGuids.resource ? new cResource((ResourceType)reader.ReadInt32()) : null;
                                     else
                                         reader.BaseStream.Position += 4;
                                     break;
-                                default:
+                                case DataType.SPLINE:
+                                    /* The only spline parameter a level stores a value on is SplinePath's own points
+                                       (INTERNAL, stored on all 329 SplinePaths in BSP_TORRENS). The other 26 are input
+                                       pins wired to a SplinePath, and none of BSP_TORRENS's 439 carries a value. A float
+                                       stood in for both: a new TRAV_ or CameraPath entity got a number row on each pin,
+                                       written into the pak, and Reset on a points row swapped the spline for a 0. */
                                     if (isCorrectParam)
-                                        return new cFloat(); //Any other types have no default values.
+                                        return variant == ParameterVariant.INPUT_PIN ? null : new cSpline();
+                                    break;
+                                default:
+                                    /* Objects, zones, reference frames and animation infos are pointers: the
+                                       engine resolves them through links, and no retail script stores a value
+                                       on one (0 of 153 such pins across HAB_AIRPORT). A float used to stand in
+                                       for them here, which the editor then showed as a number on a pin like
+                                       WEAPON_GiveToCharacter.Weapon and wrote into the pak. */
+                                    if (isCorrectParam)
+                                        return IsPointerType(dataType) ? null : new cFloat(); //Any other types have no default values.
                                     break;
                             }
                             break;
@@ -1318,24 +1650,247 @@ namespace CATHODE.Scripting
             return null;
         }
 
+        //One entry the default scan stops on, with the value it reads there already read
+        private sealed class DefaultStop
+        {
+            public DataType Type;
+            public bool Read;       //false: reading the value threw, so the scan is replayed to throw it
+            public bool Bool;
+            public int Int0, Int1;
+            public float Float0, Float1, Float2;
+            public string String0, String1;
+        }
+
+        //A (function, variant) block of the vanilla definitions: the first entry the scan stops on for each parameter id
+        private sealed class DefaultStops
+        {
+            public byte[] Content;
+            public int Offset;
+            public uint NameID;
+            public bool Complete;   //walked to the end without throwing
+            public readonly Dictionary<uint, DefaultStop> Stops = new Dictionary<uint, DefaultStop>();
+        }
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, DefaultStops> _defaultStops = new System.Collections.Concurrent.ConcurrentDictionary<ulong, DefaultStops>();
+
+        private static DefaultStops GetDefaultStops(FunctionType function, ParameterVariant variant, int offset, byte[] content)
+        {
+            ulong key = ((ulong)(uint)function << 32) | (uint)variant;
+            if (_defaultStops.TryGetValue(key, out DefaultStops stops) && ReferenceEquals(stops.Content, content) && stops.Offset == offset && stops.NameID == _nameID)
+                return stops;
+            stops = DecodeDefaultStops(function, variant, offset, content);
+            _defaultStops[key] = stops;
+            return stops;
+        }
+
+        //The scan's walk through a block, entry by entry as it steps over the ones it is not asked for (its path does not
+        //depend on the id asked for), keeping where it would stop for each id
+        private static DefaultStops DecodeDefaultStops(FunctionType function, ParameterVariant variant, int offset, byte[] content)
+        {
+            DefaultStops stops = new DefaultStops() { Content = content, Offset = offset, NameID = _nameID };
+            try
+            {
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+                {
+                    reader.BaseStream.Position = offset;
+                    int paramCount = reader.ReadInt32();
+                    for (int i = 0; i < paramCount; i++)
+                    {
+                        uint paramID = reader.ReadUInt32();
+                        switch (variant)
+                        {
+                            case ParameterVariant.REFERENCE_PIN:
+                            case ParameterVariant.METHOD_FUNCTION:
+                            case ParameterVariant.METHOD_PIN:
+                                if (!stops.Stops.ContainsKey(paramID))
+                                    stops.Stops.Add(paramID, new DefaultStop() { Type = DataType.NONE, Read = true });
+                                break;
+                            default:
+                                int dataTypeTemp = reader.ReadInt32();
+                                DataType dataType = dataTypeTemp == -1 ? DataType.ENUM_STRING : (DataType)dataTypeTemp;
+                                //The scan steps over a name string on anything but a Zone, even the one it was asked for
+                                bool nameString = (dataType == DataType.STRING || dataType == DataType.FILEPATH) && function != FunctionType.Zone && paramID == _nameID;
+                                if (!nameString && !stops.Stops.ContainsKey(paramID))
+                                    stops.Stops.Add(paramID, ReadDefaultStop(content, reader.BaseStream.Position, dataType));
+                                //Then over the data, as the scan does for an entry it is not looking for
+                                switch (dataType)
+                                {
+                                    case DataType.BOOL:
+                                        reader.BaseStream.Position += 1;
+                                        break;
+                                    case DataType.INTEGER:
+                                    case DataType.FLOAT:
+                                    case DataType.RESOURCE:
+                                        reader.BaseStream.Position += 4;
+                                        break;
+                                    case DataType.STRING:
+                                    case DataType.FILEPATH:
+                                        {
+                                            int seek = reader.ReadByte();
+                                            reader.BaseStream.Position += seek;
+                                        }
+                                        break;
+                                    case DataType.ENUM:
+                                        if (reader.ReadInt32() != -1)
+                                            reader.BaseStream.Position += 4;
+                                        break;
+                                    case DataType.ENUM_STRING:
+                                        {
+                                            int seek = reader.ReadByte();
+                                            reader.BaseStream.Position += seek;
+                                            seek = reader.ReadByte();
+                                            reader.BaseStream.Position += seek;
+                                        }
+                                        break;
+                                    case DataType.VECTOR:
+                                        reader.BaseStream.Position += 12;
+                                        break;
+                                }
+                                break;
+                        }
+                    }
+                }
+                stops.Complete = true;
+            }
+            catch
+            {
+                stops.Complete = false;
+            }
+            return stops;
+        }
+
+        //The read the scan makes when it stops on an entry: a reader of its own, as the scan's is fresh for each call
+        private static DefaultStop ReadDefaultStop(byte[] content, long position, DataType dataType)
+        {
+            DefaultStop stop = new DefaultStop() { Type = dataType };
+            try
+            {
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(content)))
+                {
+                    reader.BaseStream.Position = position;
+                    switch (dataType)
+                    {
+                        case DataType.BOOL:
+                            stop.Bool = reader.ReadBoolean();
+                            break;
+                        case DataType.INTEGER:
+                        case DataType.RESOURCE:
+                            stop.Int0 = reader.ReadInt32();
+                            break;
+                        case DataType.FLOAT:
+                            stop.Float0 = reader.ReadSingle();
+                            break;
+                        case DataType.STRING:
+                        case DataType.FILEPATH:
+                            stop.String0 = reader.ReadString();
+                            break;
+                        case DataType.ENUM:
+                            stop.Int0 = reader.ReadInt32();
+                            if (stop.Int0 != -1)
+                                stop.Int1 = reader.ReadInt32();
+                            break;
+                        case DataType.ENUM_STRING:
+                            stop.String0 = reader.ReadString();
+                            stop.String1 = reader.ReadString();
+                            break;
+                        case DataType.VECTOR:
+                            stop.Float0 = reader.ReadSingle();
+                            stop.Float1 = reader.ReadSingle();
+                            stop.Float2 = reader.ReadSingle();
+                            break;
+                    }
+                }
+                stop.Read = true;
+            }
+            catch
+            {
+                stop.Read = false;
+            }
+            return stop;
+        }
+
+        //What the scan returns when it stops on this entry - a new object every time, as before
+        private static ParameterData DefaultFromStop(DefaultStop stop, ShortGuid parameter, ParameterVariant variant)
+        {
+            switch (variant)
+            {
+                case ParameterVariant.REFERENCE_PIN:
+                case ParameterVariant.METHOD_FUNCTION:
+                case ParameterVariant.METHOD_PIN:
+                    return new cFloat();
+            }
+            switch (stop.Type)
+            {
+                case DataType.BOOL:
+                    return new cBool(stop.Bool);
+                case DataType.INTEGER:
+                    return new cInteger(stop.Int0);
+                case DataType.FLOAT:
+                    return new cFloat(stop.Float0);
+                case DataType.STRING:
+                case DataType.FILEPATH:
+                    return new cString(stop.String0);
+                case DataType.ENUM:
+                    return stop.Int0 == -1 ? new cEnum() : new cEnum((EnumType)stop.Int0, stop.Int1);
+                case DataType.ENUM_STRING:
+                    return new cEnumString((EnumStringType)Enum.Parse(typeof(EnumStringType), stop.String0), stop.String1);
+                case DataType.VECTOR:
+                    return new cVector3(stop.Float0, stop.Float1, stop.Float2);
+                case DataType.TRANSFORM:
+                    return new cTransform(); //There are no default transforms written
+                case DataType.RESOURCE:
+                    return parameter == ShortGuids.resource ? new cResource((ResourceType)stop.Int0) : null;
+                case DataType.SPLINE:
+                    return variant == ParameterVariant.INPUT_PIN ? null : new cSpline();
+                default:
+                    return IsPointerType(stop.Type) ? null : new cFloat(); //Any other types have no default values.
+            }
+        }
+
+        /// <summary>
+        /// Data types that only ever arrive down a link, so have no value to default.
+        /// </summary>
+        public static bool IsPointerType(DataType dataType)
+        {
+            switch (dataType)
+            {
+                case DataType.OBJECT:
+                case DataType.ZONE:
+                case DataType.ZONE_LINK:
+                case DataType.REFERENCE_FRAME:
+                case DataType.ANIMATION_INFO:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>
         /// Get the relay pin for a given method pin
         /// </summary>
         public ShortGuid GetRelay(ShortGuid guid)
         {
-            using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
+            //The vanilla relay table, read once into a lookup (each method's first entry, as the scan found): it was read through
+            //from the start on every call, which a flowgraph page made per pin
+            Dictionary<uint, uint> relays = _relays;
+            if (relays == null)
             {
-                reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item1;
-                for (int i = 0; i < CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item2; i++)
+                relays = new Dictionary<uint, uint>();
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
                 {
-                    UInt32 method = reader.ReadUInt32();
-                    UInt32 relay = reader.ReadUInt32();
-                    if (method == guid.AsUInt32)
-                        return new ShortGuid(relay);
+                    reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item1;
+                    for (int i = 0; i < CustomTable.Vanilla.CathodeEntities.RelayInfoOffset.Item2; i++)
+                    {
+                        UInt32 method = reader.ReadUInt32();
+                        UInt32 relay = reader.ReadUInt32();
+                        if (!relays.ContainsKey(method))
+                            relays.Add(method, relay);
+                    }
                 }
+                _relays = relays;
             }
-            return ShortGuid.Invalid;
+            return relays.TryGetValue(guid.AsUInt32, out uint found) ? new ShortGuid(found) : ShortGuid.Invalid;
         }
+        private static Dictionary<uint, uint> _relays = null;
         #endregion
 
         #region Enum Utils
@@ -1355,78 +1910,132 @@ namespace CATHODE.Scripting
 
         #region Entity Names
         /// <summary>
-        /// Get the name of an entity contained within a composite
+        /// Get the name of an entity contained within a composite.
+        /// Names are stored directly on the entity as a 'name' string parameter - the legacy name tables are
+        /// only consulted as a fallback (they're migrated into parameters on first load, see LoadInfo).
         /// </summary>
-        public string GetEntityName(Composite composite, Entity entity) => GetEntityName(composite.shortGUID, entity.shortGUID);
+        public string GetEntityName(Composite composite, Entity entity)
+        {
+            if (entity == null)
+                return "Unknown";
+
+            //The name stored on the entity itself always wins
+            string ownName = GetEntityNameParameter(entity);
+            if (ownName != null)
+                return ownName;
+
+            //Aliases/proxies are stand-ins for another entity: without a name of their own, show the target's
+            if (composite != null && (entity.variant == EntityVariant.ALIAS || entity.variant == EntityVariant.PROXY))
+            {
+                string targetName = GetPointedEntityName(composite, entity);
+                if (targetName != null)
+                    return targetName;
+            }
+
+            if (composite == null)
+                return entity.shortGUID.ToByteString();
+
+            return GetEntityNameFromTables(composite.shortGUID, entity.shortGUID);
+        }
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (_entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite))
-                if (customComposite.TryGetValue(entityID, out string customName))
-                    return customName;
-            if (CustomTable.Vanilla.EntityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite))
-                if (vanillaComposite.TryGetValue(entityID, out string vanillaName))
-                    return vanillaName;
+            //Resolve the entity so we can read its 'name' parameter (and alias/proxy fallbacks)
+            Composite composite = _commands?.GetComposite(compositeID);
+            Entity entity = composite?.GetEntityByID(entityID);
+            if (entity != null)
+                return GetEntityName(composite, entity);
+
+            return GetEntityNameFromTables(compositeID, entityID);
+        }
+
+        /// <summary>
+        /// The entity's own 'name' parameter, or null if it doesn't have one set
+        /// </summary>
+        public static string GetEntityNameParameter(Entity entity)
+        {
+            cString name = entity?.GetParameter(ShortGuids.name)?.content as cString;
+            if (name == null || string.IsNullOrEmpty(name.value))
+                return null;
+            return name.value;
+        }
+
+        /// <summary>
+        /// The name of the entity an alias/proxy points to (null if it can't be resolved)
+        /// </summary>
+        private string GetPointedEntityName(Composite composite, Entity entity)
+        {
+            try
+            {
+                (Composite targetComposite, Entity targetEntity) = GetResolvedTarget(ResolveAliasOrProxy(entity, composite));
+                if (targetEntity == null || targetEntity == entity)
+                    return null;
+                return GetEntityName(targetComposite, targetEntity);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Legacy name lookup: custom names saved by older versions, then the vanilla name table
+        /// </summary>
+        private string GetEntityNameFromTables(ShortGuid compositeID, ShortGuid entityID)
+        {
+            if (_entityNames?.names != null &&
+                _entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customComposite) &&
+                customComposite != null &&
+                customComposite.TryGetValue(entityID, out string customName))
+                return customName;
+
+            if (CustomTable.Vanilla?.EntityNames?.names != null &&
+                CustomTable.Vanilla.EntityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> vanillaComposite) &&
+                vanillaComposite != null &&
+                vanillaComposite.TryGetValue(entityID, out string vanillaName))
+                return vanillaName;
+
             return entityID.ToByteString();
         }
 
         /// <summary>
-        /// Set the name of an entity contained within a composite
+        /// Set the name of an entity, stored as a 'name' parameter on the entity itself
         /// </summary>
-        public void SetEntityName(Composite composite, Entity entity, string name) => SetEntityName(composite.shortGUID, entity.shortGUID, name);
+        public void SetEntityName(Composite composite, Entity entity, string name) => SetEntityName(entity, name);
+        public void SetEntityName(Entity entity, string name)
+        {
+            if (entity == null)
+                return;
+
+            if (string.IsNullOrEmpty(name))
+            {
+                ClearEntityName(entity);
+                return;
+            }
+
+            entity.AddParameter(ShortGuids.name, new cString(name), ParameterVariant.PARAMETER);
+        }
         public void SetEntityName(ShortGuid compositeID, ShortGuid entityID, string name)
         {
-            if (!_entityNames.names.ContainsKey(compositeID))
-                _entityNames.names.Add(compositeID, new Dictionary<ShortGuid, string>());
-
-            if (!_entityNames.names[compositeID].ContainsKey(entityID))
-                _entityNames.names[compositeID].Add(entityID, name);
-            else
-                _entityNames.names[compositeID][entityID] = name;
+            Entity entity = _commands?.GetComposite(compositeID)?.GetEntityByID(entityID);
+            if (entity != null)
+                SetEntityName(entity, name);
         }
 
         /// <summary>
-        /// Clear the name of an entity contained within a composite
+        /// Clear the name of an entity
         /// </summary>
-        public void ClearEntityName(Composite composite, Entity entity) => ClearEntityName(composite.shortGUID, entity.shortGUID);
+        public void ClearEntityName(Composite composite, Entity entity) => ClearEntityName(entity);
+        public void ClearEntityName(Entity entity)
+        {
+            entity?.RemoveParameter(ShortGuids.name);
+        }
         public void ClearEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
-            if (_entityNames.names.ContainsKey(compositeID))
-                _entityNames.names[compositeID].Remove(entityID);
+            ClearEntityName(_commands?.GetComposite(compositeID)?.GetEntityByID(entityID));
         }
 
-        /// <summary>
-        /// Get all custom entity names for a composite
-        /// </summary>
-        public Dictionary<ShortGuid, string> GetAllCustomEntityNames(Composite composite) => GetAllCustomEntityNames(composite.shortGUID);
-        public Dictionary<ShortGuid, string> GetAllCustomEntityNames(ShortGuid compositeID)
-        {
-            Dictionary<ShortGuid, string> names = new Dictionary<ShortGuid, string>();
-            if (_entityNames.names.TryGetValue(compositeID, out Dictionary<ShortGuid, string> customNames))
-                foreach (KeyValuePair<ShortGuid, string> entry in customNames)
-                    names[entry.Key] = entry.Value;
-            return names;
-        }
-
-        /// <summary>
-        /// Bulk add custom entity names for a composite - note this will overwrite any that are already set with the same guids!
-        /// </summary>
-        public void AddCustomEntityNames(Composite composite, Dictionary<ShortGuid, string> names) => AddCustomEntityNames(composite.shortGUID, names);
-        public void AddCustomEntityNames(ShortGuid compositeID, Dictionary<ShortGuid, string> names)
-        {
-            Dictionary<ShortGuid, string> customNames = null;
-            if (!_entityNames.names.TryGetValue(compositeID, out customNames))
-            {
-                customNames = new Dictionary<ShortGuid, string>();
-                _entityNames.names.Add(compositeID, customNames);
-            }
-            foreach (KeyValuePair<ShortGuid, string> entry in names)
-            {
-                if (customNames.ContainsKey(entry.Key))
-                    customNames[entry.Key] = entry.Value;
-                else
-                    customNames.Add(entry.Key, entry.Value);
-            }
-        }
+        //NOTE: GetAllCustomEntityNames/AddCustomEntityNames have been removed - names live on the entities as a
+        //'name' parameter, so they're copied along with the entity itself and need no separate bookkeeping.
 
         /// <summary>
         /// Overwrites all Composite names with 'pretty' versions that aren't fully capitalised, as they are by default for PAK files.
@@ -1454,6 +2063,42 @@ namespace CATHODE.Scripting
             _modificationInfo.modification_info.RemoveAll(o => o.composite_id == info.composite_id);
             _modificationInfo.modification_info.Add(info);
         }
+
+        /// <summary>
+        /// True when any composite carries OpenCAGE modification metadata - i.e. the user has changed it in OpenCAGE.
+        /// </summary>
+        public bool HasAnyModificationInfo => _modificationInfo?.modification_info?.Count > 0;
+
+        /// <summary>Every composite's modification metadata: when the user last changed it.</summary>
+        public IReadOnlyList<CompositeModificationInfoTable.ModificationInfo> AllModificationInfo => _modificationInfo.modification_info;
+
+        /// <summary>Forget every composite's and asset's modification metadata - for a copy of the level going elsewhere.</summary>
+        public void ClearModificationInfo()
+        {
+            _modificationInfo.modification_info.Clear();
+            _assetModificationInfo.modification_info.Clear();
+        }
+
+        /// <summary>
+        /// Record that the user changed one of the level's assets - a model, a texture, a material, its galaxy... - now
+        /// (or at the given unix time).
+        /// </summary>
+        public void SetAssetModificationInfo(AssetModificationInfoTable.AssetKind kind, string name, int editorVersion, int? when = null)
+        {
+            if (string.IsNullOrEmpty(name))
+                return;
+            _assetModificationInfo.modification_info.RemoveAll(o => o.kind == kind && o.name == name);
+            _assetModificationInfo.modification_info.Add(new AssetModificationInfoTable.ModificationInfo()
+            {
+                kind = kind,
+                name = name,
+                editor_version = editorVersion,
+                modification_date = when ?? (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            });
+        }
+
+        /// <summary>Every asset's modification metadata: when the user last changed it.</summary>
+        public IReadOnlyList<AssetModificationInfoTable.ModificationInfo> AllAssetModificationInfo => _assetModificationInfo.modification_info;
 
         /// <summary>
         /// Get the modification metadata for a composite (if it exists)
@@ -1511,6 +2156,18 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// Replace every custom pin info row for a composite with the given set - an empty set removes them.
+        /// For putting a composite's pins back exactly as they were, which AddCustomPinInfos (a merge) cannot.
+        /// </summary>
+        public void ReplaceCustomPinInfos(ShortGuid compositeID, List<CompositePinInfoTable.PinInfo> infos)
+        {
+            if (infos == null || infos.Count == 0)
+                _pinInfo.composite_pin_infos.Remove(compositeID);
+            else
+                _pinInfo.composite_pin_infos[compositeID] = infos;
+        }
+
+        /// <summary>
         /// Bulk add custom entity pin info for a composite
         /// </summary>
         public void AddCustomPinInfos(Composite composite, List<CompositePinInfoTable.PinInfo> infos) => AddCustomPinInfos(composite.shortGUID, infos);
@@ -1518,6 +2175,18 @@ namespace CATHODE.Scripting
         {
             if (_pinInfo.composite_pin_infos.TryGetValue(compositeID, out List<CompositePinInfoTable.PinInfo> customInfos))
             {
+                //PinInfo has no value equality, so the set below only ever dedupes the same object. An
+                //incoming entry for a variable we already describe is that variable's NEWER info (a port
+                //overwriting a composite, say) - GetPinInfo takes the first match, so the old one has to
+                //go or a pin whose type changed at the source keeps its old type here.
+                if (infos != null && infos.Count != 0)
+                {
+                    HashSet<ShortGuid> incoming = new HashSet<ShortGuid>();
+                    foreach (CompositePinInfoTable.PinInfo info in infos)
+                        if (info != null) incoming.Add(info.VariableGUID);
+                    customInfos.RemoveAll(o => o != null && incoming.Contains(o.VariableGUID));
+                }
+
                 HashSet<CompositePinInfoTable.PinInfo> newInfos = new HashSet<CompositePinInfoTable.PinInfo>();
                 foreach (CompositePinInfoTable.PinInfo info in customInfos) newInfos.Add(info);
                 foreach (CompositePinInfoTable.PinInfo info in infos) newInfos.Add(info);
@@ -1580,13 +2249,130 @@ namespace CATHODE.Scripting
         }
         #endregion
 
+        #region Colour Parameters
+        /// <summary>
+        /// Whether a vector composite parameter (a VariableEntity of the composite) is shown as a colour in the editor
+        /// </summary>
+        public bool IsColourParameter(Composite composite, VariableEntity variableEnt) => IsColourParameter(composite.shortGUID, variableEnt.shortGUID);
+        public bool IsColourParameter(ShortGuid composite, ShortGuid variableEnt)
+        {
+            return _colourParameters.colour_parameters.TryGetValue(composite, out HashSet<ShortGuid> parameters) && parameters.Contains(variableEnt);
+        }
+
+        /// <summary>
+        /// Show a vector composite parameter as a colour in the editor (true), or as a vector again (false)
+        /// </summary>
+        public void SetColourParameter(Composite composite, VariableEntity variableEnt, bool colour) => SetColourParameter(composite.shortGUID, variableEnt.shortGUID, colour);
+        public void SetColourParameter(ShortGuid composite, ShortGuid variableEnt, bool colour)
+        {
+            if (!_colourParameters.colour_parameters.TryGetValue(composite, out HashSet<ShortGuid> parameters))
+            {
+                if (!colour) return;
+                parameters = new HashSet<ShortGuid>();
+                _colourParameters.colour_parameters.Add(composite, parameters);
+            }
+            if (colour)
+                parameters.Add(variableEnt);
+            else
+            {
+                parameters.Remove(variableEnt);
+                if (parameters.Count == 0)
+                    _colourParameters.colour_parameters.Remove(composite);
+            }
+        }
+
+        /// <summary>
+        /// The composite parameters (VariableEntity ids) of a composite that are shown as colours - a copy, empty when there are none
+        /// </summary>
+        public HashSet<ShortGuid> GetColourParameters(Composite composite) => GetColourParameters(composite.shortGUID);
+        public HashSet<ShortGuid> GetColourParameters(ShortGuid composite)
+        {
+            if (_colourParameters.colour_parameters.TryGetValue(composite, out HashSet<ShortGuid> parameters))
+                return new HashSet<ShortGuid>(parameters);
+            return new HashSet<ShortGuid>();
+        }
+
+        /// <summary>
+        /// Replace the colour parameters of a composite with the given set - an empty set removes them all. For a ported
+        /// composite (which arrives whole, replacing any the destination had) or a snapshot being put back.
+        /// </summary>
+        public void ReplaceColourParameters(ShortGuid composite, IEnumerable<ShortGuid> parameters)
+        {
+            HashSet<ShortGuid> set = parameters == null ? new HashSet<ShortGuid>() : new HashSet<ShortGuid>(parameters);
+            if (set.Count == 0)
+                _colourParameters.colour_parameters.Remove(composite);
+            else
+                _colourParameters.colour_parameters[composite] = set;
+        }
+
+        /// <summary>
+        /// The table as it is saved: without rows for composites and parameters that are gone, or are no longer vectors. The live
+        /// table keeps them, so an undone delete brings its parameter back as it was.
+        /// </summary>
+        private ColourParameterTable PrunedColourParameters()
+        {
+            ColourParameterTable pruned = new ColourParameterTable();
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> row in _colourParameters.colour_parameters)
+            {
+                Composite composite = _commands.GetComposite(row.Key);
+                if (composite == null)
+                    continue;
+                HashSet<ShortGuid> parameters = new HashSet<ShortGuid>(row.Value.Where(o => composite.GetEntityByID(o) is VariableEntity variable && variable.type == DataType.VECTOR));
+                if (parameters.Count != 0)
+                    pruned.colour_parameters.Add(row.Key, parameters);
+            }
+            return pruned;
+        }
+        #endregion
+
         #region Table Management
+        /// <summary>
+        /// Tell ShortGuidUtils about every id this script graph already uses, so a newly generated
+        /// random one cannot duplicate it. The ids themselves are the record of what is taken - the
+        /// SHORT_GUIDS name table used to serve this purpose, which meant persisting a meaningless
+        /// name for every random id ever minted.
+        /// </summary>
+        private void ReserveInUseGuids()
+        {
+            if (_commands?.Entries == null)
+                return;
+
+            List<ShortGuid> inUse = new List<ShortGuid>();
+            for (int i = 0; i < _commands.Entries.Count; i++)
+            {
+                Composite composite = _commands.Entries[i];
+                if (composite == null)
+                    continue;
+
+                inUse.Add(composite.shortGUID);
+                foreach (Entity entity in composite.GetEntities())
+                {
+                    if (entity == null)
+                        continue;
+
+                    inUse.Add(entity.shortGUID);
+                    if (entity.childLinks != null)
+                        for (int l = 0; l < entity.childLinks.Count; l++)
+                            inUse.Add(entity.childLinks[l].ID);
+
+                    if (entity.parameters == null)
+                        continue;
+                    for (int p = 0; p < entity.parameters.Count; p++)
+                        if (entity.parameters[p]?.content is cResource resource)
+                            inUse.Add(resource.shortGUID);
+                }
+            }
+
+            ShortGuidUtils.ReserveInUse(inUse);
+        }
+
         /// <summary>
         /// Handle loading/saving "purge states" -> this tracks the composites that have had unresolvable entities removed from
         /// </summary>
         private void LoadInfo(string filepath)
         {
             ShortGuidUtils.LoadCustomNames(_commands.Filepath);
+            ReserveInUseGuids();
 
             _compPurges = (CompositePurgeTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES);
             if (_compPurges == null) 
@@ -1606,14 +2392,33 @@ namespace CATHODE.Scripting
             else
                 Console.WriteLine("Loaded modification info for " + _modificationInfo.modification_info.Count + " composites!");
 
+            _assetModificationInfo = (AssetModificationInfoTable)CustomTable.ReadTable(filepath, CustomTableType.ASSET_MODIFICATION_INFO);
+            if (_assetModificationInfo == null)
+                _assetModificationInfo = new AssetModificationInfoTable();
+
             _pinInfo = (CompositePinInfoTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_PIN_INFO);
             if (_pinInfo == null) 
                 _pinInfo = new CompositePinInfoTable();
             else
                 Console.WriteLine("Loaded custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
 
+            _colourParameters = (ColourParameterTable)CustomTable.ReadTable(filepath, CustomTableType.COLOUR_PARAMETERS);
+            if (_colourParameters == null)
+                _colourParameters = new ColourParameterTable();
+            else
+                Console.WriteLine("Loaded colour parameters for " + _colourParameters.colour_parameters.Count + " composites!");
+
             _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
             if (_flagTable == null) _flagTable = new FlagTable();
+
+            //Entity names are stored on entities as a 'name' parameter. PAK files carry no name data, so on
+            //first load we migrate the names from our tables onto the entities - from then on the names travel
+            //with the Commands data itself and the tables aren't needed.
+            if (!_flagTable.HasSetEntityNames && CustomTable.GetFileType(filepath) == CustomTableFileType.COMMANDS_PAK)
+            {
+                ApplyEntityNamesFromTables();
+                _flagTable.HasSetEntityNames = true;
+            }
 
             if (!_flagTable.HasBeenModified)
             {
@@ -1637,6 +2442,26 @@ namespace CATHODE.Scripting
 
                 //Apply material remappings
                 ShortGuid mapping = ShortGuidUtils.Generate("mapping");
+                Parallel.ForEach(_commands.Entries, (Composite c) =>
+                {
+                    List<Entity> entities = c.GetEntities(false, true, true, false);
+                    Parallel.ForEach(entities, (Entity e) =>
+                    {
+                        Parameter p = e.GetParameter(mapping);
+                        if (p != null && p.content != null)
+                        {
+                            switch (p.content.dataType)
+                            {
+                                case DataType.STRING:
+                                    e.AddParameter(mapping, new cResource(null, MaterialMappings.GenerateMappingID(((cString)p.content).value)));
+                                    break;
+                                default:
+                                    Console.WriteLine("Warning - encountered existing material remapping of type " + p.content.dataType + " - this is unexpected!");
+                                    break;
+                            }
+                        }
+                    });
+                });
                 FlowgraphMeta.SupportedLevel levelID;
                 bool hasLevelID = Enum.TryParse(levelName.ToUpper(), out levelID);
                 foreach (MaterialMappingTable.Mapping map in CustomTable.Vanilla.MaterialMappings.Mappings)
@@ -1646,7 +2471,7 @@ namespace CATHODE.Scripting
 
                     Composite comp = _commands.GetComposite(map.CompositeID);
                     Entity ent = comp?.GetEntityByID(map.EntityID);
-                    ent?.AddParameter(mapping, new cResource(null, map.MappingID));
+                    ent?.AddParameter(mapping, new cResource(null, map.MappingID), ParameterVariant.PARAMETER, false);
                 }
                 foreach (MaterialMappingTable.MappingAlias map in CustomTable.Vanilla.MaterialMappings.MappingAliases)
                 {
@@ -1674,23 +2499,115 @@ namespace CATHODE.Scripting
                 }
             }
         }
+        /// <summary>
+        /// One-time migration: copy names out of the name tables and onto the entities as a 'name' parameter.
+        /// Every named entity type is covered (functions, aliases, proxies) - variables are skipped, as their
+        /// name is their ShortGuid (it's the composite's pin name).
+        /// </summary>
+        private void ApplyEntityNamesFromTables()
+        {
+            int applied = 0;
+            foreach (Composite composite in _commands.Entries)
+            {
+                foreach (Entity entity in composite.GetEntities(includeVariables: false, includeFunctions: true, includeAliases: true, includeProxies: true))
+                {
+                    if (GetEntityNameParameter(entity) != null)
+                        continue;
+
+                    string name = GetEntityNameFromTables(composite.shortGUID, entity.shortGUID);
+                    if (string.IsNullOrEmpty(name) || name == entity.shortGUID.ToByteString())
+                        continue; //no name on record - leave it unnamed rather than baking in the GUID
+
+                    entity.AddParameter(ShortGuids.name, new cString(name), ParameterVariant.PARAMETER);
+                    applied++;
+                }
+            }
+            Console.WriteLine("Applied " + applied + " entity names as parameters!");
+        }
+
+        /// <summary>
+        /// Stamp every ResourceReference's transform from the entity that owns it, just before a save.
+        /// </summary>
+        private void ApplyEntityTransformsToResources(string filepath)
+        {
+            int updated = 0;
+            for (int i = 0; i < _commands.Entries.Count; i++)
+            {
+                Composite composite = _commands.Entries[i];
+                if (composite?.functions == null)
+                    continue;
+
+                //The functions copied out once: every read of composite.functions makes a new copy of them all, and this was
+                //two of those for each function
+                ReadOnlyEntityCollection<FunctionEntity> functions = composite.functions;
+                for (int x = 0; x < functions.Count; x++)
+                {
+                    FunctionEntity function = functions[x];
+                    if (function == null)
+                        continue;
+
+                    Vector3 position = new Vector3(0, 0, 0);
+                    Vector3 rotation = new Vector3(0, 0, 0);
+                    Parameter transformParameter = function.GetParameter(ShortGuids.position);
+                    if (transformParameter?.content is cTransform transform)
+                    {
+                        position = transform.position;
+                        rotation = transform.rotation;
+                    }
+
+                    for (int y = 0; y < function.resources.Count; y++)
+                        updated += StampResource(function.resources[y], position, rotation);
+
+                    //Resources can also hang off a "resource" parameter
+                    for (int y = 0; y < function.parameters.Count; y++)
+                    {
+                        if (!(function.parameters[y]?.content is cResource resourceParameter) || resourceParameter.value == null)
+                            continue;
+
+                        for (int z = 0; z < resourceParameter.value.Count; z++)
+                            updated += StampResource(resourceParameter.value[z], position, rotation);
+                    }
+                }
+            }
+
+            if (updated != 0)
+                Console.WriteLine("Derived transforms for " + updated + " resource references from their entities!");
+        }
+
+        private static int StampResource(ResourceReference resource, Vector3 position, Vector3 rotation)
+        {
+            if (resource == null)
+                return 0;
+            if (resource.position == position && resource.rotation == rotation)
+                return 0;
+
+            resource.position = position;
+            resource.rotation = rotation;
+            return 1;
+        }
+
         private void SaveInfo(string filepath)
         {
             _flagTable.HasBeenModified = true;
+            _flagTable.HasSetEntityNames = true;
 
             ShortGuidUtils.SaveCustomNames(_commands.Filepath);
 
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PURGE_STATES, _compPurges);
             Console.WriteLine("Stored " + _compPurges.purged.Count + " pre-purged composites!");
 
-            CustomTable.WriteTable(filepath, CustomTableType.ENTITY_NAMES, _entityNames);
-            Console.WriteLine("Saved " + _entityNames.names.Count + " custom entity names!");
-
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_MODIFICATION_INFO, _modificationInfo);
             Console.WriteLine("Saved modification info for " + _modificationInfo.modification_info.Count + " composites!");
 
+            CustomTable.WriteTable(filepath, CustomTableType.ASSET_MODIFICATION_INFO, _assetModificationInfo);
+            Console.WriteLine("Saved modification info for " + _assetModificationInfo.modification_info.Count + " assets!");
+
             CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_PIN_INFO, _pinInfo);
             Console.WriteLine("Saved custom pin info for " + _pinInfo.composite_pin_infos.Count + " composites!");
+
+            ColourParameterTable colourParameters = PrunedColourParameters();
+            CustomTable.WriteTable(filepath, CustomTableType.COLOUR_PARAMETERS, colourParameters);
+            Console.WriteLine("Saved colour parameters for " + colourParameters.colour_parameters.Count + " composites!");
 
             CustomTable.WriteTable(filepath, CustomTableType.FLAGS, _flagTable);
         }

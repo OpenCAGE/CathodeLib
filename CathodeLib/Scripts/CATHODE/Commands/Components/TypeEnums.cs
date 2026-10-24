@@ -1086,6 +1086,7 @@ namespace CATHODE.Scripting
     {
         ACHIEVEMENT_ID = 3485949151,
         ACHIEVEMENT_STAT_ID = 1970461931,
+        ALIEN_CONFIG = 4163184394,
         ANIMATION = 2509115680,
         ANIMATION_SET = 1321730391,
         ANIMATION_TREE_SET = 2152953390,
@@ -1095,6 +1096,8 @@ namespace CATHODE.Scripting
         GAME_VARIABLE = 3806196912,
         GAMEPLAY_TIP_STRING_ID = 3550943910,
         IDTAG_ID = 3358979085,
+        LEVEL_NAME = 1840870327,
+        MAP_ELEMENT_ID = 3723361710,
         MAP_KEYFRAME_ID = 1494642745,
         MATERIAL = 2784799731,
         NOSTROMO_LOG_ID = 1157640041,
@@ -1200,6 +1203,12 @@ namespace CATHODE.Scripting.Internal
         FLAGS,                                  // A table of generic flags that can store level modification metadata
         MATERIAL_MAPPINGS,                      // Stores material mappings to populate as parameters or aliases
         MATERIAL_NAMES,                         // Neat material names translated from LongGuid
+        FILE_HASHES,                            // Hashes of the game's shipped files, for telling vanilla data from modified data
+        UBERSHADER_PATCHES,                     // Ubershader patches to use for fog, etc during instancing
+        ENTITY_CATEGORIES,                      // Entity categories for filtering in the editor  
+        COMPOSITE_PREVIEWS,                     // Rendered previews (PNGs) of composites, by composite GUID
+        COLOUR_PARAMETERS,                      // Vector composite parameters (VariableEntities) the editor shows as colours
+        ASSET_MODIFICATION_INFO,                // When the user last changed each of the level's assets (models, textures, materials...), by kind and name
 
         //Add new entries here
 

@@ -10,11 +10,12 @@
     <Authors>Matt Filer</Authors>
     <Description>Provides support for parsing and writing common Alien: Isolation formats from the Cathode engine.</Description>
     <Copyright>Matt Filer 2026</Copyright>
-    <Version>0.12.2</Version>
+    <Version>1.0.0</Version>
     <OutputType>Library</OutputType>
-    <AssemblyVersion>0.12.2.0</AssemblyVersion>
-    <FileVersion>0.12.2.0</FileVersion>
-    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>alien, modding, alien isolation, mod tool, file utility</PackageTags>
     <Title>CathodeLib</Title>
@@ -31,6 +32,7 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Ship|AnyCPU'">
     <DefineConstants>$(DefineConstants)TRACE</DefineConstants>
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
@@ -49,6 +51,13 @@
 
   <ItemGroup>
     <Compile Include="..\AlienBML\BML.cs" Link="Scripts\CATHODE\BML.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\DotRecast\src\DotRecast.Core\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Core\bin\**;..\DotRecast\src\DotRecast.Core\obj\**" Link="Dependencies\DotRecast\Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\DotRecast\src\DotRecast.Recast\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Recast\bin\**;..\DotRecast\src\DotRecast.Recast\obj\**" Link="Dependencies\DotRecast\Recast\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\DotRecast\src\DotRecast.Detour\**\*.cs" Exclude="..\DotRecast\src\DotRecast.Detour\bin\**;..\DotRecast\src\DotRecast.Detour\obj\**" Link="Dependencies\DotRecast\Detour\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\NanoRT\src\NanoRT\**\*.cs" Exclude="..\NanoRT\src\NanoRT\bin\**;..\NanoRT\src\NanoRT\obj\**" Link="Dependencies\NanoRT\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,6 +82,12 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\learned_cover.bin" LogicalName="CathodeLib.Learned.cover" />
+    <EmbeddedResource Include="Resources\learned_spot.bin" LogicalName="CathodeLib.Learned.spot" />
+    <EmbeddedResource Include="Resources\learned_assault.bin" LogicalName="CathodeLib.Learned.assault" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using CATHODE.Enums;
+
 
 #if UNITY_EDITOR || UNITY_STANDALONE_WIN
 using UnityEngine;
@@ -43,13 +45,62 @@ namespace CATHODE.Scripting.Internal
         public EntityVariant variant;
 
         public List<EntityConnector> childLinks = new List<EntityConnector>();
-        public List<Parameter> parameters = new List<Parameter>();
 
-        ~Entity()
+        /// <summary>
+        /// Make this entity, a Copy() of source, own its resources properly. Copy() clones everything it can
+        /// reach, which for a resource reference means the renderable elements, physics system, animated model
+        /// and collision mapping behind it: the copy then points at phantoms no level table can index, so its
+        /// references save as index 0 / count 0 and come back empty. It also keeps the source's resource ids,
+        /// and references are keyed by those on disk: the pair's compare equal and are written once, then
+        /// handed to whichever entity claims the id first on load, leaving the copy with none (nothing in the
+        /// viewport, and nothing for the next save to build a mover from). Point the copy's references back at
+        /// the level's objects - shared with the source, as two entities loaded from disk share them - and give
+        /// them ids of their own. Call once the copy has its own shortGUID.
+        /// </summary>
+        public void RebindResourcesAsCopyOf(Entity source)
         {
-            childLinks.Clear();
-            parameters.Clear();
+            foreach (Parameter parameter in parameters)
+            {
+                if (!(parameter?.content is cResource resource))
+                    continue;
+
+                if (resource.value == null)
+                    continue;
+
+                cResource sourceResource = source?.GetParameter(parameter.name)?.content as cResource;
+                foreach (ResourceReference reference in resource.value)
+                    ShareLevelObjects(reference, sourceResource?.GetResource(reference.resource_type));
+
+                resource.shortGUID = ShortGuidUtils.GenerateRandom();
+                foreach (ResourceReference reference in resource.value)
+                    reference.resource_id = resource.shortGUID;
+            }
+
+            if (this is FunctionEntity function)
+            {
+                FunctionEntity sourceFunction = source as FunctionEntity;
+                foreach (ResourceReference reference in function.resources)
+                {
+                    ShareLevelObjects(reference, sourceFunction?.GetResource(reference.resource_type));
+                    //Physics systems are keyed by their type, not their owner; everything else by the entity
+                    if (reference.resource_type != ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                        reference.resource_id = function.shortGUID;
+                }
+            }
         }
+
+        private static void ShareLevelObjects(ResourceReference reference, ResourceReference original)
+        {
+            if (reference == null || original == null || ReferenceEquals(reference, original))
+                return;
+            reference.RenderableInstance = original.RenderableInstance == null
+                ? null
+                : new List<CATHODE.RenderableElements.Element>(original.RenderableInstance);
+            reference.PhysicsSystem = original.PhysicsSystem;
+            reference.AnimatedModel = original.AnimatedModel;
+            reference.CollisionMapping = original.CollisionMapping;
+        }
+        public List<Parameter> parameters = new List<Parameter>();
 
         /// <summary>
         /// Implements IComparable for searching
@@ -76,7 +127,14 @@ namespace CATHODE.Scripting.Internal
         }
         public Parameter GetParameter(ShortGuid id)
         {
-            return parameters.FirstOrDefault(o => o.name == id);
+            //A loop, not FirstOrDefault: the lambda's closure, delegate and enumerator were three allocations per call, and
+            //this is asked for every entity of a level to populate the viewport (a third of a GB a minute in a stress run)
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                if (parameters[i].name == id)
+                    return parameters[i];
+            }
+            return null;
         }
 
         /// <summary>
@@ -184,10 +242,13 @@ namespace CATHODE.Scripting.Internal
         {
             return AddParameter(ShortGuidUtils.Generate(name), data, variant, overwriteIfExists);
         }
-        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true)
+        public Parameter AddParameter(ShortGuid id, ParameterData data, ParameterVariant variant = ParameterVariant.PARAMETER, bool overwriteIfExists = true, bool bindResourceToEntity = true)
         {
             if (data == null)
                 Console.WriteLine("WARNING: Entity " + this.shortGUID + " (" + this.variant + ") has null parameter data for " + id.ToString());
+
+            if (bindResourceToEntity && id == ShortGuids.resource && data is cResource resourceParam)
+                BindResourceParameterToEntity(resourceParam);
 
             Parameter param = GetParameter(id);
             //TODO: we should also take inputs and outputs into account here??
@@ -202,6 +263,20 @@ namespace CATHODE.Scripting.Internal
                 param.variant = variant;
             }
             return param;
+        }
+
+        void BindResourceParameterToEntity(cResource resourceParam)
+        {
+            if (resourceParam == null)
+                return;
+            resourceParam.shortGUID = shortGUID;
+            if (resourceParam.value == null)
+                return;
+            for (int i = 0; i < resourceParam.value.Count; i++)
+            {
+                if (resourceParam.value[i] != null)
+                    resourceParam.value[i].resource_id = shortGUID;
+            }
         }
 
         /// <summary>
@@ -406,11 +481,6 @@ namespace CATHODE.Scripting
         public FunctionEntity() : base(EntityVariant.FUNCTION) { }
         public FunctionEntity(ShortGuid shortGUID) : base(shortGUID, EntityVariant.FUNCTION) { }
 
-        ~FunctionEntity()
-        {
-            resources.Clear();
-        }
-
         public FunctionEntity(string function) : base(EntityVariant.FUNCTION)
         {
             this.function = ShortGuidUtils.Generate(function);
@@ -496,6 +566,11 @@ namespace CATHODE.Scripting
 
         public ShortGuid function;                  //The "function" value on the entity we're proxying
         public EntityPath proxy = new EntityPath(); //A path to the entity we're proxying
+
+        //Proxies to TriggerSequence entities can carry their own trigger sequence data (e.g. PRODUCTION\TECH_COMMS).
+        //These are empty for proxies to any other entity type.
+        public List<TriggerSequence.SequenceEntry> sequence = new List<TriggerSequence.SequenceEntry>();
+        public List<TriggerSequence.MethodEntry> methods = new List<TriggerSequence.MethodEntry>();
     }
     [Serializable]
     public class AliasEntity : Entity
@@ -524,8 +599,8 @@ namespace CATHODE.Scripting
         public CAGEAnimation(ShortGuid id) : base(id, FunctionType.CAGEAnimation) { }
 
         public List<Connection> connections = new List<Connection>();
-        public List<FloatTrack> animations = new List<FloatTrack>();
-        public List<EventTrack> events = new List<EventTrack>();
+        public List<FloatTrack> floatTracks = new List<FloatTrack>();
+        public List<EventTrack> eventTracks = new List<EventTrack>();
 
         [Serializable]
         public class Connection
@@ -546,22 +621,8 @@ namespace CATHODE.Scripting
 
         public enum InterpolationMode
         {
-            Invalid,
-            Flat,
-            Linear,
-            Bezier,
-        };
-
-        public enum TrackType
-        {
-            FLOAT,
-            FLOAT3,
-            POSITION,
-            STRING,
-            GUID,
-            MASTERING,
-
-            INVALID = -1
+            Linear = 1,
+            Bezier = 2,
         };
 
         [Serializable]
@@ -587,6 +648,7 @@ namespace CATHODE.Scripting
         public class EventTrack
         {
             public ShortGuid shortGUID;
+            public ANIM_TRACK_TYPE track_type = ANIM_TRACK_TYPE.T_STRING;
             public List<Keyframe> keyframes = new List<Keyframe>();
 
             [Serializable]
@@ -598,15 +660,22 @@ namespace CATHODE.Scripting
                     this.time = time;
                     forward = ShortGuidUtils.Generate(event_name);
                     reverse = ShortGuidUtils.Generate("reverse_" + event_name);
+                    track_type = ANIM_TRACK_TYPE.T_STRING;
+                }
+                public Keyframe(float time, FunctionEntity entity)
+                {
+                    this.time = time;
+                    forward = entity.shortGUID;
+                    // how do we calculate reverse?
+                    track_type = ANIM_TRACK_TYPE.T_GUID;
                 }
 
-                public InterpolationMode mode;
                 public float time = 0.0f;
 
                 public ShortGuid forward;
                 public ShortGuid reverse; //"reverse_" + forward
 
-                public TrackType track_type;
+                public ANIM_TRACK_TYPE track_type;
                 public float duration;
             }
         }
@@ -817,10 +886,10 @@ namespace CATHODE.Scripting
             return val;
         }
 
-                 /// <summary>
-         /// Get the ID of the entity that this path points to
-         /// </summary>
-         public ShortGuid GetPointedEntityID()
+        /// <summary>
+        /// Get the ID of the entity that this path points to
+        /// </summary>
+        public ShortGuid GetPointedEntityID()
         {
             ShortGuid id = ShortGuid.Invalid;
             for (int i = path.Length - 1; i >= 0; i--)
@@ -832,10 +901,10 @@ namespace CATHODE.Scripting
             return id;
         }
 
-                 /// <summary>
-         /// Generate the checksum used identify the path
-         /// </summary>
-         public ShortGuid GeneratePathHash()
+        /// <summary>
+        /// Generate the checksum used identify the path
+        /// </summary>
+        public ShortGuid GeneratePathHash()
         {
             if (path.Length == 0) return ShortGuid.Invalid;
             EnsureFinalIsEmpty();
@@ -848,26 +917,26 @@ namespace CATHODE.Scripting
             return checksumGenerated;
         }
 
-                 /// <summary>
-         /// Generate the instance ID used to identify the instanced composite we're executed in
-         /// </summary>
-         public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        /// <summary>
+        /// Generate the instance ID used to identify the instanced composite we're executed in
+        /// </summary>
+        public ShortGuid GenerateCompositeInstanceID(bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
         {
             return path.GenerateCompositeInstanceID(hasInternalEntityID);
         }
 
-                 /// <summary>
-         /// Generate a zone ID (use this when the EntityHandle points to a Zone entity)
-         /// </summary>
-         public ShortGuid GenerateZoneID()
+        /// <summary>
+        /// Generate a zone ID (use this when the EntityHandle points to a Zone entity)
+        /// </summary>
+        public ShortGuid GenerateZoneID()
         {
             return new ShortGuid(0 + GenerateCompositeInstanceID().AsUInt32 + GetPointedEntityID().AsUInt32 + 1);
         }
 
-                 /// <summary>
-         /// Add the next entity GUID along the path
-         /// </summary>
-         public void AddNextStep(Entity entity)
+        /// <summary>
+        /// Add the next entity GUID along the path
+        /// </summary>
+        public void AddNextStep(Entity entity)
         {
             AddNextStep(entity.shortGUID);
         }
@@ -885,9 +954,9 @@ namespace CATHODE.Scripting
             EnsureFinalIsEmpty();
         }
 
-                 /// <summary>
-         /// Remove the last entity GUID along the path
-         /// </summary>
+        /// <summary>
+        /// Remove the last entity GUID along the path
+        /// </summary>
         public void GoBackOneStep()
         {
             if (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid)
@@ -917,10 +986,24 @@ namespace CATHODE.Scripting
             Array.Copy(path, newPath, path.Length);
             return new EntityPath(newPath);
         }
+
+        /// <summary>
+        /// A copy of this path with one more step on the end - what Copy() then AddNextStep(guid) gives, built in one array
+        /// </summary>
+        public EntityPath CopyWithNextStep(ShortGuid guid)
+        {
+            int steps = path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid ? path.Length - 1 : path.Length;
+            ShortGuid[] newPath = new ShortGuid[guid == ShortGuid.Invalid ? steps + 1 : steps + 2];
+            Array.Copy(path, newPath, steps);
+            newPath[steps] = guid;
+            if (guid != ShortGuid.Invalid)
+                newPath[steps + 1] = ShortGuid.Invalid;
+            return new EntityPath(newPath);
+        }
         
-                 /// <summary>
-         /// Updates this path to have the path to another entity prepended to it
-         /// </summary>
+        /// <summary>
+        /// Updates this path to have the path to another entity prepended to it
+        /// </summary>
         //public void PrependPath(EntityPath otherPath)
         //{
         //    int length = otherPath.path[otherPath.path.Count - 1] == ShortGuid.Invalid ? otherPath.path.Count - 2 : otherPath.path.Count - 1;
@@ -931,14 +1014,31 @@ namespace CATHODE.Scripting
 
     public static class PathUtils
     {
-                 /// <summary>
-         /// Generate the instance ID used to identify the instanced composite we're executed in
-         /// </summary>
-         public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        /// <summary>
+        /// Generate the instance ID used to identify the instanced composite we're executed in
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        {
+            return path.GenerateCompositeInstanceID(hasInternalEntityID, ShortGuid.InstanceGuid);
+        }
+        /// <summary>
+        /// Generate the instance ID used to identify the instanced composite we're executed in
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+        {
+            return path.GenerateCompositeInstanceID(hasInternalEntityID, ShortGuid.InstanceGuid);
+        }
+
+        /// <summary>
+        /// Generate a composite instance ID using a custom terminal guid instead of InstanceGuid.
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this ShortGuid[] path, bool hasInternalEntityID, ShortGuid terminalGuid)
         {
             bool hasTrailingInvalid = (path.Length > 0 && path[path.Length - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Length - 1 : path.Length) : (hasTrailingInvalid ? path.Length : path.Length + 1)];
-            values[values.Length - 1] = ShortGuid.InstanceGuid;
+            if (values.Length == 0)
+                return terminalGuid;
+            values[values.Length - 1] = terminalGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {
@@ -953,14 +1053,17 @@ namespace CATHODE.Scripting
             }
             return instanceGenerated;
         }
-                 /// <summary>
-         /// Generate the instance ID used to identify the instanced composite we're executed in
-         /// </summary>
-         public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID = true) //Set this to false the final value in the path is not an entity ID within the composite
+
+        /// <summary>
+        /// Generate a composite instance ID using a custom terminal guid instead of InstanceGuid.
+        /// </summary>
+        public static ShortGuid GenerateCompositeInstanceID(this List<ShortGuid> path, bool hasInternalEntityID, ShortGuid terminalGuid)
         {
             bool hasTrailingInvalid = (path.Count > 0 && path[path.Count - 1] == ShortGuid.Invalid);
             ShortGuid[] values = new ShortGuid[hasInternalEntityID ? (hasTrailingInvalid ? path.Count - 1 : path.Count) : (hasTrailingInvalid ? path.Count : path.Count + 1)];
-            values[values.Length - 1] = ShortGuid.InstanceGuid;
+            if (values.Length == 0)
+                return terminalGuid;
+            values[values.Length - 1] = terminalGuid;
             int x = 0;
             for (int i = values.Length - 2; i >= 0; i--)
             {

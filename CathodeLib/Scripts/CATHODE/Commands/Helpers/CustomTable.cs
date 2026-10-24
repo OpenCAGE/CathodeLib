@@ -1,3 +1,4 @@
+using CATHODE.ShaderTypes;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using System;
@@ -6,7 +7,6 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using static CATHODE.Lights;
 using static CathodeLib.CompositeFlowgraphTable;
 using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta;
 using static CathodeLib.CompositeFlowgraphTable.FlowgraphMeta.NodeMeta;
@@ -47,6 +47,7 @@ namespace CathodeLib
                 CathodeEnums = (CathodeEnumTable)ReadTable(content, CustomTableType.CATHODE_ENUM_INFO);
                 MaterialMappings = (MaterialMappingTable)ReadTable(content, CustomTableType.MATERIAL_MAPPINGS);
                 MaterialNames = (MaterialNameTable)ReadTable(content, CustomTableType.MATERIAL_NAMES);
+                FileHashes = (FileHashTable)ReadTable(content, CustomTableType.FILE_HASHES);
             }
 
             public readonly CompositePathTable CompositePaths;
@@ -57,6 +58,37 @@ namespace CathodeLib
             public readonly CathodeEnumTable CathodeEnums;
             public readonly MaterialMappingTable MaterialMappings;
             public readonly MaterialNameTable MaterialNames;
+            public readonly FileHashTable FileHashes;
+        }
+
+        private static byte[] _embeddedContent = null;
+        private static readonly object _embeddedLock = new object();
+
+        /// <summary>
+        /// Read a table from the info.dat CathodeLib ships, ignoring any local override.
+        /// </summary>
+        public static Table ReadEmbeddedTable(CustomTableType table)
+        {
+            lock (_embeddedLock)
+            {
+                if (_embeddedContent == null)
+                {
+#if UNITY_EDITOR || UNITY_STANDALONE
+                    byte[] content = File.ReadAllBytes(UnityEngine.Application.streamingAssetsPath + "/info.dat");
+#elif GODOT
+                    byte[] content = Utilities.ReadStreamingAsset("info.dat");
+#else
+                    byte[] content = CathodeLib.Properties.Resources.info;
+#endif
+                    using (MemoryStream stream = new MemoryStream())
+                    using (GZipStream compressedStream = new GZipStream(new MemoryStream(content), CompressionMode.Decompress))
+                    {
+                        compressedStream.CopyTo(stream);
+                        _embeddedContent = stream.ToArray();
+                    }
+                }
+            }
+            return ReadTable(_embeddedContent, table);
         }
 
         /// <summary>
@@ -69,17 +101,62 @@ namespace CathodeLib
             if (File.Exists(filepath + ".META"))
                 filepath = filepath + ".META";
 
+            /* A gzipped COMMANDS.BIN cannot carry tables after its content: the reader would have to
+             * decompress to find where they start, and TableExists has no end position for it - so
+             * writing in place truncates the whole script file to nothing but tables. The mobile and
+             * Switch builds ship only that form. Use the sidecar reads already prefer. */
+            else if (GetFileType(filepath) == CustomTableFileType.COMMANDS_COMPRESSED)
+                filepath = filepath + ".META";
+
             if (!File.Exists(filepath))
                 File.WriteAllBytes(filepath, new byte[0]);
 
+            //Guard: files with unrecognised names are treated as STANDALONE, which assumes the whole
+            //file is table data and truncates from position zero. If such a file has content but no
+            //valid table structure (e.g. a COMMANDS.PAK saved under a different name), truncating
+            //would destroy it - write to a .META sidecar alongside it instead. Reads already prefer
+            //the .META when it exists, so this stays consistent.
+            if (GetFileType(filepath) == CustomTableFileType.STANDALONE
+                && !filepath.EndsWith(".META", StringComparison.OrdinalIgnoreCase))
+            {
+                bool isTableFile;
+                using (BinaryReader reader = new BinaryReader(File.OpenRead(filepath)))
+                    isTableFile = reader.BaseStream.Length == 0 || TableExists(reader, CustomTableFileType.STANDALONE, out _);
+
+                if (!isTableFile)
+                {
+                    filepath = filepath + ".META";
+                    if (!File.Exists(filepath))
+                        File.WriteAllBytes(filepath, new byte[0]);
+                }
+            }
+
+            //Every other table comes from the same file, which nothing writes until below: it is read once, as
+            //ReadTable(filepath, ...) reads it (.META first), rather than once per table - a level save writes six tables,
+            //and each of those read the whole COMMANDS.PAK twenty times over
             Dictionary<CustomTableType, Table> toWrite = new Dictionary<CustomTableType, Table>();
+            bool hostRead = false;
+            byte[] hostContent = null;
+            CustomTableFileType hostType = CustomTableFileType.STANDALONE;
             for (int i = 0; i < (int)CustomTableType.NUMBER_OF_END_TABLES; i++)
             {
                 CustomTableType tableType = (CustomTableType)i;
                 if (tableType == table)
                     toWrite.Add(tableType, content);
                 else
-                    toWrite.Add(tableType, ReadTable(filepath, tableType));
+                {
+                    if (!hostRead)
+                    {
+                        hostRead = true;
+                        string readPath = File.Exists(filepath + ".META") ? filepath + ".META" : filepath;
+                        if (File.Exists(readPath))
+                        {
+                            hostContent = File.ReadAllBytes(readPath);
+                            hostType = GetFileType(readPath);
+                        }
+                    }
+                    toWrite.Add(tableType, hostContent == null ? null : ReadTable(hostContent, tableType, hostType));
+                }
             }
 
             int endPos;
@@ -87,6 +164,12 @@ namespace CathodeLib
             {
                 TableExists(reader, GetFileType(filepath), out endPos);
             }
+
+            //Appending means truncating to where the host file's content ends, so a file that will
+            //not say where that is must be left alone rather than written to at a guessed position.
+            if (endPos < 0)
+                throw new InvalidDataException("Cannot write CathodeLib tables to " + filepath
+                    + ": its header does not say where its content ends.");
 
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(filepath)))
             {
@@ -160,6 +243,24 @@ namespace CathodeLib
                                 break;
                             case CustomTableType.MATERIAL_NAMES:
                                 ((MaterialNameTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.FILE_HASHES:
+                                ((FileHashTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.UBERSHADER_PATCHES:
+                                ((UbershaderPatchTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.ENTITY_CATEGORIES:
+                                ((EntityCategoryTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.COMPOSITE_PREVIEWS:
+                                ((CompositePreviewTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.COLOUR_PARAMETERS:
+                                ((ColourParameterTable)toWrite[tableType]).Write(writer);
+                                break;
+                            case CustomTableType.ASSET_MODIFICATION_INFO:
+                                ((AssetModificationInfoTable)toWrite[tableType]).Write(writer);
                                 break;
                         }
 #if DEBUG
@@ -260,12 +361,30 @@ namespace CathodeLib
                     case CustomTableType.MATERIAL_NAMES:
                         data = new MaterialNameTable(reader);
                         break;
+                    case CustomTableType.FILE_HASHES:
+                        data = new FileHashTable(reader);
+                        break;
+                    case CustomTableType.UBERSHADER_PATCHES:
+                        data = new UbershaderPatchTable(reader);
+                        break;
+                    case CustomTableType.ENTITY_CATEGORIES:
+                        data = new EntityCategoryTable(reader);
+                        break;
+                    case CustomTableType.COMPOSITE_PREVIEWS:
+                        data = new CompositePreviewTable(reader);
+                        break;
+                    case CustomTableType.COLOUR_PARAMETERS:
+                        data = new ColourParameterTable(reader);
+                        break;
+                    case CustomTableType.ASSET_MODIFICATION_INFO:
+                        data = new AssetModificationInfoTable(reader);
+                        break;
                 }
             }
             return data;
         }
 
-        private static CustomTableFileType GetFileType(string filepath)
+        public static CustomTableFileType GetFileType(string filepath)
         {
             switch (Path.GetFileName(filepath).ToUpper())
             {
@@ -279,23 +398,49 @@ namespace CathodeLib
             return CustomTableFileType.STANDALONE;
         }
 
+        /// <summary>
+        /// Is there a CathodeLib table block in this file, and where does the file's own content end?
+        /// </summary>
+        /// <param name="endPos">
+        /// Where the host file's content ends and a table block may begin, or -1 when its header does
+        /// not give a usable one. WriteTable truncates to this, so it must never be a guess.
+        /// </param>
         private static bool TableExists(BinaryReader reader, CustomTableFileType type, out int endPos)
         {
+            long length = reader.BaseStream.Length;
             switch (type)
             {
                 case CustomTableFileType.COMMANDS_PAK:
+                    if (length < 28) { endPos = -1; return false; }
                     reader.BaseStream.Position = 20;
                     endPos = (reader.ReadInt32() * 4) + (reader.ReadInt32() * 4);
                     break;
                 case CustomTableFileType.COMMANDS_BIN:
+                    if (length < 4) { endPos = -1; return false; }
+                    reader.BaseStream.Position = 0;
                     endPos = reader.ReadInt32();
                     break;
                 default:
+                    //The whole of a standalone file is table data, so there is no header to trust.
                     endPos = 0;
                     break;
             }
+
+            /* An end position outside the file means the header is not what we think it is. Say so
+             * rather than seeking there: reads then simply find no tables, and the write path - which
+             * truncates to this - refuses instead of taking the file's content with it. */
+            if (endPos < 0 || endPos > length)
+            {
+                endPos = -1;
+                return false;
+            }
+
+            //Nothing written after the content yet.
+            if (endPos == length)
+                return false;
+
             reader.BaseStream.Position = endPos;
-            return (int)reader.BaseStream.Length - endPos != 0 && reader.ReadByte() == _version;
+            return reader.ReadByte() == _version;
         }
 
         public class Table
@@ -326,18 +471,16 @@ namespace CathodeLib
             type = CustomTableType.ENTITY_NAMES;
         }
 
-        public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> names;
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> names = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
 
         public override void Read(BinaryReader reader)
         {
+            names.Clear();
+
             if (reader == null)
-            {
-                names = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
                 return;
-            }
 
             int compositeCount = reader.ReadInt32();
-            names = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
@@ -377,21 +520,18 @@ namespace CathodeLib
             type = CustomTableType.SHORT_GUIDS;
         }
 
-        public Dictionary<string, ShortGuid> cache;
-        public Dictionary<ShortGuid, string> cacheReversed;
+        public Dictionary<string, ShortGuid> cache = new Dictionary<string, ShortGuid>();
+        public Dictionary<ShortGuid, string> cacheReversed = new Dictionary<ShortGuid, string>();
 
         public override void Read(BinaryReader reader)
         {
+            cache.Clear();
+            cacheReversed.Clear();
+
             if (reader == null)
-            {
-                cache = new Dictionary<string, ShortGuid>();
-                cacheReversed = new Dictionary<ShortGuid, string>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            cache = new Dictionary<string, ShortGuid>();
-            cacheReversed = new Dictionary<ShortGuid, string>();
             for (int i = 0; i < count; i++)
             {
                 ShortGuid id = Utilities.Consume<ShortGuid>(reader);
@@ -405,8 +545,18 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
+            /* Written in a fixed order, not the dictionary's insertion order: ShortGuidUtils fills its
+             * cache from parallel loops (Instancing, the PAK parser, material remapping), so that order
+             * changed from run to run and two saves of the same level wrote the same entries shuffled.
+             * Sorted by guid, then name - except that where several names share a guid, the one this
+             * table resolves it to goes first, since Read keeps the first name it sees for a guid. */
+            IEnumerable<KeyValuePair<string, ShortGuid>> ordered = cache
+                .OrderBy(o => o.Value.AsUInt32)
+                .ThenBy(o => cacheReversed.TryGetValue(o.Value, out string resolved) && resolved == o.Key ? 0 : 1)
+                .ThenBy(o => o.Key, StringComparer.Ordinal);
+
             writer.Write(cache.Count);
-            foreach (KeyValuePair<string, ShortGuid> val in cache)
+            foreach (KeyValuePair<string, ShortGuid> val in ordered)
             {
                 Utilities.Write<ShortGuid>(writer, val.Value);
                 writer.Write(val.Key);
@@ -420,18 +570,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PURGE_STATES;
         }
 
-        public List<ShortGuid> purged;
+        public List<ShortGuid> purged = new List<ShortGuid>();
 
         public override void Read(BinaryReader reader)
         {
+            purged.Clear();
+
             if (reader == null)
-            {
-                purged = new List<ShortGuid>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            purged = new List<ShortGuid>(count);
             for (int i = 0; i < count; i++)
             {
                 ShortGuid compositeID = Utilities.Consume<ShortGuid>(reader);
@@ -455,18 +603,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_MODIFICATION_INFO;
         }
 
-        public List<ModificationInfo> modification_info;
+        public List<ModificationInfo> modification_info = new List<ModificationInfo>();
 
         public override void Read(BinaryReader reader)
         {
+            modification_info.Clear();
+
             if (reader == null)
-            {
-                modification_info = new List<ModificationInfo>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            modification_info = new List<ModificationInfo>(count);
             for (int i = 0; i < count; i++)
             {
                 ModificationInfo info = new ModificationInfo();
@@ -495,6 +641,80 @@ namespace CathodeLib
             public int modification_date; //unix timecode
         }
     }
+    /// <summary>
+    /// When the user last changed each of a level's assets - a model, a texture, a material, the level's galaxy... - by
+    /// kind and name: the asset half of a level's edit history (the composites' is <see cref="CompositeModificationInfoTable"/>).
+    /// </summary>
+    public class AssetModificationInfoTable : CustomTable.Table
+    {
+        public AssetModificationInfoTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.ASSET_MODIFICATION_INFO;
+        }
+
+        //NOTE: stored by number - only ever append
+        public enum AssetKind
+        {
+            TEXTURE,
+            MODEL,
+            MATERIAL,
+            MATERIAL_MAPPING,
+            COLLISION,
+            PHYSICS_SYSTEM,
+            CHARACTER_ACCESSORIES,
+            GALAXY,
+            SOUND,
+            TEXT,
+        }
+
+        public List<ModificationInfo> modification_info = new List<ModificationInfo>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            modification_info.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ModificationInfo info = new ModificationInfo();
+                info.kind = (AssetKind)reader.ReadInt32();
+                info.name = reader.ReadString();
+                info.editor_version = reader.ReadInt32();
+                info.modification_date = reader.ReadInt32();
+                modification_info.Add(info);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            writer.Write(modification_info.Count);
+            for (int i = 0; i < modification_info.Count; i++)
+            {
+                writer.Write((int)modification_info[i].kind);
+                writer.Write(modification_info[i].name ?? "");
+                writer.Write(modification_info[i].editor_version);
+                writer.Write(modification_info[i].modification_date);
+            }
+        }
+
+        public class ModificationInfo
+        {
+            public AssetKind kind;
+            public string name; //the asset's own name: a texture's or model's name, a material's - or for data the level has one of (its galaxy), what it is
+            public int editor_version;
+            public int modification_date; //unix timecode
+        }
+    }
     public class CompositeFlowgraphTable : CustomTable.Table //NOTE TO SELF: use this same class for reading/writing the default data stored in the script editor
     {
         public CompositeFlowgraphTable(BinaryReader reader = null) : base(reader)
@@ -502,11 +722,12 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_FLOWGRAPHS;
         }
 
-        public List<FlowgraphMeta> flowgraphs;
+        public List<FlowgraphMeta> flowgraphs = new List<FlowgraphMeta>();
 
         public override void Read(BinaryReader reader)
         {
-            flowgraphs = new List<FlowgraphMeta>();
+            flowgraphs.Clear();
+
             if (reader == null)
                 return;
 
@@ -665,8 +886,43 @@ namespace CathodeLib
                 return 249714186 + EqualityComparer<List<NodeMeta>>.Default.GetHashCode(Nodes);
             }
 
+            /// <summary>
+            /// A deep copy, sharing nothing with this one: what ObjectExtensions.Copy makes of it, without the reflection (which
+            /// made copying the bundled layouts into a level's own a fifth of opening the level). A list or class added to these
+            /// types needs copying here too; fields of plain values come with MemberwiseClone.
+            /// </summary>
+            public FlowgraphMeta Clone()
+            {
+                FlowgraphMeta copy = (FlowgraphMeta)MemberwiseClone();
+                if (Nodes != null)
+                {
+                    copy.Nodes = new List<NodeMeta>(Nodes.Count);
+                    foreach (NodeMeta node in Nodes)
+                        copy.Nodes.Add(node?.Clone());
+                }
+                return copy;
+            }
+
             public class NodeMeta
             {
+                public NodeMeta Clone()
+                {
+                    NodeMeta copy = (NodeMeta)MemberwiseClone();
+                    if (ConnectionsOut != null)
+                    {
+                        copy.ConnectionsOut = new List<ConnectionMeta>(ConnectionsOut.Count);
+                        foreach (ConnectionMeta connection in ConnectionsOut)
+                            copy.ConnectionsOut.Add(connection?.Clone());
+                    }
+                    if (UnlinkedPins != null)
+                    {
+                        copy.UnlinkedPins = new List<UnlinkedPinMeta>(UnlinkedPins.Count);
+                        foreach (UnlinkedPinMeta pin in UnlinkedPins)
+                            copy.UnlinkedPins.Add(pin?.Clone());
+                    }
+                    return copy;
+                }
+
                 public ShortGuid EntityGUID;
                 public int NodeID;
                 public Point Position;
@@ -704,6 +960,8 @@ namespace CathodeLib
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;
 
+                    public ConnectionMeta Clone() => (ConnectionMeta)MemberwiseClone();
+
                     public bool Equals(ConnectionMeta other)
                     {
                         if (other is null) return false;
@@ -733,6 +991,8 @@ namespace CathodeLib
                     public ShortGuid ParameterGUID;
                     public byte PinLocation;
                     public byte PinStyle;
+
+                    public UnlinkedPinMeta Clone() => (UnlinkedPinMeta)MemberwiseClone();
                 }
             }
 
@@ -783,18 +1043,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_FLOWGRAPH_COMPATIBILITY_INFO;
         }
 
-        public List<CompatibilityInfo> compatibility_info;
+        public List<CompatibilityInfo> compatibility_info = new List<CompatibilityInfo>();
 
         public override void Read(BinaryReader reader)
         {
+            compatibility_info.Clear();
+
             if (reader == null)
-            {
-                compatibility_info = new List<CompatibilityInfo>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            compatibility_info = new List<CompatibilityInfo>(count);
             for (int i = 0; i < count; i++)
             {
                 CompatibilityInfo info = new CompatibilityInfo();
@@ -827,18 +1085,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PARAMETER_MODIFICATION;
         }
 
-        public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params;
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>> modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>();
 
         public override void Read(BinaryReader reader)
         {
+            modified_params.Clear();
+
             if (reader == null)
-            {
-                modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            modified_params = new Dictionary<ShortGuid, Dictionary<ShortGuid, HashSet<ShortGuid>>>(count);
             for (int i = 0; i < count; i++)
             {
                 Dictionary<ShortGuid, HashSet<ShortGuid>> entities = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
@@ -883,18 +1139,16 @@ namespace CathodeLib
             type = CustomTableType.ENTITY_APPLIED_DEFAULTS;
         }
 
-        public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults;
+        public Dictionary<ShortGuid, HashSet<ShortGuid>> applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
 
         public override void Read(BinaryReader reader)
         {
+            applied_defaults.Clear();
+
             if (reader == null)
-            {
-                applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            applied_defaults = new Dictionary<ShortGuid, HashSet<ShortGuid>>(count);
             for (int i = 0; i < count; i++)
             {
                 HashSet<ShortGuid> entities = new HashSet<ShortGuid>();
@@ -928,24 +1182,20 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PIN_INFO;
         }
 
-        public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos;
+        public Dictionary<ShortGuid, List<PinInfo>> composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
 
         public override void Read(BinaryReader reader)
         {
+            composite_pin_infos.Clear();
+
             if (reader == null)
-            {
-                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
                 return;
-            }
 
             byte version = reader.ReadByte();
             if (version == 0 || version == 1)
-            {
-                composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>();
                 return;
-            }
+
             int count = reader.ReadInt32();
-            composite_pin_infos = new Dictionary<ShortGuid, List<PinInfo>>(count);
             for (int i = 0; i < count; i++)
             {
                 List<PinInfo> pin_infos = new List<PinInfo>();
@@ -1006,6 +1256,9 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            FunctionVariantOffsets.Clear();
+            FunctionBaseClasses.Clear();
+
             if (reader == null)
                 return;
 
@@ -1069,6 +1322,8 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            enums.Clear();
+
             if (reader == null)
                 return;
 
@@ -1126,18 +1381,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PATHS;
         }
 
-        public Dictionary<ShortGuid, string> composite_paths;
+        public Dictionary<ShortGuid, string> composite_paths = new Dictionary<ShortGuid, string>();
 
         public override void Read(BinaryReader reader)
         {
+            composite_paths.Clear();
+
             if (reader == null)
-            {
-                composite_paths = new Dictionary<ShortGuid, string>();
                 return;
-            }
 
             int compositeCount = reader.ReadInt32();
-            composite_paths = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
                 composite_paths.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
         }
@@ -1187,18 +1440,16 @@ namespace CathodeLib
             type = CustomTableType.COMPOSITE_PAGE_HISTORY;
         }
 
-        public Dictionary<ShortGuid, string> last_composite_page;
+        public Dictionary<ShortGuid, string> last_composite_page = new Dictionary<ShortGuid, string>();
 
         public override void Read(BinaryReader reader)
         {
+            last_composite_page.Clear();
+
             if (reader == null)
-            {
-                last_composite_page = new Dictionary<ShortGuid, string>();
                 return;
-            }
 
             int compositeCount = reader.ReadInt32();
-            last_composite_page = new Dictionary<ShortGuid, string>(compositeCount);
             for (int i = 0; i < compositeCount; i++)
                 last_composite_page.Add(Utilities.Consume<ShortGuid>(reader), reader.ReadString());
         }
@@ -1221,6 +1472,7 @@ namespace CathodeLib
         }
 
         public bool HasBeenModified = false;
+        public bool HasSetEntityNames = false;
 
         public override void Read(BinaryReader reader)
         {
@@ -1235,14 +1487,18 @@ namespace CathodeLib
                     case 0:
                         HasBeenModified = reader.ReadBoolean();
                         break;
+                    case 1:
+                        HasSetEntityNames = reader.ReadBoolean();
+                        break;
                 }
             }
         }
 
         public override void Write(BinaryWriter writer)
         {
-            writer.Write(1);
+            writer.Write(2);
             writer.Write(HasBeenModified);
+            writer.Write(HasSetEntityNames);
         }
     }
     public class MaterialMappingTable : CustomTable.Table
@@ -1324,6 +1580,9 @@ namespace CathodeLib
 
         public override void Read(BinaryReader reader)
         {
+            MappingAliases.Clear();
+            Mappings.Clear();
+
             if (reader == null)
                 return;
 
@@ -1400,18 +1659,16 @@ namespace CathodeLib
             type = CustomTableType.MATERIAL_NAMES;
         }
 
-        public Dictionary<string, string> material_names;
+        public Dictionary<string, string> material_names = new Dictionary<string, string>();
 
         public override void Read(BinaryReader reader)
         {
+            material_names.Clear();
+
             if (reader == null)
-            {
-                material_names = new Dictionary<string, string>();
                 return;
-            }
 
             int count = reader.ReadInt32();
-            material_names = new Dictionary<string, string>(count);
             for (int i = 0; i < count; i++)
                 material_names.Add(reader.ReadString(), reader.ReadString());
         }
@@ -1423,6 +1680,482 @@ namespace CathodeLib
             {
                 writer.Write(composites.Key);
                 writer.Write(composites.Value);
+            }
+        }
+    }
+    public class FileHashTable : CustomTable.Table
+    {
+        public FileHashTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.FILE_HASHES;
+        }
+
+        public class Entry
+        {
+            public string Path; //Relative to the game root, forward slashes, uppercase
+            public long Size;
+            public byte[] Sha256; //32 bytes
+            public int Platforms; //Bitmask of PlatformBit(PatchManager.Platform) values
+
+            public bool SameContent(long size, byte[] sha256)
+            {
+                if (Size != size || Sha256 == null || sha256 == null || Sha256.Length != sha256.Length)
+                    return false;
+                for (int i = 0; i < sha256.Length; i++)
+                    if (Sha256[i] != sha256[i])
+                        return false;
+                return true;
+            }
+        }
+
+        public static int PlatformBit(PatchManager.Platform platform)
+        {
+            return 1 << (int)platform;
+        }
+
+        public Dictionary<string, List<Entry>> files = new Dictionary<string, List<Entry>>();
+
+        /// <summary>
+        /// The one true spelling of a path in this table: relative to the game root, forward slashes, uppercase.
+        /// </summary>
+        public static string NormalisePath(string path)
+        {
+            return (path ?? "").Replace('\\', '/').TrimStart('/').ToUpperInvariant();
+        }
+
+        /// <summary>
+        /// Get the expected hash info for a file on the given platform.
+        /// </summary>
+        public Entry Lookup(PatchManager.Platform platform, string path)
+        {
+            List<Entry> variants;
+            if (!files.TryGetValue(NormalisePath(path), out variants))
+                return null;
+            int bit = PlatformBit(platform);
+            for (int i = 0; i < variants.Count; i++)
+                if ((variants[i].Platforms & bit) != 0)
+                    return variants[i];
+            return null;
+        }
+
+        /// <summary>
+        /// Record that the given platforms ship these bytes for this path. 
+        /// </summary>
+        public Entry Merge(int platformMask, string path, long size, byte[] sha256)
+        {
+            string normalised = NormalisePath(path);
+            List<Entry> variants;
+            if (!files.TryGetValue(normalised, out variants))
+                files[normalised] = variants = new List<Entry>();
+            for (int i = 0; i < variants.Count; i++)
+            {
+                if (variants[i].SameContent(size, sha256))
+                {
+                    variants[i].Platforms |= platformMask;
+                    return variants[i];
+                }
+            }
+            Entry entry = new Entry() { Path = normalised, Size = size, Sha256 = sha256, Platforms = platformMask };
+            variants.Add(entry);
+            return entry;
+        }
+
+        public override void Read(BinaryReader reader)
+        {
+            files.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version < 2)
+                return;
+
+            int fileCount = reader.ReadInt32();
+            for (int i = 0; i < fileCount; i++)
+            {
+                string path = reader.ReadString();
+                int variantCount = reader.ReadInt32();
+                List<Entry> variants = new List<Entry>(variantCount);
+                for (int x = 0; x < variantCount; x++)
+                {
+                    Entry entry = new Entry();
+                    entry.Path = path;
+                    entry.Platforms = reader.ReadInt32();
+                    entry.Size = reader.ReadInt64();
+                    entry.Sha256 = reader.ReadBytes(32);
+                    variants.Add(entry);
+                }
+                files[path] = variants;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write((Int32)2);
+            writer.Write(files.Count);
+            foreach (KeyValuePair<string, List<Entry>> file in files)
+            {
+                writer.Write(file.Key ?? string.Empty);
+                writer.Write(file.Value.Count);
+                foreach (Entry entry in file.Value)
+                {
+                    writer.Write(entry.Platforms);
+                    writer.Write(entry.Size);
+                    writer.Write(entry.Sha256);
+                }
+            }
+        }
+    }
+    public class UbershaderPatchTable : CustomTable.Table
+    {
+        public UbershaderPatchTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.UBERSHADER_PATCHES;
+        }
+
+        public class Patch
+        {
+            public SHADER_LIST Ubershader;
+            public int Platforms; //Bitmask of FileHashTable.PlatformBit values. Zero means every build.
+            public Dictionary<string, string> Stages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); //Stage suffix ("vs"/"ps"/"hs"/"ds") to its master HLSL.
+
+            public bool SupportsPlatform(PatchManager.Platform platform)
+            {
+                return Platforms == 0 || (Platforms & FileHashTable.PlatformBit(platform)) != 0;
+            }
+        }
+
+        public List<Patch> patches = new List<Patch>();
+
+        /// <summary>
+        /// The master set for an ubershader on a build, or null when nothing here claims it.
+        /// </summary>
+        public Patch Lookup(SHADER_LIST ubershader, PatchManager.Platform platform)
+        {
+            Patch fallback = null;
+            for (int i = 0; i < patches.Count; i++)
+            {
+                if (patches[i].Ubershader != ubershader) continue;
+                if (patches[i].Platforms != 0 && patches[i].SupportsPlatform(platform)) return patches[i];
+                if (patches[i].Platforms == 0) fallback = patches[i];
+            }
+            return fallback;
+        }
+
+        /// <summary>
+        /// Add or replace the entry for an (ubershader, platform mask) pair, so regenerating over an
+        /// existing info.dat patches it in place rather than appending a duplicate.
+        /// </summary>
+        public void Set(SHADER_LIST ubershader, int platforms, Dictionary<string, string> stages)
+        {
+            for (int i = 0; i < patches.Count; i++)
+            {
+                if (patches[i].Ubershader != ubershader || patches[i].Platforms != platforms) continue;
+                patches[i].Stages = stages;
+                return;
+            }
+            patches.Add(new Patch() { Ubershader = ubershader, Platforms = platforms, Stages = stages });
+        }
+
+        /// <summary>
+        /// Drop every entry for an ubershader, whatever build it claims.
+        /// </summary>
+        public void Remove(SHADER_LIST ubershader)
+        {
+            patches.RemoveAll(o => o.Ubershader == ubershader);
+        }
+
+        public override void Read(BinaryReader reader)
+        {
+            patches.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version < 1)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                Patch patch = new Patch();
+                patch.Ubershader = (SHADER_LIST)reader.ReadInt32();
+                patch.Platforms = reader.ReadInt32();
+                int stageCount = reader.ReadInt32();
+                for (int x = 0; x < stageCount; x++)
+                {
+                    string stage = reader.ReadString();
+                    patch.Stages[stage] = reader.ReadString();
+                }
+                patches.Add(patch);
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write((Int32)1);
+            writer.Write(patches.Count);
+            foreach (Patch patch in patches)
+            {
+                writer.Write((Int32)patch.Ubershader);
+                writer.Write(patch.Platforms);
+                writer.Write(patch.Stages.Count);
+                foreach (KeyValuePair<string, string> stage in patch.Stages)
+                {
+                    writer.Write(stage.Key ?? string.Empty);
+                    writer.Write(stage.Value ?? string.Empty);
+                }
+            }
+        }
+    }
+    public class EntityCategoryTable : CustomTable.Table
+    {
+        public EntityCategoryTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.ENTITY_CATEGORIES;
+        }
+
+        public Dictionary<FunctionType, string> ScriptEntityCategories = new Dictionary<FunctionType, string>();
+        public Dictionary<string, string> AnimationEntityCategories = new Dictionary<string, string>();
+
+        public Dictionary<string, Color> CategoryColours = new Dictionary<string, Color>();
+        public Color BaseColour = Color.White;
+
+        private int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            BaseColour = Color.FromArgb(reader.ReadByte(), reader.ReadByte(), reader.ReadByte());
+
+            int categoryColourCount = reader.ReadInt32();
+            for (int i = 0; i < categoryColourCount; i++)
+                CategoryColours.Add(reader.ReadString(), Color.FromArgb(reader.ReadByte(), reader.ReadByte(), reader.ReadByte()));
+            
+            int scriptEntityCategoryCount = reader.ReadInt32();
+            for (int i = 0; i < scriptEntityCategoryCount; i++)
+                ScriptEntityCategories.Add((FunctionType)reader.ReadUInt32(), reader.ReadString());
+
+            int animEntityCategoryCount = reader.ReadInt32();
+            for (int i = 0; i < animEntityCategoryCount; i++)
+                AnimationEntityCategories.Add(reader.ReadString(), reader.ReadString());
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+
+            writer.Write(BaseColour.R);
+            writer.Write(BaseColour.G);
+            writer.Write(BaseColour.B);
+
+            writer.Write(CategoryColours.Count);
+            foreach (KeyValuePair<string, Color> categoryColour in CategoryColours)
+            {
+                writer.Write(categoryColour.Key);
+                writer.Write(categoryColour.Value.R);
+                writer.Write(categoryColour.Value.G);
+                writer.Write(categoryColour.Value.B);
+            }
+
+            writer.Write(ScriptEntityCategories.Count);
+            foreach (KeyValuePair<FunctionType, string> scriptCategory in ScriptEntityCategories)
+            {
+                writer.Write((uint)scriptCategory.Key);
+                writer.Write(scriptCategory.Value);
+            }
+
+            writer.Write(AnimationEntityCategories.Count);
+            foreach (KeyValuePair<string, string> animCategory in AnimationEntityCategories)
+            {
+                writer.Write(animCategory.Key);
+                writer.Write(animCategory.Value);
+            }
+        }
+    }
+    /// <summary>
+    /// Square rendered previews of composites, keyed by composite ShortGuid: what the level viewer draws of
+    /// one, framed in the middle of a black square. One PNG per composite, gzipped on its own so a single
+    /// preview can be pulled out without touching the rest. OpenCAGE ships one for every vanilla composite
+    /// in its flowgraphs.dat; a level's own COMMANDS.PAK carries the ones taken again when its composites
+    /// were saved, and those take precedence - the way flowgraph layouts do.
+    /// </summary>
+    public class CompositePreviewTable : CustomTable.Table
+    {
+        public CompositePreviewTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COMPOSITE_PREVIEWS;
+        }
+
+        public class Preview
+        {
+            public int captured_at; //unix seconds: when the preview was taken
+            public byte[] png_gzip; //a PNG, gzipped
+        }
+
+        public Dictionary<ShortGuid, Preview> previews = new Dictionary<ShortGuid, Preview>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            previews.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ShortGuid composite = Utilities.Consume<ShortGuid>(reader);
+                Preview preview = new Preview();
+                preview.captured_at = reader.ReadInt32();
+                int length = reader.ReadInt32();
+                preview.png_gzip = reader.ReadBytes(length);
+                previews[composite] = preview;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            writer.Write(previews.Count);
+            foreach (KeyValuePair<ShortGuid, Preview> preview in previews)
+            {
+                Utilities.Write<ShortGuid>(writer, preview.Key);
+                writer.Write(preview.Value.captured_at);
+                byte[] data = preview.Value.png_gzip ?? new byte[0];
+                writer.Write(data.Length);
+                writer.Write(data);
+            }
+        }
+
+        public int Count => previews.Count;
+
+        public bool HasPreview(ShortGuid composite) => previews.ContainsKey(composite);
+
+        /// <summary>When a composite's preview was taken (unix seconds), or -1 when there is none.</summary>
+        public int GetCapturedAt(ShortGuid composite)
+        {
+            return previews.TryGetValue(composite, out Preview preview) ? preview.captured_at : -1;
+        }
+
+        /// <summary>Store a preview from a PNG's bytes, gzipping it. Replaces any the composite had.</summary>
+        public void SetPreview(ShortGuid composite, byte[] png, int capturedAt)
+        {
+            if (png == null)
+                return;
+            previews[composite] = new Preview() { captured_at = capturedAt, png_gzip = Compress(png) };
+        }
+
+        /// <summary>Store a preview that is already gzipped (copying one table's entry into another).</summary>
+        public void SetPreview(ShortGuid composite, Preview preview)
+        {
+            if (preview == null || preview.png_gzip == null)
+                return;
+            previews[composite] = new Preview() { captured_at = preview.captured_at, png_gzip = preview.png_gzip };
+        }
+
+        public bool RemovePreview(ShortGuid composite) => previews.Remove(composite);
+
+        /// <summary>The PNG bytes of a composite's preview, or null when it has none.</summary>
+        public byte[] GetPreviewPng(ShortGuid composite)
+        {
+            if (!previews.TryGetValue(composite, out Preview preview) || preview.png_gzip == null)
+                return null;
+            try
+            {
+                return Decompress(preview.png_gzip);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        public static byte[] Compress(byte[] data)
+        {
+            using (MemoryStream output = new MemoryStream())
+            {
+                using (GZipStream gzip = new GZipStream(output, CompressionLevel.Optimal, true))
+                    gzip.Write(data, 0, data.Length);
+                return output.ToArray();
+            }
+        }
+
+        public static byte[] Decompress(byte[] data)
+        {
+            using (MemoryStream output = new MemoryStream())
+            using (GZipStream gzip = new GZipStream(new MemoryStream(data), CompressionMode.Decompress))
+            {
+                gzip.CopyTo(output);
+                return output.ToArray();
+            }
+        }
+    }
+    /// <summary>
+    /// Vector composite parameters (VariableEntities) the editor shows as colours rather than vectors: by composite
+    /// ShortGuid, the ids (shortGUID) of its parameter entities chosen to be shown that way. Editor-only, the game
+    /// never reads it.
+    /// </summary>
+    public class ColourParameterTable : CustomTable.Table
+    {
+        public ColourParameterTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COLOUR_PARAMETERS;
+        }
+
+        public Dictionary<ShortGuid, HashSet<ShortGuid>> colour_parameters = new Dictionary<ShortGuid, HashSet<ShortGuid>>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            colour_parameters.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ShortGuid composite = Utilities.Consume<ShortGuid>(reader);
+                HashSet<ShortGuid> parameters = new HashSet<ShortGuid>();
+                int parameterCount = reader.ReadInt32();
+                for (int x = 0; x < parameterCount; x++)
+                    parameters.Add(Utilities.Consume<ShortGuid>(reader));
+                if (parameters.Count != 0)
+                    colour_parameters[composite] = parameters;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            List<KeyValuePair<ShortGuid, HashSet<ShortGuid>>> rows = colour_parameters.Where(o => o.Value != null && o.Value.Count != 0).ToList();
+            writer.Write(rows.Count);
+            foreach (KeyValuePair<ShortGuid, HashSet<ShortGuid>> row in rows)
+            {
+                Utilities.Write<ShortGuid>(writer, row.Key);
+                writer.Write(row.Value.Count);
+                foreach (ShortGuid parameter in row.Value)
+                    Utilities.Write<ShortGuid>(writer, parameter);
             }
         }
     }

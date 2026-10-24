@@ -30,11 +30,16 @@ namespace CATHODE
         public List<Entry> Entries = new List<Entry>();
         public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE | Implementation.CREATE;
 
-        public RadiosityInstanceMap(string path) : base(path) { }
+        private Resources _resources;
 
-        ~RadiosityInstanceMap()
+        public RadiosityInstanceMap(string path, Resources resources) : base(path)
         {
-            Entries.Clear();
+            _resources = resources;
+        }
+
+        public void ClearReferences()
+        {
+            _resources = null;
         }
 
         #region FILE_IO
@@ -44,14 +49,16 @@ namespace CATHODE
             if (_filepath == "")
                 return false;
 
-            string[] radiosityMappings = File.ReadAllLines(_filepath); 
+            string[] radiosityMappings = File.ReadAllLines(_filepath);
             foreach (string entry in radiosityMappings)
             {
                 string[] mapping = entry.Split(' ');
+                int resourceIndex = Convert.ToInt32(mapping[1]);
                 Entries.Add(new Entry()
                 {
                     lightmap_transform = Convert.ToInt32(mapping[0]),
-                    resource_index = Convert.ToInt32(mapping[1])
+                    resource_index = resourceIndex,
+                    Resource = _resources?.GetAtWriteIndex(resourceIndex)
                 });
             }
             return true;
@@ -62,9 +69,15 @@ namespace CATHODE
             List<string> radiosityMappings = new List<string>();
             foreach (Entry entry in Entries)
             {
-                radiosityMappings.Add(entry.lightmap_transform + " " + entry.resource_index);
+                int resourceIndex = entry.resource_index;
+                if (entry.Resource != null && _resources != null)
+                    resourceIndex = _resources.GetWriteIndex(entry.Resource);
+
+                radiosityMappings.Add(entry.lightmap_transform + " " + resourceIndex);
             }
-            File.WriteAllLines(_filepath, radiosityMappings.ToArray());
+            // Retail ships this file LF-terminated; WriteAllLines emits CRLF on Windows and
+            // the engine's row parser is not known to tolerate it. Match retail exactly.
+            File.WriteAllText(_filepath, radiosityMappings.Count > 0 ? string.Join("\n", radiosityMappings) + "\n" : "");
             return true;
         }
         #endregion
@@ -74,6 +87,7 @@ namespace CATHODE
         {
             public int lightmap_transform;
             public int resource_index;
+            public Resources.Resource Resource;
         }
         #endregion
     }

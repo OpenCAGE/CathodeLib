@@ -29,10 +29,24 @@ namespace CATHODE
 
         private List<MaterialMapping> _writeList = new List<MaterialMapping>();
 
-        ~MaterialMappings()         
+        //Where each mapping sits in the file, for the per-row lookups CollisionMaps does when it
+        //saves. MaterialMapping hashes its Mappings list by reference while == compares it by value,
+        //so the comparer below hashes the name and the count instead.
+        private Dictionary<MaterialMapping, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        private readonly object _writeIndexLock = new object();
+
+        private sealed class MappingIdentity : IEqualityComparer<MaterialMapping>
         {
-            Entries.Clear();
-            _writeList.Clear();
+            public static readonly MappingIdentity Instance = new MappingIdentity();
+            public bool Equals(MaterialMapping x, MaterialMapping y) { return x == y; }
+            public int GetHashCode(MaterialMapping mapping)
+            {
+                if (mapping == null) return 0;
+                int hash = mapping.Name == null ? 0 : mapping.Name.GetHashCode();
+                hash = hash * 31 + (mapping.Mappings == null ? 0 : mapping.Mappings.Count);
+                return hash;
+            }
         }
 
         #region FILE_IO
@@ -46,12 +60,12 @@ namespace CATHODE
                 for (int x = 0; x < entryCount; x++)
                 {
                     MaterialMapping entry = new MaterialMapping();
-                    reader.BaseStream.Position += 4; //shortguid hash of filename (useful?)
+                    reader.BaseStream.Position += 4; //shortguid hash of filename - we use our own, calculated below
                     int count = reader.ReadInt32();
                     reader.BaseStream.Position += 4; //this is to->from id count, stored last, but always empty
                     int strLength = reader.ReadInt32();
-                    entry.Name = Utilities.ReadString(reader.ReadBytes(strLength));
-                    entry.Name = entry.Name.Substring(_path.Length, entry.Name.Length - 4 - _path.Length);
+                    entry.Name = TrimMappingString(Utilities.ReadString(reader.ReadBytes(strLength)));
+                    entry.ID = GenerateMappingID(entry.Name, true);
                     for (int p = 0; p < count; p++)
                     {
                         MaterialMapping.Mapping mapping = new MaterialMapping.Mapping();
@@ -65,6 +79,7 @@ namespace CATHODE
                 }
             }
             _writeList.AddRange(Entries);
+            _writeIndex = null;
             return true;
         }
 
@@ -94,7 +109,9 @@ namespace CATHODE
                 }
             }
             _writeList.Clear();
+            _writeIndex = null;
             _writeList.AddRange(Entries);
+            _writeIndex = null;
             return true;
         }
         #endregion
@@ -106,8 +123,31 @@ namespace CATHODE
         /// </summary>
         public int GetWriteIndex(MaterialMapping map)
         {
-            if (!_writeList.Contains(map)) return -1;
-            return _writeList.IndexOf(map);
+            if (map == null) return -1;
+
+            Dictionary<MaterialMapping, int> index = _writeIndex;
+            if (index == null || _writeIndexCount != _writeList.Count)
+            {
+                lock (_writeIndexLock)
+                {
+                    if (_writeIndex == null || _writeIndexCount != _writeList.Count)
+                    {
+                        Dictionary<MaterialMapping, int> built = new Dictionary<MaterialMapping, int>(_writeList.Count, MappingIdentity.Instance);
+                        for (int i = 0; i < _writeList.Count; i++)
+                        {
+                            MaterialMapping entry = _writeList[i];
+                            if (entry != null && !built.ContainsKey(entry))
+                                built[entry] = i;
+                        }
+                        _writeIndexCount = _writeList.Count;
+                        _writeIndex = built;
+                    }
+                    index = _writeIndex;
+                }
+            }
+
+            int found;
+            return index.TryGetValue(map, out found) ? found : -1;
         }
 
         /// <summary>
@@ -122,25 +162,52 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Dedupes by <see cref="MaterialMapping.Name"/>. When <paramref name="overwriteExisting"/> is true, replaces any existing entry with the same name.
         /// </summary>
-        public MaterialMapping ImportEntry(MaterialMapping matMap)
+        public MaterialMapping ImportEntry(MaterialMapping matMap, bool overwriteExisting = false)
         {
             if (matMap == null)
                 return null;
 
-            var existing = Entries.FirstOrDefault(o => o == matMap);
-            if (existing != null)
-                return existing;
+            MaterialMapping existingByName = Entries.FirstOrDefault(o => o.Name == matMap.Name);
+            if (existingByName != null && !overwriteExisting)
+                return existingByName;
 
             MaterialMapping newMatMap = matMap.Copy();
+            if (existingByName != null)
+            {
+                existingByName.ID = newMatMap.ID;
+                existingByName.Mappings = newMatMap.Mappings;
+                return existingByName;
+            }
+
             Entries.Add(newMatMap);
             return newMatMap;
+        }
+
+        /// <summary>
+        /// Trims a material mapping name to remove the absolute path and extension
+        /// </summary>
+        public static string TrimMappingString(string str)
+        {
+            if (str.ToLower().Replace("\\", "/").StartsWith(_path.ToLower()) && str.ToLower().EndsWith(".xml"))
+                return str.Substring(_path.Length, str.Length - 4 - _path.Length);
+            return str;
+        }
+
+        /// <summary>
+        /// Generates a material mapping ID from the mapping name (this logic differs to the game's id generation, but works better for us)
+        /// </summary>
+        public static ShortGuid GenerateMappingID(string str, bool alreadyTrimmed = false)
+        {
+            return ShortGuidUtils.Generate((alreadyTrimmed ? str : TrimMappingString(str)).Replace("/", "\\").ToUpper());
         }
         #endregion
 
         #region STRUCTURES
         public class MaterialMapping : IEquatable<MaterialMapping>
         {
+            public ShortGuid ID;
             public string Name;
             public List<Mapping> Mappings = new List<Mapping>();
 

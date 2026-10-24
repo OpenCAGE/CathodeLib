@@ -1,0 +1,6473 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Text;
+using CathodeLib;
+using CathodeLib.Havok;
+
+namespace CATHODE
+{
+    /// <summary>
+    /// Havok packfile loader/saver for Alien: Isolation WORLD/*.HKX and *.HKX64
+    /// (packfile version 9, contents version hk_2012.2.0-r1).
+    ///
+    /// COLLISION.MAP rows reference <see cref="StaticCompoundShape"/> / <see cref="CompoundInstance"/>
+    /// objects from this packfile (written as CollisionProxyIndex / Index ordinals).
+    ///
+    /// Supports full packfile round-trip, typed compound instance read/write, and appending
+    /// or removing instances on an existing static compound (rebuilds a loose Storage6 BVH).
+    /// </summary>
+    public class HavokPackfile : CathodeFile
+    {
+        public static new Implementation Implementation = Implementation.LOAD | Implementation.SAVE;
+
+        public bool Compressed { get { return _compressed; } set { _compressed = value; } }
+        private bool _compressed = false;
+
+        public HeaderInfo Header = new HeaderInfo();
+
+        /// <summary>Set when this file turned out to be a Havok tagfile rather than a packfile.</summary>
+        internal HavokTagfile Tagfile = null;
+
+        /// <summary>
+        /// Where the shape fields the geometry readers want actually sit. The defaults are the 2012.2
+        /// packfile layout the PC ships; a tagfile overwrites them from its own type table, because
+        /// 2018.2 grew hkReferencedObject by eight bytes and pushed most of these along with it.
+        /// The mesh tree's own fields did not move, so they are still read where they always were.
+        /// </summary>
+        internal sealed class ShapeLayout
+        {
+            //hkpConvexVerticesShape: radius @32, aabbHalfExtents @48, aabbCenter @64, then the vertex arrays
+            //(ReleaseSweep physfields over every PHYSICS.HKX64; the old 64/80/88/104 read the AABB centre as an array)
+            public int ConvexRotatedVertices = 80;
+            public int ConvexNumVertices = 96;
+            public int ConvexPlaneEquations = 104;
+            public int ConvexConnectivity = 120;
+            public int ConvexAabbHalfExtents = 48;
+            public int ConvexAabbCentre = 64;
+            public int ConnectivityVertexIndices = 16;
+            public int ConnectivityFacesPerVertex = 32;
+            public int ListChildInfo = 48;   //as the proxy list's own ListChildArrayField, 0x30
+            public int ListChildStride = 32;
+            public int WorldObjectCollidable = 32;
+        }
+
+        internal ShapeLayout Layout = new ShapeLayout();
+
+        /// <summary>True when the data came from a tagfile, which carries no geometry we can rebuild.</summary>
+        public bool IsTagfile => Tagfile != null;
+
+        /// <summary>Raw __classnames__ payload (signatures + names). Fixups are empty on AI files.</summary>
+        public byte[] ClassnamesData = Array.Empty<byte>();
+
+        /// <summary>Raw __types__ payload (empty on AI collision files).</summary>
+        public byte[] TypesData = Array.Empty<byte>();
+
+        /// <summary>Raw __data__ object bytes (before local fixup table).</summary>
+        public byte[] DataPayload = Array.Empty<byte>();
+
+        /// <summary>
+        /// Absolute file offset of <see cref="DataPayload"/>. Lets a caller patch values back into the
+        /// original file bytes without rebuilding the packfile.
+        /// </summary>
+        public uint DataSectionOffset => _dataSectionOffset;
+        private uint _dataSectionOffset;
+
+        public List<LocalFixup> LocalFixups = new List<LocalFixup>();
+        public List<GlobalFixup> GlobalFixups = new List<GlobalFixup>();
+        public List<VirtualFixup> VirtualFixups = new List<VirtualFixup>();
+
+        public List<PackfileObject> Objects = new List<PackfileObject>();
+
+        /// <summary>Typed hkpStaticCompoundShape views in CollisionProxyIndex order.</summary>
+        public List<StaticCompoundShape> StaticCompoundShapes = new List<StaticCompoundShape>();
+
+        /// <summary>Typed hkpPhysicsSystem views in <c>hkpPhysicsData.systems[]</c> / SystemIndex order.</summary>
+        public List<PhysicsSystem> PhysicsSystems = new List<PhysicsSystem>();
+
+        public HavokPackfile(string path) : base(path) { }
+        public HavokPackfile(MemoryStream stream, string path = "") : base(stream, path) { }
+        public HavokPackfile(byte[] data, string path = "") : base(data, path) { }
+
+        public enum ObjectClass
+        {
+            Unknown = 0,
+            RootLevelContainer,
+            PhysicsData,
+            PhysicsSystem,
+            WorldCinfo,
+            GroupFilter,
+            DefaultConvexListFilter,
+            RigidBody,
+            ListShape,
+            StaticCompoundShape,
+            BvCompressedMeshShape,
+            BoxShape,
+        }
+
+        public class HeaderInfo
+        {
+            public uint Magic0 = 0x57E0E057;
+            public uint Magic1 = 0x10C0C010;
+            public int UserTag;
+            public int FileVersion = 9;
+            public byte PointerSize = 4;
+            public byte LittleEndian = 1;
+            public byte PaddingOption;
+            public byte BaseClass = 1;
+            public int NumSections = 3;
+            public int ContentsSectionIndex = 2;
+            public int ContentsSectionOffset;
+            public int ContentsClassNameSectionIndex;
+            public int ContentsClassNameSectionOffset;
+            public string ContentsVersion = "hk_2012.2.0-r1";
+            public int Flags;
+            public int MaxPredicate = -1;
+        }
+
+        public struct LocalFixup
+        {
+            public uint Src;
+            public uint Dst;
+        }
+
+        public struct GlobalFixup
+        {
+            public uint Src;
+            public uint DstSectionIndex;
+            public uint Dst;
+        }
+
+        public struct VirtualFixup
+        {
+            public uint Src;
+            public uint SectionIndex;
+            public int NameOffset;
+        }
+
+        public class PackfileObject
+        {
+            public uint DataOffset;
+            public int ClassNameOffset;
+            public string ClassName;
+            public ObjectClass Class;
+            public int ProxyIndex = -1;
+        }
+
+        public class StaticCompoundShape
+        {
+            public int ProxyIndex;
+            public uint DataOffset;
+            public List<CompoundInstance> Instances = new List<CompoundInstance>();
+
+            /// <summary>Compound-local AABB domain used by the Storage6 BVH (min xyz / max xyz).</summary>
+            public Vector4 DomainMin;
+            public Vector4 DomainMax;
+
+            /// <summary>Append an instance and adopt it, so it can report its own slot.</summary>
+            public CompoundInstance AddInstance(CompoundInstance instance)
+            {
+                instance.Owner = this;
+                Instances.Add(instance);
+                return instance;
+            }
+
+            public void ClearInstances()
+            {
+                for (int i = 0; i < Instances.Count; i++)
+                    Instances[i].Owner = null;
+                Instances.Clear();
+            }
+        }
+
+        /// <summary>
+        /// A hkpPhysicsSystem template in PHYSICS.HKX / HKX64.
+        /// PHYSICS.MAP and Commands DYNAMIC_PHYSICS_SYSTEM use <see cref="SystemIndex"/> —
+        /// the index into <c>hkpPhysicsData.systems[]</c> (not packfile appearance order).
+        /// </summary>
+        public class PhysicsSystem
+        {
+            public int SystemIndex;
+            public uint DataOffset;
+            public string Name;
+            public PackfileObject Object;
+        }
+
+        /// <summary>
+        /// Read-only summary of an <c>hkpRigidBody</c> in a physics system (packfile field layout).
+        /// </summary>
+        public class RigidBodyInfo
+        {
+            public uint DataOffset;
+            public string Name;
+            public string ShapeClassName;
+            /// <summary>hkpMotion::MotionType: retail props are 3 (box inertia) or 2 (sphere inertia), animated doors and lids 4 (keyframed).</summary>
+            public byte MotionType;
+            public string MotionTypeName;
+            /// <summary>1/mass from <c>m_inertiaAndMassInv.w</c>; 0 means infinite mass.</summary>
+            public float MassInv;
+            /// <summary>Mass in kg, or <see cref="float.PositiveInfinity"/> when <see cref="MassInv"/> is 0.</summary>
+            public float Mass;
+            public Vector3 InertiaInvLocal;
+            public float ObjectRadius;
+            public float LinearDamping;
+            public float AngularDamping;
+            /// <summary>The motion's hkUFloat8 code, not a speed: retail stores 0x7F (Havok's default) on all but one body.</summary>
+            public float MaxLinearVelocity;
+            public float GravityFactor;
+            public float Friction;
+            public float Restitution;
+            public uint CollisionFilterInfo;
+        }
+
+        public class CompoundInstance
+        {
+            /// <summary>Translation; W packs Havok instance flags in the low bits.</summary>
+            public Vector4 Translation;
+            public Quaternion Rotation;
+            public Vector4 Scale;
+            public uint FilterInfo;
+            public uint ChildFilterInfoMask;
+            public ulong UserData;
+
+            /// <summary>Offset of referenced shape object within the data payload.</summary>
+            public uint ShapeDataOffset;
+            public string ShapeClassName;
+
+            /// <summary>Byte offset of this instance struct within the data payload.</summary>
+            public uint DataOffset;
+
+            /// <summary>Compound holding this instance (set by <see cref="StaticCompoundShape.AddInstance"/>).</summary>
+            public StaticCompoundShape Owner;
+
+            /// <summary>Slot within <see cref="Owner"/> — this is the COLLISION.MAP Index.</summary>
+            public int Index => Owner?.Instances.IndexOf(this) ?? -1;
+        }
+
+        /// <summary>
+        /// Triangle mesh built for UI preview (real Havok collision geometry when available).
+        /// </summary>
+        public class PreviewMesh
+        {
+            public List<Vector3> Positions = new List<Vector3>();
+            public List<int> Indices = new List<int>();
+            /// <summary>Number of leaf shapes contributed (meshes, boxes, convex hulls).</summary>
+            public int ShapeCount;
+            public int TriangleCount => Indices.Count / 3;
+            /// <summary>
+            /// The caps this mesh is being built under. The preview builders cap shapes and triangles
+            /// for the viewer; <see cref="BuildBakeMesh"/> passes int.MaxValue and the leaf appenders
+            /// read these rather than the preview constants - a leaf that tested the constants directly
+            /// dropped every box past the 2048th shape of a world host from the bake soups (the door
+            /// barriers of CM9's 2,709-shape host, twice now).
+            /// </summary>
+            public int ShapeCapLimit = int.MaxValue;
+            public int TriangleCapLimit = int.MaxValue;
+
+            /// <summary>
+            /// Which top-level instance each triangle came from, in ascending triangle order, as
+            /// (first triangle, instance) pairs. Only filled when the caller asks for it.
+            /// </summary>
+            public List<KeyValuePair<int, CompoundInstance>> InstanceRanges;
+
+            /// <summary>The instance that produced a triangle, or null if not tracked.</summary>
+            public CompoundInstance InstanceOf(int triangle)
+            {
+                if (InstanceRanges == null || InstanceRanges.Count == 0) return null;
+                int low = 0, high = InstanceRanges.Count - 1, found = -1;
+                while (low <= high)
+                {
+                    int mid = (low + high) / 2;
+                    if (InstanceRanges[mid].Key <= triangle) { found = mid; low = mid + 1; }
+                    else high = mid - 1;
+                }
+                return found < 0 ? null : InstanceRanges[found].Value;
+            }
+        }
+
+        const int PreviewShapeCap = 2048;
+        const int PreviewTriangleCap = 250000;
+        const int SectionStride = 96;
+
+        /// <summary>
+        /// Build a preview mesh for a collision proxy from nested compounds, BvCompressed meshes,
+        /// boxes, and convex hulls (instance transforms applied).
+        /// </summary>
+        public PreviewMesh BuildPreviewMesh(StaticCompoundShape compound)
+        {
+            // The authored triangles, capped for the UI, with a box standing in for anything that does not decode
+            return BuildTriangleMesh(compound, PreviewShapeCap, PreviewTriangleCap, capRootInstances: true,
+                skipInstances: null, placeholders: true);
+        }
+
+        /// <summary>
+        /// Full uncapped triangle extract for navmesh baking: the authored BvCompressed primitives, and no
+        /// placeholder boxes - an invented solid would give Recast floors and walls that are not there.
+        /// </summary>
+        /// <param name="skipInstances">
+        /// Optional instances to omit (e.g. PATH_CLOSED NavMeshBarrier boxes stamped as area ids instead).
+        /// </param>
+        /// <param name="trackInstances">
+        /// Record which top-level instance each triangle came from, so a ray hit can be traced back
+        /// to its COLLISION.MAP flags.
+        /// </param>
+        public PreviewMesh BuildBakeMesh(StaticCompoundShape compound, ISet<CompoundInstance> skipInstances = null,
+                                         bool trackInstances = false)
+        {
+            BakeMeshShare share = _bakeMeshShare;
+            if (share != null && compound != null && ReferenceEquals(share.Payload, DataPayload) && share.CompoundCount == StaticCompoundShapes.Count)
+            {
+                lock (share)
+                    return BuildSharedBakeMesh(share, compound, skipInstances, trackInstances);
+            }
+            return BuildTriangleMesh(compound, int.MaxValue, int.MaxValue, capRootInstances: false,
+                skipInstances, placeholders: false, trackInstances);
+        }
+
+        /// <summary>
+        /// From here to <see cref="EndBakeMeshSharing"/> nothing may change this packfile, and <see cref="BuildBakeMesh"/> cuts
+        /// each root instance's triangles once and copies them from then on. Instancing holds it open across the agent bakes,
+        /// which take the world host's triangles about ten times a save (three navmesh states, cover, the glass probe, the
+        /// sound soups), each time under its own skip set - and seconds of it went on decoding the same instances again. The
+        /// meshes are exactly what BuildBakeMesh builds without it, value for value and index for index.
+        /// </summary>
+        public void BeginBakeMeshSharing()
+        {
+            var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                StaticCompoundShape s = StaticCompoundShapes[i];
+                if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
+                    shapeByOffset[s.DataOffset] = s;
+            }
+            _bakeMeshShare = new BakeMeshShare { Payload = DataPayload, CompoundCount = StaticCompoundShapes.Count, ShapeByOffset = shapeByOffset };
+        }
+
+        public void EndBakeMeshSharing()
+        {
+            _bakeMeshShare = null;
+        }
+
+        private BakeMeshShare _bakeMeshShare;
+
+        private sealed class BakeMeshShare
+        {
+            public byte[] Payload;
+            public int CompoundCount;
+            //The same first-listed-wins map BuildTriangleMesh makes on every call, made once
+            public Dictionary<uint, StaticCompoundShape> ShapeByOffset;
+            public readonly Dictionary<StaticCompoundShape, BakePiece[]> Pieces = new Dictionary<StaticCompoundShape, BakePiece[]>();
+            public readonly PreviewMesh Scratch = new PreviewMesh();
+        }
+
+        /// <summary>One root instance's triangles, emitted into a mesh of their own (so its indices start at 0).</summary>
+        private sealed class BakePiece
+        {
+            public CompoundInstance Instance;
+            public Vector3[] Positions;
+            public int[] Indices;
+            public int Shapes;
+            /// <summary>Every instance the walk below this root tests against a skip set. A piece cut under a skip set that
+            /// held one of them carries that set's holes and is not kept.</summary>
+            public CompoundInstance[] Nested;
+        }
+
+        private static readonly CompoundInstance[] NoNestedInstances = new CompoundInstance[0];
+
+        /// <summary>
+        /// What BuildTriangleMesh and EmitCompoundPreview do for a bake (uncapped, no placeholders, depth 0), one root at a
+        /// time: every leaf appender places its vertices from its own arguments and indexes them from the position count it
+        /// found, so a root emitted alone and appended with its indices moved on is the same triangles in the same order.
+        /// </summary>
+        private PreviewMesh BuildSharedBakeMesh(BakeMeshShare share, StaticCompoundShape compound, ISet<CompoundInstance> skipInstances, bool trackInstances)
+        {
+            var mesh = new PreviewMesh { ShapeCapLimit = int.MaxValue, TriangleCapLimit = int.MaxValue };
+            if (trackInstances)
+                mesh.InstanceRanges = new List<KeyValuePair<int, CompoundInstance>>();
+            List<CompoundInstance> instances = compound.Instances;
+            if (instances == null || instances.Count == 0)
+                return mesh;
+
+            if (!share.Pieces.TryGetValue(compound, out BakePiece[] pieces) || pieces.Length != instances.Count)
+                share.Pieces[compound] = pieces = new BakePiece[instances.Count];
+
+            for (int i = 0; i < instances.Count; i++)
+            {
+                CompoundInstance inst = instances[i];
+                if (skipInstances != null && skipInstances.Contains(inst))
+                    continue;
+
+                if (mesh.InstanceRanges != null)
+                    mesh.InstanceRanges.Add(new KeyValuePair<int, CompoundInstance>(mesh.TriangleCount, inst));
+
+                BakePiece piece = pieces[i];
+                if (piece == null || !ReferenceEquals(piece.Instance, inst)
+                    || (skipInstances != null && AnySkipped(piece.Nested, skipInstances)))
+                {
+                    piece = CutBakePiece(share, inst, skipInstances);
+                    if (piece.Nested != null)
+                        pieces[i] = piece;
+                }
+
+                int baseIndex = mesh.Positions.Count;
+                mesh.Positions.AddRange(piece.Positions);
+                int[] indices = piece.Indices;
+                for (int k = 0; k < indices.Length; k++)
+                    mesh.Indices.Add(baseIndex + indices[k]);
+                mesh.ShapeCount += piece.Shapes;
+            }
+            return mesh;
+        }
+
+        private BakePiece CutBakePiece(BakeMeshShare share, CompoundInstance inst, ISet<CompoundInstance> skipInstances)
+        {
+            CompoundInstance[] nested = NoNestedInstances;
+            if (share.ShapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
+            {
+                var below = new List<CompoundInstance>();
+                CollectNestedInstances(child, share.ShapeByOffset, 1, below);
+                nested = below.ToArray();
+            }
+
+            PreviewMesh scratch = share.Scratch;
+            scratch.Positions.Clear();
+            scratch.Indices.Clear();
+            scratch.ShapeCount = 0;
+            EmitInstance(scratch, inst, share.ShapeByOffset, Vector3.Zero, Quaternion.Identity, Vector3.One, 0,
+                         int.MaxValue, int.MaxValue, false, skipInstances, false);
+            return new BakePiece
+            {
+                Instance = inst,
+                Positions = scratch.Positions.ToArray(),
+                Indices = scratch.Indices.ToArray(),
+                Shapes = scratch.ShapeCount,
+                Nested = skipInstances != null && AnySkipped(nested, skipInstances) ? null : nested
+            };
+        }
+
+        /// <summary>Every instance EmitCompoundPreview tests against a skip set below a root, to the same depth limit.</summary>
+        private static void CollectNestedInstances(StaticCompoundShape compound, Dictionary<uint, StaticCompoundShape> shapeByOffset, int depth, List<CompoundInstance> into)
+        {
+            if (compound == null || depth > 12 || compound.Instances == null)
+                return;
+            foreach (CompoundInstance inst in compound.Instances)
+            {
+                into.Add(inst);
+                if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
+                    CollectNestedInstances(child, shapeByOffset, depth + 1, into);
+            }
+        }
+
+        private static bool AnySkipped(CompoundInstance[] nested, ISet<CompoundInstance> skipInstances)
+        {
+            for (int i = 0; i < nested.Length; i++)
+                if (skipInstances.Contains(nested[i]))
+                    return true;
+            return false;
+        }
+
+        PreviewMesh BuildTriangleMesh(
+            StaticCompoundShape compound,
+            int shapeCap,
+            int triCap,
+            bool capRootInstances,
+            ISet<CompoundInstance> skipInstances = null,
+            bool placeholders = true,
+            bool trackInstances = false)
+        {
+            var mesh = new PreviewMesh { ShapeCapLimit = shapeCap, TriangleCapLimit = triCap };
+            if (trackInstances)
+                mesh.InstanceRanges = new List<KeyValuePair<int, CompoundInstance>>();
+            if (compound == null)
+                return mesh;
+
+            var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                StaticCompoundShape s = StaticCompoundShapes[i];
+                if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
+                    shapeByOffset[s.DataOffset] = s;
+            }
+
+            EmitCompoundPreview(
+                mesh,
+                compound,
+                shapeByOffset,
+                Vector3.Zero,
+                Quaternion.Identity,
+                Vector3.One,
+                depth: 0,
+                shapeCap,
+                triCap,
+                capRootInstances,
+                skipInstances,
+                placeholders);
+            return mesh;
+        }
+
+        /// <summary>
+        /// Build a preview for a physics system from each rigid body's shape geometry
+        /// (mesh / convex / box) in shape-local space (motion transforms not applied).
+        /// </summary>
+        public PreviewMesh BuildPreviewMesh(PhysicsSystem system)
+        {
+            var mesh = new PreviewMesh();
+            if (system == null)
+                return mesh;
+
+            if (!TryGetRigidBodyOffsets(system, out List<uint> bodyOffsets))
+                return mesh;
+
+            var classAtOffset = new Dictionary<uint, string>();
+            for (int i = 0; i < Objects.Count; i++)
+                classAtOffset[Objects[i].DataOffset] = Objects[i].ClassName;
+
+            var globalBySrc = new Dictionary<uint, uint>(GlobalFixups.Count);
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            // hkpWorldObject.collidable: +32 (64-bit) / +16 (32-bit); shape pointer at start of collidable.
+            uint collidableShapeField = Header.PointerSize == 8 ? (uint)Layout.WorldObjectCollidable : 16u;
+
+            //Each body where its motion state holds it (translation @R+48, rotation0 @R+96, R = 240 / 368), so a
+            //system of several bodies - a pair of doors, a trolley and its wheels - previews assembled
+            uint motionState = Header.PointerSize == 8 ? 368u : 240u;
+            int tagMotionState = Tagfile == null ? -1 : Tagfile.OffsetOfPath("hkpRigidBody", "motion", "motionState");
+            if (tagMotionState > 0)
+                motionState = (uint)tagMotionState;   //368 in 2018 as well; the transform inside it did not move
+            for (int b = 0; b < bodyOffsets.Count && mesh.ShapeCount < PreviewShapeCap; b++)
+            {
+                uint shapeField = bodyOffsets[b] + collidableShapeField;
+                if (!globalBySrc.TryGetValue(shapeField, out uint shapeOff))
+                    continue;
+                classAtOffset.TryGetValue(shapeOff, out string shapeClass);
+                Vector3 translation = Vector3.Zero;
+                Quaternion rotation = Quaternion.Identity;
+                uint state = bodyOffsets[b] + motionState;
+                if ((Tagfile == null || tagMotionState > 0) && state + 112 <= (uint)DataPayload.Length)
+                {
+                    Vector4 t = ReadVector4(DataPayload, (int)state + 48);
+                    Vector4 q = ReadVector4(DataPayload, (int)state + 96);
+                    Quaternion read = new Quaternion(q.X, q.Y, q.Z, q.W);
+                    if (!float.IsNaN(t.X) && !float.IsNaN(read.W) && read.LengthSquared() > 0.5f)
+                    {
+                        translation = new Vector3(t.X, t.Y, t.Z);
+                        rotation = Quaternion.Normalize(read);
+                    }
+                }
+                AppendShapePreview(mesh, shapeOff, shapeClass ?? "", translation, rotation, Vector3.One);
+            }
+            return mesh;
+        }
+
+        /// <summary>
+        /// Read rigid-body summaries for a physics system (name, mass, motion, shape, filter, damping).
+        /// Layout verified against AI PHYSICS.HKX / HKX64 (hk_2012.2.0-r1 packfiles).
+        /// </summary>
+        public List<RigidBodyInfo> GetRigidBodies(PhysicsSystem system)
+        {
+            //A tagfile read its bodies when it read the system, so this is a lookup rather than a walk
+            if (Tagfile != null)
+                return Tagfile.RigidBodies(system);
+
+            var bodies = new List<RigidBodyInfo>();
+            if (system == null || !TryGetRigidBodyOffsets(system, out List<uint> bodyOffsets))
+                return bodies;
+
+            /* hkpRigidBody, 2012 packfile, read off every retail PHYSICS.HKX/HKX64 (ReleaseSweep physfields). The
+             * motion is inline: its motion state starts at R = 240 / 368, the motion's type byte 8 / 16 before it.
+             * The byte at 0x88 / 0xC8 that used to be read as the motion type is hkpMaterial's response type, which
+             * is 1 on every retail body - so every body used to list as "Dynamic". */
+            bool is64 = Header.PointerSize == 8;
+            uint shapeFieldOff = is64 ? 32u : 16u;
+            uint filterFieldOff = is64 ? 0x4Cu : 0x2Cu;
+            uint nameFieldOff = is64 ? 0xB0u : 0x78u;
+            uint frictionOff = is64 ? 0xCCu : 0x8Cu;
+            uint motionState = is64 ? 368u : 240u;
+            uint motionTypeOff = motionState - (is64 ? 16u : 8u);   //after the inline motion's hkReferencedObject
+            uint radiusOff = motionState + 160;
+            uint linDampOff = motionState + 164;           //hkHalf, then angular damping
+            uint maxLinVelOff = motionState + 170;         //hkUFloat8
+            uint inertiaOff = motionState + 176;
+            uint gravityOff = motionState + 264 + (uint)Header.PointerSize + 2;   //after savedMotion and savedQualityTypeIndex
+
+            var classAtOffset = new Dictionary<uint, string>();
+            for (int i = 0; i < Objects.Count; i++)
+                classAtOffset[Objects[i].DataOffset] = Objects[i].ClassName;
+
+            var globalBySrc = new Dictionary<uint, uint>(GlobalFixups.Count);
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            for (int b = 0; b < bodyOffsets.Count; b++)
+            {
+                uint off = bodyOffsets[b];
+                if (off + gravityOff + 4 > (uint)DataPayload.Length)
+                    continue;
+
+                string shapeClass = null;
+                if (globalBySrc.TryGetValue(off + shapeFieldOff, out uint shapeOff))
+                    classAtOffset.TryGetValue(shapeOff, out shapeClass);
+
+                float massInv = BitConverter.ToSingle(DataPayload, (int)(off + inertiaOff + 12));
+                byte motionType = DataPayload[(int)(off + motionTypeOff)];
+
+                bodies.Add(new RigidBodyInfo
+                {
+                    DataOffset = off,
+                    Name = ReadStringPtr(off + nameFieldOff) ?? "",
+                    ShapeClassName = shapeClass ?? "",
+                    MotionType = motionType,
+                    MotionTypeName = DescribeMotionType(motionType),
+                    MassInv = massInv,
+                    Mass = massInv > 1e-12f ? 1f / massInv : float.PositiveInfinity,
+                    InertiaInvLocal = new Vector3(
+                        BitConverter.ToSingle(DataPayload, (int)(off + inertiaOff)),
+                        BitConverter.ToSingle(DataPayload, (int)(off + inertiaOff + 4)),
+                        BitConverter.ToSingle(DataPayload, (int)(off + inertiaOff + 8))),
+                    ObjectRadius = BitConverter.ToSingle(DataPayload, (int)(off + radiusOff)),
+                    LinearDamping = HalfFloat2012(off + linDampOff),
+                    AngularDamping = HalfFloat2012(off + linDampOff + 2),
+                    MaxLinearVelocity = DataPayload[off + maxLinVelOff],
+                    GravityFactor = HalfFloat2012(off + gravityOff),
+                    Friction = BitConverter.ToSingle(DataPayload, (int)(off + frictionOff)),
+                    Restitution = BitConverter.ToSingle(DataPayload, (int)(off + frictionOff + 4)),
+                    CollisionFilterInfo = BitConverter.ToUInt32(DataPayload, (int)(off + filterFieldOff)),
+                });
+            }
+            return bodies;
+        }
+
+        internal bool TryGetRigidBodyOffsets(PhysicsSystem system, out List<uint> bodyOffsets)
+        {
+            bodyOffsets = null;
+            if (system == null)
+                return false;
+            // rigidBodies hkArray: +16 on 64-bit, +8 on 32-bit (hkReferencedObject packing); a tagfile says
+            // where (+24 in 2018, whose hkReferencedObject is 24 bytes - +16 there reads the property bag).
+            int tagField = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpPhysicsSystem", "rigidBodies");
+            if (Tagfile != null && tagField < 0)
+                return false;
+            uint rigidBodiesField = system.DataOffset + (Tagfile != null ? (uint)tagField : Header.PointerSize == 8 ? 16u : 8u);
+            return TryReadPointerArray(rigidBodiesField, out bodyOffsets);
+        }
+
+        /// <summary>A 2012 hkHalf: the top sixteen bits of a float (0x3F80 is 1).</summary>
+        float HalfFloat2012(uint at) => BitConverter.ToSingle(BitConverter.GetBytes((uint)BitConverter.ToUInt16(DataPayload, (int)at) << 16), 0);
+
+        internal static string DescribeMotionType(byte motionType)
+        {
+            switch (motionType)
+            {
+                case 0: return "Invalid";
+                case 1: return "Dynamic";
+                case 2: return "Dynamic (sphere)";
+                case 3: return "Dynamic (box)";
+                case 4: return "Keyframed";
+                case 5: return "Fixed";
+                case 6: return "ThinBoxInertia";
+                case 7: return "Character";
+                default: return "Unknown(" + motionType + ")";
+            }
+        }
+
+        void EmitCompoundPreview(
+            PreviewMesh mesh,
+            StaticCompoundShape compound,
+            Dictionary<uint, StaticCompoundShape> shapeByOffset,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            int depth,
+            int shapeCap = PreviewShapeCap,
+            int triCap = PreviewTriangleCap,
+            bool capRootInstances = true,
+            ISet<CompoundInstance> skipInstances = null,
+            bool placeholders = true)
+        {
+            if (compound == null || mesh.ShapeCount >= shapeCap || mesh.TriangleCount >= triCap || depth > 12)
+                return;
+
+            List<CompoundInstance> instances = compound.Instances;
+            if (instances == null || instances.Count == 0)
+            {
+                // Preview-only domain AABB when a compound has no instances.
+                if (placeholders && HasValidDomain(compound))
+                {
+                    AppendBox(mesh,
+                        new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z),
+                        new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z),
+                        translation, rotation, scale);
+                }
+                return;
+            }
+
+            // Huge world hosts: prefer real leaf geometry, but cap fan-out for UI preview only.
+            int maxInstances = (capRootInstances && depth == 0 && instances.Count > 512) ? 512 : instances.Count;
+            int beforeShapes = mesh.ShapeCount;
+            int beforeTris = mesh.TriangleCount;
+
+            for (int i = 0; i < maxInstances && mesh.ShapeCount < shapeCap && mesh.TriangleCount < triCap; i++)
+            {
+                CompoundInstance inst = instances[i];
+                if (skipInstances != null && skipInstances.Contains(inst))
+                    continue;
+
+                // Only the outermost level is recorded: a nested instance belongs to the same
+                // COLLISION.MAP entry as the root it hangs off.
+                if (depth == 0 && mesh.InstanceRanges != null)
+                    mesh.InstanceRanges.Add(new KeyValuePair<int, CompoundInstance>(mesh.TriangleCount, inst));
+
+                EmitInstance(mesh, inst, shapeByOffset, translation, rotation, scale, depth, shapeCap, triCap, capRootInstances, skipInstances, placeholders);
+            }
+
+            // Preview only: fall back to compound domain AABB when nothing decoded.
+            // Bake skips this — huge domains invent walkable floors that blow Recast bounds.
+            if (placeholders
+                && mesh.ShapeCount == beforeShapes && mesh.TriangleCount == beforeTris && HasValidDomain(compound))
+            {
+                AppendBox(mesh,
+                    new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z),
+                    new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z),
+                    translation, rotation, scale);
+            }
+        }
+
+        /// <summary>One instance of a compound under its parent's transform: a nested compound, or a leaf shape.</summary>
+        void EmitInstance(PreviewMesh mesh, CompoundInstance inst, Dictionary<uint, StaticCompoundShape> shapeByOffset,
+                          Vector3 translation, Quaternion rotation, Vector3 scale, int depth, int shapeCap, int triCap,
+                          bool capRootInstances, ISet<CompoundInstance> skipInstances, bool placeholders)
+        {
+            Vector3 t = translation + Vector3.Transform(
+                new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z) * scale,
+                rotation);
+            Quaternion r = Quaternion.Normalize(rotation * inst.Rotation);
+            Vector3 s = scale * new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z);
+
+            if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child))
+                EmitCompoundPreview(mesh, child, shapeByOffset, t, r, s, depth + 1, shapeCap, triCap, capRootInstances, skipInstances, placeholders);
+            else
+                AppendShapePreview(mesh, inst.ShapeDataOffset, inst.ShapeClassName ?? "", t, r, s, shapeCap, triCap, placeholders);
+        }
+
+        void AppendShapePreview(
+            PreviewMesh mesh,
+            uint shapeDataOffset,
+            string shapeClass,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            int shapeCap = PreviewShapeCap,
+            int triCap = PreviewTriangleCap,
+            bool placeholders = true)
+        {
+            if (mesh.ShapeCount >= shapeCap || mesh.TriangleCount >= triCap)
+                return;
+
+            if (string.Equals(shapeClass, "hkpBvCompressedMeshShape", StringComparison.Ordinal))
+            {
+                if (TryAppendBvCompressedMesh(mesh, shapeDataOffset, translation, rotation, scale))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpBoxShape", StringComparison.Ordinal))
+            {
+                if (TryGetBoxHalfExtents(shapeDataOffset, out Vector3 he))
+                {
+                    AppendBox(mesh, -he, he, translation, rotation, scale);
+                    return;
+                }
+            }
+            else if (string.Equals(shapeClass, "hkpConvexVerticesShape", StringComparison.Ordinal))
+            {
+                if (TryAppendConvexVertices(mesh, shapeDataOffset, translation, rotation, scale))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpListShape", StringComparison.Ordinal))
+            {
+                if (TryAppendListShape(mesh, shapeDataOffset, translation, rotation, scale, placeholders))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpConvexTranslateShape", StringComparison.Ordinal)
+                || string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
+            {
+                if (TryAppendConvexWrapper(mesh, shapeDataOffset, shapeClass, translation, rotation, scale, shapeCap, triCap, placeholders))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpCylinderShape", StringComparison.Ordinal)
+                || string.Equals(shapeClass, "hkpCapsuleShape", StringComparison.Ordinal))
+            {
+                if (TryAppendRoundShape(mesh, shapeDataOffset, shapeClass, translation, rotation, scale))
+                    return;
+            }
+            else if (string.Equals(shapeClass, "hkpMoppBvTreeShape", StringComparison.Ordinal))
+            {
+                //A MOPP is an acceleration tree over its child (@52 / @88, a list shape on the retail doors): draw the child
+                uint childField = shapeDataOffset + (Header.PointerSize == 8 ? 88u : 52u);
+                for (int i = 0; i < GlobalFixups.Count; i++)
+                {
+                    if (GlobalFixups[i].Src != childField) continue;
+                    uint child = GlobalFixups[i].Dst;
+                    string childClass = null;
+                    for (int o = 0; o < Objects.Count && childClass == null; o++)
+                        if (Objects[o].DataOffset == child) childClass = Objects[o].ClassName;
+                    int before = mesh.ShapeCount;
+                    AppendShapePreview(mesh, child, childClass ?? "", translation, rotation, scale, shapeCap, triCap, placeholders);
+                    if (mesh.ShapeCount > before)
+                        return;
+                    break;
+                }
+            }
+
+            // Preview-only AABB placeholder for undecoded shapes (bake must not invent solids).
+            if (placeholders
+                && TryGetPreviewLocalAabb(shapeDataOffset, shapeClass, out Vector3 amin, out Vector3 amax))
+                AppendBox(mesh, amin, amax, translation, rotation, scale);
+        }
+
+        /// <summary>
+        /// Decode <c>hkpBvCompressedMeshShape</c> leaf geometry from the embedded
+        /// <c>hkcdStaticMeshTree&lt;..., 11, 21&gt;</c>: the authored primitives, for a preview as for a bake.
+        /// </summary>
+        bool TryAppendBvCompressedMesh(
+            PreviewMesh mesh,
+            uint shapeOffset,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale)
+        {
+            if (!TryGetBvMeshArrays(shapeOffset,
+                    out uint treeBase,
+                    out uint sectionsOff, out int sectionCount,
+                    out uint primitivesOff, out int primitiveCount,
+                    out uint packedOff, out int packedCount,
+                    out uint sharedOff, out int sharedCount,
+                    out uint sharedIdxOff, out int sharedIdxCount))
+                return false;
+
+            if (sectionCount <= 0 || packedCount <= 0 || primitiveCount <= 0)
+                return false;
+
+            if (!TryReadTreeDomain(treeBase, out Vector3 treeMin, out Vector3 treeMax))
+                return false;
+
+            int trisBefore = mesh.TriangleCount;
+
+            for (int s = 0; s < sectionCount && mesh.TriangleCount < mesh.TriangleCapLimit; s++)
+            {
+                uint secOff = sectionsOff + (uint)(s * SectionStride);
+                if (!TryReadBvSection(secOff,
+                        out Vector3 codecBase, out Vector3 codecScale,
+                        out int firstPacked, out int numPacked,
+                        out int firstSharedIdx, out int numShared,
+                        out int firstPrim, out int numPrim))
+                    continue;
+
+                /* 2018 dropped the per-section shared count: a section's shared vertices run up to the
+                 * next section's first one, and the last section's to the end of the index array. Read
+                 * as none, every triangle touching a shared vertex went missing (43,778 on hab_airport). */
+                if (Tagfile != null)
+                {
+                    int nextFirst = sharedIdxCount;
+                    uint nextSec = sectionsOff + (uint)((s + 1) * SectionStride);
+                    if (s + 1 < sectionCount && nextSec + 80 <= (uint)DataPayload.Length)
+                        nextFirst = (int)BitConverter.ToUInt32(DataPayload, (int)nextSec + 76);
+                    numShared = Math.Max(0, nextFirst - firstSharedIdx);
+                }
+
+                if (numPacked <= 0 || numPrim <= 0)
+                    continue;
+
+                int localCount = numPacked + Math.Max(numShared, 0);
+                var local = new Vector3[localCount];
+                bool sectionOk = true;
+
+                for (int i = 0; i < numPacked; i++)
+                {
+                    int vi = firstPacked + i;
+                    if (vi < 0 || vi >= packedCount)
+                    {
+                        sectionOk = false;
+                        break;
+                    }
+                    int o = (int)packedOff + vi * 4;
+                    if (o + 4 > DataPayload.Length)
+                    {
+                        sectionOk = false;
+                        break;
+                    }
+                    uint packed = BitConverter.ToUInt32(DataPayload, o);
+                    local[i] = new Vector3(
+                        codecBase.X + (packed & 0x7FFu) * codecScale.X,
+                        codecBase.Y + ((packed >> 11) & 0x7FFu) * codecScale.Y,
+                        codecBase.Z + ((packed >> 22) & 0x3FFu) * codecScale.Z);
+                }
+                if (!sectionOk)
+                    continue;
+
+                for (int i = 0; i < numShared; i++)
+                {
+                    int si = firstSharedIdx + i;
+                    if (si < 0 || si >= sharedIdxCount || sharedCount <= 0)
+                    {
+                        sectionOk = false;
+                        break;
+                    }
+                    int idxOff = (int)sharedIdxOff + si * 2;
+                    if (idxOff + 2 > DataPayload.Length)
+                    {
+                        sectionOk = false;
+                        break;
+                    }
+                    int sharedIndex = BitConverter.ToUInt16(DataPayload, idxOff);
+                    if (sharedIndex < 0 || sharedIndex >= sharedCount)
+                    {
+                        sectionOk = false;
+                        break;
+                    }
+                    int so = (int)sharedOff + sharedIndex * 8;
+                    if (so + 8 > DataPayload.Length)
+                    {
+                        sectionOk = false;
+                        break;
+                    }
+                    ulong sv = BitConverter.ToUInt64(DataPayload, so);
+                    local[numPacked + i] = DecompressSharedVertex21(sv, treeMin, treeMax);
+                }
+                if (!sectionOk)
+                    continue;
+
+                /* The authored triangles, for a preview as for a bake. A preview used to draw each section as the convex
+                   hull of its vertices so open shells read as volumes, but a section is only a chunk of up to 127
+                   primitives the encoder cut, not a part of the shape: a concave mesh came out as a patchwork of blobs
+                   with faces across gaps it does not have - an imported collision mesh changed shape the moment it was
+                   written (the Collision Editor previews what was written). */
+                int baseIndex = mesh.Positions.Count;
+                for (int i = 0; i < local.Length; i++)
+                    mesh.Positions.Add(translation + Vector3.Transform(local[i] * scale, rotation));
+
+                // Odd number of negative scale axes flips triangle winding for Recast.
+                bool flipWinding = (scale.X * scale.Y * scale.Z) < 0f;
+
+                int sectionTris = 0;
+                for (int p = 0; p < numPrim && mesh.TriangleCount < mesh.TriangleCapLimit; p++)
+                {
+                    int o = (int)primitivesOff + (firstPrim + p) * 4;
+                    if (o + 4 > DataPayload.Length)
+                        break;
+                    int i0 = DataPayload[o];
+                    int i1 = DataPayload[o + 1];
+                    int i2 = DataPayload[o + 2];
+                    int i3 = DataPayload[o + 3];
+                    if (i0 >= localCount || i1 >= localCount || i2 >= localCount)
+                        continue;
+
+                    AddTriangle(mesh, baseIndex, i0, i1, i2, flipWinding);
+                    sectionTris++;
+
+                    if (i3 != i2 && i3 < localCount)
+                    {
+                        AddTriangle(mesh, baseIndex, i0, i2, i3, flipWinding);
+                        sectionTris++;
+                    }
+                }
+
+                if (sectionTris == 0)
+                    mesh.Positions.RemoveRange(baseIndex, mesh.Positions.Count - baseIndex);
+            }
+
+            if (mesh.TriangleCount <= trisBefore)
+                return false;
+
+            mesh.ShapeCount++;
+            return true;
+        }
+
+        bool TryGetBvMeshArrays(
+            uint shapeOffset,
+            out uint treeBase,
+            out uint sectionsOff, out int sectionCount,
+            out uint primitivesOff, out int primitiveCount,
+            out uint packedOff, out int packedCount,
+            out uint sharedOff, out int sharedCount,
+            out uint sharedIdxOff, out int sharedIdxCount)
+        {
+            treeBase = 0;
+            sectionsOff = primitivesOff = packedOff = sharedOff = sharedIdxOff = 0;
+            sectionCount = primitiveCount = packedCount = sharedCount = sharedIdxCount = 0;
+
+            // Embedded tree field offsets (Torrens COLLISION.HKX / HKX64), matching
+            // hkcdStaticMeshTreeCommonConfig<uint, ulong, 11, 21> after the nodes array.
+            uint sectionField, primitiveField, packedField, sharedField, sharedIdxField;
+            if (Header.PointerSize == 8)
+            {
+                treeBase = shapeOffset + 0x70u;
+                sectionField = shapeOffset + 0xB0u;
+                primitiveField = shapeOffset + 0xC0u;
+                sharedIdxField = shapeOffset + 0xD0u;
+                packedField = shapeOffset + 0xE0u;
+                sharedField = shapeOffset + 0xF0u;
+            }
+            else
+            {
+                treeBase = shapeOffset + 0x50u;
+                sectionField = shapeOffset + 0x8Cu;
+                primitiveField = shapeOffset + 0x98u;
+                sharedIdxField = shapeOffset + 0xA4u;
+                packedField = shapeOffset + 0xB0u;
+                sharedField = shapeOffset + 0xBCu;
+            }
+
+            if (!TryGetHkArray(sectionField, out sectionsOff, out sectionCount) || sectionCount <= 0)
+                return false;
+            if (!TryGetHkArray(primitiveField, out primitivesOff, out primitiveCount) || primitiveCount <= 0)
+                return false;
+            if (!TryGetHkArray(packedField, out packedOff, out packedCount) || packedCount <= 0)
+                return false;
+
+            // Shared arrays are optional (many simple meshes have none).
+            if (!TryGetHkArray(sharedField, out sharedOff, out sharedCount))
+            {
+                sharedOff = 0;
+                sharedCount = 0;
+            }
+            if (!TryGetHkArray(sharedIdxField, out sharedIdxOff, out sharedIdxCount))
+            {
+                sharedIdxOff = 0;
+                sharedIdxCount = 0;
+            }
+
+            return true;
+        }
+
+        bool TryReadTreeDomain(uint treeBase, out Vector3 min, out Vector3 max)
+        {
+            min = max = default;
+            int off = (int)treeBase + 16;
+            if (off + 32 > DataPayload.Length)
+                return false;
+            Vector4 vmin = ReadVector4(DataPayload, off);
+            Vector4 vmax = ReadVector4(DataPayload, off + 16);
+            min = new Vector3(vmin.X, vmin.Y, vmin.Z);
+            max = new Vector3(vmax.X, vmax.Y, vmax.Z);
+            return true;
+        }
+
+        /// <summary>
+        /// Section layout from <c>hkcdStaticMeshTreeBaseSection</c>: domain @16,
+        /// codecParms @48, firstPackedVertex @72, sharedVertices/primitives/dataRuns
+        /// packed uint32s @76/80/84, numPackedVertices/numSharedIndices @88/89.
+        /// Primitive/shared ranges pack as <c>(first &lt;&lt; 8) | count</c>.
+        /// </summary>
+        bool TryReadBvSection(
+            uint sectionDataOffset,
+            out Vector3 codecBase, out Vector3 codecScale,
+            out int firstPacked, out int numPacked,
+            out int firstSharedIdx, out int numShared,
+            out int firstPrim, out int numPrim)
+        {
+            codecBase = codecScale = default;
+            firstPacked = numPacked = firstSharedIdx = numShared = firstPrim = numPrim = 0;
+
+            int sec = (int)sectionDataOffset;
+            if (sec + SectionStride > DataPayload.Length)
+                return false;
+
+            codecBase = new Vector3(
+                BitConverter.ToSingle(DataPayload, sec + 48),
+                BitConverter.ToSingle(DataPayload, sec + 52),
+                BitConverter.ToSingle(DataPayload, sec + 56));
+            codecScale = new Vector3(
+                BitConverter.ToSingle(DataPayload, sec + 60),
+                BitConverter.ToSingle(DataPayload, sec + 64),
+                BitConverter.ToSingle(DataPayload, sec + 68));
+
+            // Flat sections legitimately use a 0 scale on an axis; only reject non-finite codecs.
+            if (!IsFinite(codecBase) || !IsFinite(codecScale))
+                return false;
+
+            /* 2012 packs each range as (first << 8) | count into one uint32. 2018 splits them: the
+             * first indices stay uint32s and the counts move to their own bytes, so reading it the
+             * old way yields a primitive count of zero and a section that emits nothing. */
+            if (Tagfile != null)
+            {
+                firstPacked = (int)BitConverter.ToUInt32(DataPayload, sec + 72);
+                firstSharedIdx = (int)BitConverter.ToUInt32(DataPayload, sec + 76);
+                firstPrim = (int)BitConverter.ToUInt32(DataPayload, sec + 80);
+                numPacked = DataPayload[sec + 88];
+                numPrim = DataPayload[sec + 89];
+                numShared = 0;   //not stored in 2018 - the caller derives it from the next section
+                return true;
+            }
+
+            firstPacked = (int)BitConverter.ToUInt32(DataPayload, sec + 72);
+            uint sharedData = BitConverter.ToUInt32(DataPayload, sec + 76);
+            uint primData = BitConverter.ToUInt32(DataPayload, sec + 80);
+            numPacked = DataPayload[sec + 88];
+            numShared = DataPayload[sec + 89];
+            firstSharedIdx = (int)(sharedData >> 8);
+            firstPrim = (int)(primData >> 8);
+            numPrim = (int)(primData & 0xFFu);
+            return numPacked > 0 && numPrim > 0;
+        }
+
+        /// <summary>
+        /// Shared verts are 21/21/21 in a uint64 as <c>x:21 y:21 pad:1 z:21</c>
+        /// (Z starts at bit 43). Bit 42 is unused padding — shifting Z from 42
+        /// places weld verts in the gaps between section AABBs and creates spikes.
+        /// </summary>
+        internal static Vector3 DecompressSharedVertex21(ulong packed, Vector3 domainMin, Vector3 domainMax)
+        {
+            const ulong mask = (1UL << 21) - 1UL;
+            ulong qx = packed & mask;
+            ulong qy = (packed >> 21) & mask;
+            ulong qz = (packed >> 43) & mask;
+            return new Vector3(
+                domainMin.X + (domainMax.X - domainMin.X) * qx / mask,
+                domainMin.Y + (domainMax.Y - domainMin.Y) * qy / mask,
+                domainMin.Z + (domainMax.Z - domainMin.Z) * qz / mask);
+        }
+
+        static bool IsFinite(Vector3 v)
+        {
+            return !(float.IsNaN(v.X) || float.IsNaN(v.Y) || float.IsNaN(v.Z)
+                || float.IsInfinity(v.X) || float.IsInfinity(v.Y) || float.IsInfinity(v.Z));
+        }
+
+        bool TryAppendConvexVertices(
+            PreviewMesh mesh,
+            uint shapeOffset,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale)
+        {
+            /* rotatedVertices is an hkArray of hkFourTransposedPoints: four vertices to a 48-byte group, stored as
+             * their four x, four y, then four z, the last group padded with the last vertex. The shape is the hull
+             * of those vertices grown by the convex radius; the preview draws the hull. 64-bit packfile:
+             * rotatedVertices @80, numVertices @96 (a tagfile says where from its own types); 32-bit @64 and @76.
+             * (The old reader took the AABB centre for the array and read float4s, so no retail convex shape ever
+             * decoded and every one previewed as its box.) */
+            int ptrSize = Header.PointerSize;
+            uint rotatedField = shapeOffset + (ptrSize == 8 ? (uint)Layout.ConvexRotatedVertices : 64u);
+            int numVertOff = (int)shapeOffset + (ptrSize == 8 ? Layout.ConvexNumVertices : 76);
+            if (numVertOff + 4 > DataPayload.Length)
+                return false;
+            int numVertices = BitConverter.ToInt32(DataPayload, numVertOff);
+            if (numVertices <= 0 || numVertices > 4096)
+                return false;
+            if (!TryGetHkArray(rotatedField, out uint rotatedOff, out int groups) || groups * 4 < numVertices
+                || rotatedOff + (ulong)groups * 48 > (ulong)DataPayload.Length)
+                return false;
+
+            var verts = new List<Vector3>(numVertices);
+            for (int i = 0; i < numVertices; i++)
+            {
+                int at = (int)rotatedOff + (i >> 2) * 48 + (i & 3) * 4;
+                verts.Add(new Vector3(
+                    BitConverter.ToSingle(DataPayload, at),
+                    BitConverter.ToSingle(DataPayload, at + 16),
+                    BitConverter.ToSingle(DataPayload, at + 32)));
+            }
+
+            //The faces are the hull's, from the same builder the physics import uses
+            Vector3 min = verts[0], max = verts[0];
+            foreach (Vector3 v in verts) { min = Vector3.Min(min, v); max = Vector3.Max(max, v); }
+            Vector3 extent = max - min;
+            List<Vector3> corners = null;
+            List<int> triangles = null;
+            if (verts.Count >= 4)
+            {
+                try
+                {
+                    Hull hull = Hull.Build(verts.Select(v => new D3(v.X, v.Y, v.Z)).ToList(), Math.Max(extent.X, Math.Max(extent.Y, extent.Z)));
+                    List<D3> hullVertices = hull.Vertices();
+                    triangles = hull.Triangles(hullVertices);
+                    corners = hullVertices.Select(p => p.ToVector3()).ToList();
+                }
+                catch (ArgumentException)
+                {
+                    //flat or a line: drawn as its box below
+                }
+            }
+            if (triangles == null || triangles.Count == 0)
+            {
+                AppendBox(mesh, min, max, translation, rotation, scale);
+                return true;
+            }
+            if (mesh.ShapeCount >= mesh.ShapeCapLimit || mesh.TriangleCount >= mesh.TriangleCapLimit)
+                return true;
+
+            int baseIndex = mesh.Positions.Count;
+            foreach (Vector3 c in corners)
+                mesh.Positions.Add(translation + Vector3.Transform(c * scale, rotation));
+            foreach (int t in triangles)
+                mesh.Indices.Add(baseIndex + t);
+            mesh.ShapeCount++;
+            return true;
+        }
+
+        /// <summary>
+        /// hkpConvexTranslateShape (child @24/@48, translation @32/@64) and hkpConvexTransformShape (child @24/@48,
+        /// then an hkQsTransform: translation, rotation quaternion, scale @32/@48/@64 on 32-bit, @64/@80/@96 on 64-bit):
+        /// the child drawn where the wrapper puts it. Retail wraps 1,962 boxes and cylinders this way.
+        /// </summary>
+        bool TryAppendConvexWrapper(PreviewMesh mesh, uint shapeOffset, string shapeClass, Vector3 translation, Quaternion rotation, Vector3 scale,
+            int shapeCap, int triCap, bool placeholders)
+        {
+            bool is64 = Header.PointerSize == 8;
+            uint childField = shapeOffset + (is64 ? 48u : 24u);
+            uint transformAt = shapeOffset + (is64 ? 64u : 32u);
+            if (transformAt + 48 > (uint)DataPayload.Length)
+                return false;
+            uint child = 0;
+            bool found = false;
+            for (int i = 0; i < GlobalFixups.Count && !found; i++)
+                if (GlobalFixups[i].Src == childField) { child = GlobalFixups[i].Dst; found = true; }
+            if (!found)
+                return false;
+            string childClass = null;
+            for (int i = 0; i < Objects.Count && childClass == null; i++)
+                if (Objects[i].DataOffset == child) childClass = Objects[i].ClassName;
+
+            Vector4 t = ReadVector4(DataPayload, (int)transformAt);
+            Vector3 localTranslation = new Vector3(t.X, t.Y, t.Z);
+            Quaternion localRotation = Quaternion.Identity;
+            Vector3 localScale = Vector3.One;
+            if (string.Equals(shapeClass, "hkpConvexTransformShape", StringComparison.Ordinal))
+            {
+                Vector4 q = ReadVector4(DataPayload, (int)transformAt + 16);
+                Vector4 s = ReadVector4(DataPayload, (int)transformAt + 32);
+                localRotation = Quaternion.Normalize(new Quaternion(q.X, q.Y, q.Z, q.W));
+                localScale = new Vector3(s.X, s.Y, s.Z);
+            }
+            int before = mesh.ShapeCount;
+            AppendShapePreview(mesh, child, childClass ?? "",
+                translation + Vector3.Transform(localTranslation * scale, rotation),
+                rotation * localRotation,
+                scale * localScale,
+                shapeCap, triCap, placeholders);
+            return mesh.ShapeCount > before;
+        }
+
+        /// <summary>
+        /// hkpCylinderShape (convex radius @16/@32, cylinder radius @20/@40, ends @32 and @48 / @48 and @64) and
+        /// hkpCapsuleShape (radius @16/@32, ends @32 and @48 / @48 and @64), as sixteen-sided meshes.
+        /// </summary>
+        bool TryAppendRoundShape(PreviewMesh mesh, uint shapeOffset, string shapeClass, Vector3 translation, Quaternion rotation, Vector3 scale)
+        {
+            if (mesh.ShapeCount >= mesh.ShapeCapLimit || mesh.TriangleCount >= mesh.TriangleCapLimit)
+                return true;
+            bool is64 = Header.PointerSize == 8;
+            bool capsule = string.Equals(shapeClass, "hkpCapsuleShape", StringComparison.Ordinal);
+            uint endsAt = shapeOffset + (is64 ? 48u : 32u);
+            if (endsAt + 32 > (uint)DataPayload.Length)
+                return false;
+            float radius = BitConverter.ToSingle(DataPayload, (int)shapeOffset + (is64 ? 32 : 16));
+            if (!capsule)
+                radius += BitConverter.ToSingle(DataPayload, (int)shapeOffset + (is64 ? 40 : 20));
+            Vector4 a4 = ReadVector4(DataPayload, (int)endsAt), b4 = ReadVector4(DataPayload, (int)endsAt + 16);
+            Vector3 a = new Vector3(a4.X, a4.Y, a4.Z), b = new Vector3(b4.X, b4.Y, b4.Z);
+            if (!(radius > 0f) || float.IsNaN(a.X) || float.IsNaN(b.X))
+                return false;
+
+            Vector3 axis = b - a;
+            float length = axis.Length();
+            Vector3 dir = length > 1e-6f ? axis / length : Vector3.UnitY;
+            Vector3 p1 = Vector3.Normalize(Math.Abs(dir.X) < 0.9f ? Vector3.Cross(dir, Vector3.UnitX) : Vector3.Cross(dir, Vector3.UnitY));
+            Vector3 p2 = Vector3.Cross(dir, p1);
+
+            //Rings along the axis: (centre, ring radius). A cylinder is two caps and a side; a capsule two hemispheres.
+            var rings = new List<(Vector3 centre, float r)>();
+            if (capsule)
+            {
+                for (int k = 0; k <= 4; k++) { double phi = -Math.PI / 2 + k * Math.PI / 8; rings.Add((a + dir * (float)(radius * Math.Sin(phi)), (float)(radius * Math.Cos(phi)))); }
+                for (int k = 0; k <= 4; k++) { double phi = k * Math.PI / 8; rings.Add((b + dir * (float)(radius * Math.Sin(phi)), (float)(radius * Math.Cos(phi)))); }
+            }
+            else
+            {
+                rings.Add((a, 0f)); rings.Add((a, radius)); rings.Add((b, radius)); rings.Add((b, 0f));
+            }
+            const int segments = 16;
+            int baseIndex = mesh.Positions.Count;
+            foreach ((Vector3 centre, float r) in rings)
+                for (int j = 0; j < segments; j++)
+                {
+                    double theta = j * 2.0 * Math.PI / segments;
+                    Vector3 p = centre + (p1 * (float)Math.Cos(theta) + p2 * (float)Math.Sin(theta)) * r;
+                    mesh.Positions.Add(translation + Vector3.Transform(p * scale, rotation));
+                }
+            //(p1, p2, dir) is right-handed, so ring j -> j+1 -> next ring faces outward
+            for (int i = 0; i + 1 < rings.Count; i++)
+                for (int j = 0; j < segments; j++)
+                {
+                    int j1 = (j + 1) % segments;
+                    int v00 = baseIndex + i * segments + j, v01 = baseIndex + i * segments + j1;
+                    int v10 = baseIndex + (i + 1) * segments + j, v11 = baseIndex + (i + 1) * segments + j1;
+                    mesh.Indices.Add(v00); mesh.Indices.Add(v01); mesh.Indices.Add(v11);
+                    mesh.Indices.Add(v00); mesh.Indices.Add(v11); mesh.Indices.Add(v10);
+                }
+            mesh.ShapeCount++;
+            return true;
+        }
+
+        bool TryAppendListShape(
+            PreviewMesh mesh,
+            uint shapeOffset,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            bool placeholders = true)
+        {
+            // childInfo hkArray at +48 (64-bit) / +24 (32-bit), as ListChildArrayField.
+            uint childField = shapeOffset + (Header.PointerSize == 8 ? (uint)Layout.ListChildInfo : 24u);
+            if (!TryGetHkArray(childField, out uint childOff, out int childCount) || childCount <= 0)
+                return false;
+
+            // Each ChildInfo has a shape pointer (global fixup) at the start.
+            int stride = Header.PointerSize == 8 ? Layout.ListChildStride : 16;
+            var classAtOffset = new Dictionary<uint, string>();
+            for (int i = 0; i < Objects.Count; i++)
+                classAtOffset[Objects[i].DataOffset] = Objects[i].ClassName;
+            var globalBySrc = new Dictionary<uint, uint>(GlobalFixups.Count);
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            int before = mesh.ShapeCount;
+            for (int i = 0; i < childCount && mesh.ShapeCount < mesh.ShapeCapLimit; i++)
+            {
+                uint slot = childOff + (uint)(i * stride);
+                if (!globalBySrc.TryGetValue(slot, out uint childShape))
+                    continue;
+                classAtOffset.TryGetValue(childShape, out string childClass);
+                AppendShapePreview(mesh, childShape, childClass ?? "", translation, rotation, scale,
+                    mesh.ShapeCapLimit, mesh.TriangleCapLimit, placeholders);
+            }
+            return mesh.ShapeCount > before;
+        }
+
+        /// <summary>
+        /// Resolve a pointer field through the local fixup table (i.e. a pointer to somewhere else in __data__).
+        /// </summary>
+        public bool TryResolveLocal(uint pointerFieldOffset, out uint dataOffset)
+        {
+            //A tagfile stores an item index where a packfile stores a pointer to be fixed up
+            if (Tagfile != null)
+                return Tagfile.TryResolvePointer(pointerFieldOffset, out dataOffset, out int _);
+
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src == pointerFieldOffset)
+                {
+                    dataOffset = LocalFixups[i].Dst;
+                    return dataOffset < (uint)DataPayload.Length;
+                }
+            }
+            dataOffset = 0;
+            return false;
+        }
+
+        /// <summary>
+        /// Read a null terminated string out of __data__.
+        /// </summary>
+        public string ReadStringAt(uint dataOffset)
+        {
+            if (dataOffset >= (uint)DataPayload.Length) return null;
+            int end = (int)dataOffset;
+            while (end < DataPayload.Length && DataPayload[end] != 0) end++;
+            return Encoding.ASCII.GetString(DataPayload, (int)dataOffset, end - (int)dataOffset);
+        }
+
+        /// <summary>
+        /// Read an <c>hkArray</c> field: resolves the data pointer and reads the element count.
+        /// </summary>
+        public bool TryGetHkArray(uint arrayFieldOffset, out uint dataOffset, out int count)
+        {
+            dataOffset = 0;
+            count = 0;
+
+            /* A tagfile leaves m_size at zero and keeps the real count on the item its m_data names -
+             * reading the field the packfile way returns an empty array for absolutely everything. */
+            if (Tagfile != null)
+                return Tagfile.TryResolvePointer(arrayFieldOffset, out dataOffset, out count);
+
+            int ptrSize = Header.PointerSize;
+            int sizePos = (int)arrayFieldOffset + ptrSize;
+            if (sizePos + 4 > DataPayload.Length)
+                return false;
+
+            count = BitConverter.ToInt32(DataPayload, sizePos);
+            if (count < 0 || count > 5_000_000)
+                return false;
+            if (count == 0)
+                return true;
+
+            for (int f = 0; f < LocalFixups.Count; f++)
+            {
+                if (LocalFixups[f].Src == arrayFieldOffset)
+                {
+                    dataOffset = LocalFixups[f].Dst;
+                    return dataOffset < (uint)DataPayload.Length;
+                }
+            }
+            return false;
+        }
+
+        bool TryGetPreviewLocalAabb(uint shapeDataOffset, string shapeClass, out Vector3 min, out Vector3 max)
+        {
+            min = default;
+            max = default;
+            if (string.Equals(shapeClass, "hkpBoxShape", StringComparison.Ordinal)
+                && TryGetBoxHalfExtents(shapeDataOffset, out Vector3 he))
+            {
+                min = -he;
+                max = he;
+                return true;
+            }
+
+            // hkpConvexVerticesShape AABB: 64-bit half@48 centre@64; 32-bit half@32 centre@48.
+            if (string.Equals(shapeClass, "hkpConvexVerticesShape", StringComparison.Ordinal))
+            {
+                int heOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? Layout.ConvexAabbHalfExtents : 32);
+                int cOff = (int)shapeDataOffset + (Header.PointerSize == 8 ? Layout.ConvexAabbCentre : 48);
+                if (cOff + 16 <= DataPayload.Length)
+                {
+                    Vector4 half = ReadVector4(DataPayload, heOff);
+                    Vector4 center = ReadVector4(DataPayload, cOff);
+                    Vector3 he3 = new Vector3(Math.Abs(half.X), Math.Abs(half.Y), Math.Abs(half.Z));
+                    Vector3 c3 = new Vector3(center.X, center.Y, center.Z);
+                    min = c3 - he3;
+                    max = c3 + he3;
+                    return he3.LengthSquared() > 1e-12f;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// A child shape's bounds in its own space, for every kind the tree builder meets inside a
+        /// compound: boxes and convex shapes from their stored extents, a compressed mesh from its own
+        /// tree's domain, anything else from its decoded triangles.
+        /// </summary>
+        bool TryGetShapeLocalAabb(uint shapeDataOffset, string shapeClass, out Vector3 min, out Vector3 max)
+        {
+            if (TryGetPreviewLocalAabb(shapeDataOffset, shapeClass, out min, out max))
+                return true;
+
+            if (string.Equals(shapeClass, "hkpBvCompressedMeshShape", StringComparison.Ordinal)
+                && TryGetBvMeshArrays(shapeDataOffset, out uint treeBase, out _, out _, out _, out _, out _, out _, out _, out _, out _, out _)
+                && TryReadTreeDomain(treeBase, out min, out max)
+                && min.X <= max.X && min.Y <= max.Y && min.Z <= max.Z)
+                return true;
+
+            PreviewMesh mesh = new PreviewMesh();
+            AppendShapePreview(mesh, shapeDataOffset, shapeClass, Vector3.Zero, Quaternion.Identity, Vector3.One,
+                int.MaxValue, int.MaxValue, placeholders: false);
+            if (mesh.Positions.Count == 0)
+            {
+                min = max = default;
+                return false;
+            }
+            min = new Vector3(float.MaxValue);
+            max = new Vector3(float.MinValue);
+            foreach (Vector3 p in mesh.Positions)
+            {
+                min = Vector3.Min(min, p);
+                max = Vector3.Max(max, p);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// True when this compound's stored domain fails to contain one of its instances as that instance
+        /// really is - its child's bounds, placed. A tree built inside such a domain clips the shape, and
+        /// every query skips what falls outside. Children that cannot be sized are not judged.
+        /// </summary>
+        public bool DomainMissesChildren(StaticCompoundShape compound, float tolerance = 0.01f)
+            => DomainMissesChildren(compound, ShapesByOffset(), tolerance);
+
+        /// <summary>
+        /// Every compound by its data offset, the first listed winning - where DomainMissesChildren finds a child. A sweep
+        /// over many compounds builds it once: it only changes when StaticCompoundShapes does.
+        /// </summary>
+        public Dictionary<uint, StaticCompoundShape> ShapesByOffset()
+        {
+            var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
+            foreach (StaticCompoundShape s in StaticCompoundShapes)
+                if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
+                    shapeByOffset[s.DataOffset] = s;
+            return shapeByOffset;
+        }
+
+        public bool DomainMissesChildren(StaticCompoundShape compound, Dictionary<uint, StaticCompoundShape> shapeByOffset, float tolerance = 0.01f)
+        {
+            if (compound == null || compound.Instances.Count == 0 || !HasValidDomain(compound))
+                return false;
+
+            Vector3 dMin = new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z) - new Vector3(tolerance);
+            Vector3 dMax = new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z) + new Vector3(tolerance);
+            foreach (CompoundInstance inst in compound.Instances)
+            {
+                Vector3 lmin, lmax;
+                if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child) && HasValidDomain(child))
+                {
+                    lmin = new Vector3(child.DomainMin.X, child.DomainMin.Y, child.DomainMin.Z);
+                    lmax = new Vector3(child.DomainMax.X, child.DomainMax.Y, child.DomainMax.Z);
+                }
+                else if (!TryGetShapeLocalAabb(inst.ShapeDataOffset, inst.ShapeClassName, out lmin, out lmax))
+                    continue;
+
+                GetTransformedAabb(lmin, lmax,
+                    new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z), inst.Rotation,
+                    new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z),
+                    out Vector3 wmin, out Vector3 wmax);
+                if (wmin.X < dMin.X || wmin.Y < dMin.Y || wmin.Z < dMin.Z || wmax.X > dMax.X || wmax.Y > dMax.Y || wmax.Z > dMax.Z)
+                    return true;
+            }
+            return false;
+        }
+
+        static bool HasValidDomain(StaticCompoundShape compound)
+        {
+            return compound.DomainMin.X <= compound.DomainMax.X
+                && compound.DomainMin.Y <= compound.DomainMax.Y
+                && compound.DomainMin.Z <= compound.DomainMax.Z
+                && !(float.IsInfinity(compound.DomainMin.X) || float.IsInfinity(compound.DomainMax.X));
+        }
+
+        static void AddTriangle(PreviewMesh mesh, int baseIndex, int i0, int i1, int i2, bool flipWinding)
+        {
+            if (flipWinding)
+            {
+                mesh.Indices.Add(baseIndex + i0);
+                mesh.Indices.Add(baseIndex + i2);
+                mesh.Indices.Add(baseIndex + i1);
+            }
+            else
+            {
+                mesh.Indices.Add(baseIndex + i0);
+                mesh.Indices.Add(baseIndex + i1);
+                mesh.Indices.Add(baseIndex + i2);
+            }
+        }
+
+        static void AppendBox(
+            PreviewMesh mesh,
+            Vector3 localMin,
+            Vector3 localMax,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale)
+        {
+            if (mesh.ShapeCount >= mesh.ShapeCapLimit || mesh.TriangleCount >= mesh.TriangleCapLimit)
+                return;
+
+            int baseIndex = mesh.Positions.Count;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 local = new Vector3(
+                    (corner & 1) == 0 ? localMin.X : localMax.X,
+                    (corner & 2) == 0 ? localMin.Y : localMax.Y,
+                    (corner & 4) == 0 ? localMin.Z : localMax.Z);
+                mesh.Positions.Add(translation + Vector3.Transform(local * scale, rotation));
+            }
+
+            // 12 triangles, outward winding for a solid box
+            int[] tris =
+            {
+                0, 2, 3, 0, 3, 1,
+                4, 5, 7, 4, 7, 6,
+                0, 1, 5, 0, 5, 4,
+                2, 6, 7, 2, 7, 3,
+                0, 4, 6, 0, 6, 2,
+                1, 3, 7, 1, 7, 5,
+            };
+            bool flipWinding = (scale.X * scale.Y * scale.Z) < 0f;
+            for (int i = 0; i + 2 < tris.Length; i += 3)
+                AddTriangle(mesh, baseIndex, tris[i], tris[i + 1], tris[i + 2], flipWinding);
+            mesh.ShapeCount++;
+        }
+
+        /// <summary>
+        /// Append a new instance to an existing static compound, reusing another instance's shape.
+        /// Returns the new instance index (COLLISION.MAP Index). Rebuilds the compound BVH with a
+        /// loose Storage6 tree (correct queries, weaker mid-phase culling).
+        /// New instance/tree bytes are appended to the data payload (old arrays become orphaned).
+        /// </summary>
+        public int AddInstance(
+            int proxyIndex,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            int templateInstanceIndex = 0,
+            float aabbPadding = 1.0f)
+        {
+            StaticCompoundShape compound = FindCompound(proxyIndex);
+            if (compound == null)
+                throw new ArgumentOutOfRangeException(nameof(proxyIndex), "No static compound with that CollisionProxyIndex.");
+            if (compound.Instances.Count == 0)
+                throw new InvalidOperationException("Cannot add to an empty compound — no template shape to reference.");
+            if (templateInstanceIndex < 0 || templateInstanceIndex >= compound.Instances.Count)
+                throw new ArgumentOutOfRangeException(nameof(templateInstanceIndex));
+
+            return AddInstance(proxyIndex, translation, rotation, scale, compound.Instances[templateInstanceIndex], aabbPadding);
+        }
+
+        /// <summary>
+        /// Append a fresh instance using explicit shape/filter properties (no live template slot required).
+        /// Immediately rewrites that compound's arrays. Prefer <see cref="BeginInstanceRebuild"/> /
+        /// <see cref="EnqueueInstance"/> / <see cref="CommitInstanceRebuild"/> when adding many.
+        /// </summary>
+        public int AddInstance(
+            int proxyIndex,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            CompoundInstance properties,
+            float aabbPadding = 1.0f)
+        {
+            if (properties == null)
+                throw new ArgumentNullException(nameof(properties));
+            StaticCompoundShape compound = FindCompound(proxyIndex);
+            if (compound == null)
+                throw new ArgumentOutOfRangeException(nameof(proxyIndex), "No static compound with that CollisionProxyIndex.");
+
+            CompoundInstance inst = CloneInstanceProperties(properties, translation, rotation, scale);
+            ExpandDomain(compound, translation, aabbPadding);
+            ScrubShapeFixupsForInstances(compound);
+            compound.AddInstance(inst);
+            RewriteCompoundArrays(compound);
+            return compound.Instances.Count - 1;
+        }
+
+        /// <summary>Compounds cleared+refilled during the current instance rebuild (lazy).</summary>
+        HashSet<StaticCompoundShape> _rebuildTouched;
+
+        /// <summary>
+        /// What each touched compound held before it was cleared, so a rebuild that ends up with nothing
+        /// to put in it can give it back rather than leave a rigid body over an empty compound.
+        /// </summary>
+        Dictionary<StaticCompoundShape, (List<CompoundInstance> Instances, Vector4 DomainMin, Vector4 DomainMax)> _rebuildOriginal;
+
+        /// <summary>
+        /// Snapshot per-proxy prototype instances (shape/filter). Does <b>not</b> clear compounds yet —
+        /// rigid bodies in this packfile require every referenced compound to keep getInstances().size() &gt; 0.
+        /// Compounds are cleared on first <see cref="EnqueueInstance"/> and only those are rewritten on commit;
+        /// untouched compounds keep their retail instances.
+        /// </summary>
+        public Dictionary<int, CompoundInstance> BeginInstanceRebuild()
+        {
+            _rebuildTouched = new HashSet<StaticCompoundShape>();
+            var prototypes = new Dictionary<int, CompoundInstance>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                StaticCompoundShape compound = StaticCompoundShapes[i];
+                if (compound.Instances.Count > 0 && !prototypes.ContainsKey(compound.ProxyIndex))
+                {
+                    CompoundInstance src = compound.Instances[0];
+                    prototypes[compound.ProxyIndex] = new CompoundInstance
+                    {
+                        Translation = src.Translation,
+                        Rotation = src.Rotation,
+                        Scale = src.Scale,
+                        FilterInfo = src.FilterInfo,
+                        ChildFilterInfoMask = src.ChildFilterInfoMask,
+                        UserData = src.UserData,
+                        ShapeDataOffset = src.ShapeDataOffset,
+                        ShapeClassName = src.ShapeClassName,
+                    };
+                }
+            }
+            return prototypes;
+        }
+
+        /// <summary>
+        /// Empty a compound so it is rebuilt purely from enqueued instances. Called lazily on first
+        /// <see cref="EnqueueInstance"/>, or up-front by callers that clear the world hosts.
+        /// </summary>
+        public void PrepareCompoundForRebuild(StaticCompoundShape compound)
+        {
+            if (_rebuildTouched == null)
+                _rebuildTouched = new HashSet<StaticCompoundShape>();
+            if (!_rebuildTouched.Add(compound))
+                return;
+
+            if (_rebuildOriginal == null)
+                _rebuildOriginal = new Dictionary<StaticCompoundShape, (List<CompoundInstance>, Vector4, Vector4)>();
+            _rebuildOriginal[compound] = (new List<CompoundInstance>(compound.Instances), compound.DomainMin, compound.DomainMax);
+
+            ScrubShapeFixupsForInstances(compound);
+            ReclaimBoxShapes(compound);
+            compound.ClearInstances();
+            // Fresh domain — ExpandDomain grows from the enqueued instances.
+            compound.DomainMin = new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 0);
+            compound.DomainMax = new Vector4(float.MinValue, float.MinValue, float.MinValue, 0);
+        }
+
+        /// <summary>
+        /// Append an instance in memory only (no packfile rewrite yet). Returns the new instance object.
+        /// </summary>
+        public CompoundInstance EnqueueInstance(
+            int proxyIndex,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            CompoundInstance properties,
+            float aabbPadding = 1.0f)
+        {
+            if (properties == null)
+                throw new ArgumentNullException(nameof(properties));
+            StaticCompoundShape compound = FindCompound(proxyIndex);
+            if (compound == null)
+                throw new ArgumentOutOfRangeException(nameof(proxyIndex), "No static compound with that CollisionProxyIndex.");
+
+            PrepareCompoundForRebuild(compound);
+            CompoundInstance inst = CloneInstanceProperties(properties, translation, rotation, scale);
+            ExpandDomain(compound, translation, aabbPadding);
+            compound.AddInstance(inst);
+            return inst;
+        }
+
+        /// <summary>
+        /// Append an instance to an existing compound object (in memory only).
+        /// </summary>
+        public CompoundInstance EnqueueInstance(
+            StaticCompoundShape compound,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            CompoundInstance properties,
+            float aabbPadding = 1.0f)
+        {
+            if (compound == null)
+                throw new ArgumentNullException(nameof(compound));
+            if (properties == null)
+                throw new ArgumentNullException(nameof(properties));
+
+            PrepareCompoundForRebuild(compound);
+            CompoundInstance inst = CloneInstanceProperties(properties, translation, rotation, scale);
+            ExpandDomain(compound, translation, aabbPadding);
+            compound.AddInstance(inst);
+            return inst;
+        }
+
+        /// <summary>
+        /// Rewrite instance/tree arrays for compounds touched during this rebuild only.
+        /// Untouched compounds keep retail instances so rigid-body COL_EVERYTHING asserts stay happy.
+        /// </summary>
+        /// <summary>Whether this compound is waiting for <see cref="CommitInstanceRebuild"/>.</summary>
+        public bool IsPendingRebuild(StaticCompoundShape compound)
+        {
+            return compound != null && _rebuildTouched != null && _rebuildTouched.Contains(compound);
+        }
+
+        /* A compound's leaves are sized from its children's domains as they stand when it is rebuilt, and a
+           child being rebuilt in the same commit only gets its domain then - so children go first. Otherwise
+           a host read a proxy's domain before the proxy had one (or had its old one), and its leaf for that
+           proxy clipped the shape (issue 706). */
+        List<StaticCompoundShape> ChildrenFirst(HashSet<StaticCompoundShape> touched)
+        {
+            var byOffset = new Dictionary<uint, StaticCompoundShape>();
+            foreach (StaticCompoundShape compound in touched)
+                if (!byOffset.ContainsKey(compound.DataOffset))
+                    byOffset[compound.DataOffset] = compound;
+
+            var ordered = new List<StaticCompoundShape>(touched.Count);
+            var placed = new HashSet<StaticCompoundShape>();
+            var visiting = new HashSet<StaticCompoundShape>();
+            void Place(StaticCompoundShape compound)
+            {
+                if (placed.Contains(compound) || !visiting.Add(compound))
+                    return;
+                foreach (CompoundInstance instance in compound.Instances)
+                    if (byOffset.TryGetValue(instance.ShapeDataOffset, out StaticCompoundShape child) && !ReferenceEquals(child, compound))
+                        Place(child);
+                visiting.Remove(compound);
+                if (placed.Add(compound))
+                    ordered.Add(compound);
+            }
+            foreach (StaticCompoundShape compound in touched)
+                Place(compound);
+            return ordered;
+        }
+
+        public void CommitInstanceRebuild()
+        {
+            if (_rebuildTouched == null)
+                return;
+
+            foreach (StaticCompoundShape compound in ChildrenFirst(_rebuildTouched))
+            {
+                if (compound.Instances.Count == 0)
+                {
+                    // Nothing was placed in this compound - a level with no collidable content yet, most
+                    // likely. The rigid body over it still needs at least one instance, so it keeps what
+                    // it had (the base level's instances, for a level built from nothing) until the
+                    // first build that has something to put here.
+                    if (_rebuildOriginal != null && _rebuildOriginal.TryGetValue(compound, out var original) && original.Instances.Count > 0)
+                    {
+                        foreach (CompoundInstance instance in original.Instances)
+                            compound.AddInstance(instance);
+                        compound.DomainMin = original.DomainMin;
+                        compound.DomainMax = original.DomainMax;
+                        Console.WriteLine("  Compound proxy " + compound.ProxyIndex + " received no instances this build - keeping its previous " + original.Instances.Count);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException(
+                            "Rebuilt compound proxy " + compound.ProxyIndex
+                            + " has zero instances — rigid bodies require at least one.");
+                    }
+                }
+                if (!TryGetCompoundArrayFields(compound.DataOffset, out _, out _))
+                {
+                    throw new InvalidOperationException(
+                        "Could not locate compound instance/tree array fields for proxy "
+                        + compound.ProxyIndex + " with " + compound.Instances.Count + " instances.");
+                }
+                RewriteCompoundArrays(compound);
+            }
+            _rebuildTouched = null;
+            _rebuildOriginal = null;
+            _freeBoxShapes = null;
+        }
+
+        static CompoundInstance CloneInstanceProperties(
+            CompoundInstance properties,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale)
+        {
+            uint flagsW = FloatToUInt(properties.Translation.W);
+            return new CompoundInstance
+            {
+                Translation = new Vector4(translation.X, translation.Y, translation.Z, UIntToFloat(flagsW)),
+                Rotation = rotation,
+                Scale = new Vector4(scale.X, scale.Y, scale.Z, properties.Scale.W),
+                FilterInfo = properties.FilterInfo,
+                ChildFilterInfoMask = properties.ChildFilterInfoMask,
+                UserData = properties.UserData,
+                ShapeDataOffset = properties.ShapeDataOffset,
+                ShapeClassName = properties.ShapeClassName,
+            };
+        }
+
+        static void ExpandDomain(StaticCompoundShape compound, Vector3 translation, float aabbPadding)
+        {
+            Vector3 pad = new Vector3(aabbPadding, aabbPadding, aabbPadding);
+            ExpandDomain(compound, translation - pad, translation + pad);
+        }
+
+        static void ExpandDomain(StaticCompoundShape compound, Vector3 aabbMin, Vector3 aabbMax)
+        {
+            compound.DomainMin = new Vector4(
+                Math.Min(compound.DomainMin.X, aabbMin.X),
+                Math.Min(compound.DomainMin.Y, aabbMin.Y),
+                Math.Min(compound.DomainMin.Z, aabbMin.Z),
+                0);
+            compound.DomainMax = new Vector4(
+                Math.Max(compound.DomainMax.X, aabbMax.X),
+                Math.Max(compound.DomainMax.Y, aabbMax.Y),
+                Math.Max(compound.DomainMax.Z, aabbMax.Z),
+                0);
+        }
+
+        /// <summary>
+        /// Union the world-space AABB of a child compound (local domain transformed by TRS) into the host domain.
+        /// </summary>
+        public void ExpandDomainWithTransformedChild(
+            StaticCompoundShape host,
+            StaticCompoundShape child,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            float extraPadding = 0.25f)
+        {
+            if (host == null)
+                return;
+            if (child == null || child.DomainMin.X > child.DomainMax.X)
+            {
+                ExpandDomain(host, translation, Math.Max(extraPadding, 1f));
+                return;
+            }
+
+            GetTransformedAabb(
+                new Vector3(child.DomainMin.X, child.DomainMin.Y, child.DomainMin.Z),
+                new Vector3(child.DomainMax.X, child.DomainMax.Y, child.DomainMax.Z),
+                translation, rotation, scale,
+                out Vector3 wMin, out Vector3 wMax);
+            Vector3 pad = new Vector3(extraPadding, extraPadding, extraPadding);
+            ExpandDomain(host, wMin - pad, wMax + pad);
+        }
+
+        /// <summary>
+        /// Union a centre-origin box (±halfExtents, optionally scaled) into the host domain.
+        /// </summary>
+        public void ExpandDomainWithBox(
+            StaticCompoundShape host,
+            Vector3 centre,
+            Quaternion rotation,
+            Vector3 halfExtents,
+            Vector3 scale,
+            float extraPadding = 0.05f)
+        {
+            if (host == null)
+                return;
+            Vector3 localMin = new Vector3(-halfExtents.X, -halfExtents.Y, -halfExtents.Z);
+            Vector3 localMax = halfExtents;
+            GetTransformedAabb(localMin, localMax, centre, rotation, scale, out Vector3 wMin, out Vector3 wMax);
+            Vector3 pad = new Vector3(extraPadding, extraPadding, extraPadding);
+            ExpandDomain(host, wMin - pad, wMax + pad);
+        }
+
+        const int BoxShapeObjectSize32 = 48;
+        const int BoxShapeObjectSize64 = 64;
+        const int BoxShapeHalfExtentsOffset32 = 32;
+        const int BoxShapeHalfExtentsOffset64 = 48;
+
+        /* A tagfile carries its own layout, so take the box shape's size and field from it rather than
+         * from the 2012 constants - they happen to agree in the shipped 2018 files, but a build on a
+         * different SDK is exactly what that reader exists for. */
+        int BoxShapeObjectSize
+        {
+            get
+            {
+                int described = Tagfile == null ? -1 : Tagfile.SizeOf("hkpBoxShape");
+                if (described > 0) return described;
+                return Header.PointerSize == 8 ? BoxShapeObjectSize64 : BoxShapeObjectSize32;
+            }
+        }
+
+        int BoxShapeHalfExtentsOffset
+        {
+            get
+            {
+                int described = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpBoxShape", "halfExtents");
+                if (described >= 0) return described;
+                return Header.PointerSize == 8 ? BoxShapeHalfExtentsOffset64 : BoxShapeHalfExtentsOffset32;
+            }
+        }
+
+        /// <summary>Read <c>hkpBoxShape.halfExtents</c> (xyz) from a shape object in the data payload.</summary>
+        public bool TryGetBoxHalfExtents(uint dataOffset, out Vector3 halfExtents)
+        {
+            halfExtents = Vector3.Zero;
+            int o = (int)dataOffset + BoxShapeHalfExtentsOffset;
+            if (o + 16 > DataPayload.Length)
+                return false;
+            halfExtents = new Vector3(
+                BitConverter.ToSingle(DataPayload, o),
+                BitConverter.ToSingle(DataPayload, o + 4),
+                BitConverter.ToSingle(DataPayload, o + 8));
+            return halfExtents.X > 0 || halfExtents.Y > 0 || halfExtents.Z > 0;
+        }
+
+        /// <summary>
+        /// Clone an existing <c>hkpBoxShape</c> blob, patch <c>halfExtents</c>, and register it as a new object.
+        /// Returns the new shape's data offset for use as <see cref="CompoundInstance.ShapeDataOffset"/>.
+        /// Object size / halfExtents field offset differ between 32-bit (48 / +32) and 64-bit (64 / +48) packs.
+        /// </summary>
+        /* hkpBoxShape's classnames entry: the 2012 type signature, then the 0x09 kind byte that
+         * every entry in the stream carries. */
+        static readonly byte[] BoxShapeClassEntryPrefix = new byte[] { 0xEA, 0x12, 0x11, 0x0C, 0x09 };
+
+        /// <summary>
+        /// Write an hkpBoxShape from nothing, for a collision file that has never held one. Retail's
+        /// boxes are all the same object apart from their half extents: every field zero except
+        /// hkpShape::m_userData, which is 1024. The vtable and m_type are filled in by the loader.
+        /// A level with no boxes at all is not exotic - Frontend is one.
+        /// </summary>
+        uint AppendSynthesisedBoxShape(Vector3 halfExtents)
+        {
+            if (Tagfile != null)
+                throw new InvalidOperationException("No existing hkpBoxShape to clone - a tagfile cannot describe a new one.");
+
+            int boxSize = BoxShapeObjectSize;
+            int dst = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[dst + boxSize];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            DataPayload = grown;
+
+            WriteUInt32(DataPayload, dst + (int)ObjectHeaderSize, 1024u); //hkpShape::m_userData
+
+            float hx = Math.Abs(halfExtents.X);
+            float hy = Math.Abs(halfExtents.Y);
+            float hz = Math.Abs(halfExtents.Z);
+            if (hx < 1e-4f) hx = 1e-4f;
+            if (hy < 1e-4f) hy = 1e-4f;
+            if (hz < 1e-4f) hz = 1e-4f;
+            float hw = Math.Min(hx, Math.Min(hy, hz));
+            WriteVector4(DataPayload, dst + BoxShapeHalfExtentsOffset, new Vector4(hx, hy, hz, hw));
+
+            int nameOffset = EnsureClassNameLiteral("hkpBoxShape", BoxShapeClassEntryPrefix);
+            VirtualFixups.Add(new VirtualFixup
+            {
+                Src = (uint)dst,
+                SectionIndex = 0,
+                NameOffset = nameOffset,
+            });
+            Objects.Add(new PackfileObject
+            {
+                DataOffset = (uint)dst,
+                ClassNameOffset = nameOffset,
+                ClassName = "hkpBoxShape",
+                Class = ObjectClass.BoxShape,
+                ProxyIndex = -1,
+            });
+            return (uint)dst;
+        }
+
+        /// <summary>
+        /// Offset of a class name in the classnames stream, appending the entry if the file has
+        /// never named that class. Same packed [u32 sig][u8][name][NUL] run as
+        /// <see cref="EnsureClassName"/>, but written from a literal rather than copied from
+        /// another packfile.
+        /// </summary>
+        int EnsureClassNameLiteral(string name, byte[] entryPrefix)
+        {
+            byte[] wanted = Encoding.ASCII.GetBytes(name);
+            for (int i = 0; i + wanted.Length < ClassnamesData.Length; i++)
+            {
+                bool hit = true;
+                for (int k = 0; k < wanted.Length && hit; k++)
+                    if (ClassnamesData[i + k] != wanted[k])
+                        hit = false;
+                if (hit && ClassnamesData[i + wanted.Length] == 0)
+                    return i;
+            }
+
+            TrimClassnamePadding();
+
+            int start = ClassnamesData.Length;
+            byte[] grown = new byte[start + entryPrefix.Length + wanted.Length + 1];
+            Buffer.BlockCopy(ClassnamesData, 0, grown, 0, ClassnamesData.Length);
+            Buffer.BlockCopy(entryPrefix, 0, grown, start, entryPrefix.Length);
+            Buffer.BlockCopy(wanted, 0, grown, start + entryPrefix.Length, wanted.Length);
+            ClassnamesData = grown;
+            return start + entryPrefix.Length;
+        }
+
+        /// <summary>Box shapes whose only instance has just been cleared, ready to be written over.</summary>
+        List<uint> _freeBoxShapes;
+
+        /// <summary>
+        /// Take back the box shapes the instances of a compound being rebuilt were the only users of.
+        /// </summary>
+        void ReclaimBoxShapes(StaticCompoundShape compound)
+        {
+            if (compound?.Instances == null || compound.Instances.Count == 0)
+                return;
+
+            var candidates = new HashSet<uint>();
+            for (int i = 0; i < compound.Instances.Count; i++)
+            {
+                CompoundInstance inst = compound.Instances[i];
+                if (string.Equals(inst.ShapeClassName, "hkpBoxShape", StringComparison.Ordinal))
+                    candidates.Add(inst.ShapeDataOffset);
+            }
+            if (candidates.Count == 0)
+                return;
+
+            //Anything still pointed at is in use by an instance we are not rebuilding.
+            for (int g = 0; g < GlobalFixups.Count && candidates.Count != 0; g++)
+                candidates.Remove(GlobalFixups[g].Dst);
+            if (candidates.Count == 0)
+                return;
+
+            if (_freeBoxShapes == null)
+                _freeBoxShapes = new List<uint>();
+            foreach (uint offset in candidates)
+                if (!_freeBoxShapes.Contains(offset))
+                    _freeBoxShapes.Add(offset);
+
+            /* Handed out lowest offset first (the list is kept descending and popped from the end). They were
+               freed in host slot order, and popping that list from the end gave the first box placed the LAST
+               box freed - reversing the assignment on every save, so re-saving an unchanged level flipped
+               COLLISION.HKX/HKX64 between two contents for ever. In offset order the k-th box placed always
+               gets the k-th lowest box object whatever the previous save did, which is also retail's order. */
+            _freeBoxShapes.Sort((a, b) => b.CompareTo(a));
+        }
+
+        public uint AppendBoxShape(Vector3 halfExtents)
+        {
+            //A box freed by a rebuild is the same object we are about to make again: patch its extents.
+            if (_freeBoxShapes != null && _freeBoxShapes.Count != 0)
+            {
+                uint reused = _freeBoxShapes[_freeBoxShapes.Count - 1];
+                _freeBoxShapes.RemoveAt(_freeBoxShapes.Count - 1);
+                WriteBoxHalfExtents(reused, halfExtents);
+                return reused;
+            }
+            return AppendNewBoxShape(halfExtents);
+        }
+
+        /// <summary>Patch <c>halfExtents</c> on a box shape already in the payload.</summary>
+        void WriteBoxHalfExtents(uint dataOffset, Vector3 halfExtents)
+        {
+            float hx = Math.Abs(halfExtents.X);
+            float hy = Math.Abs(halfExtents.Y);
+            float hz = Math.Abs(halfExtents.Z);
+            if (hx < 1e-4f) hx = 1e-4f;
+            if (hy < 1e-4f) hy = 1e-4f;
+            if (hz < 1e-4f) hz = 1e-4f;
+            float hw = Math.Min(hx, Math.Min(hy, hz));
+            WriteVector4(DataPayload, (int)dataOffset + BoxShapeHalfExtentsOffset, new Vector4(hx, hy, hz, hw));
+        }
+
+        uint AppendNewBoxShape(Vector3 halfExtents)
+        {
+            PackfileObject template = null;
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].Class == ObjectClass.BoxShape)
+                {
+                    template = Objects[i];
+                    break;
+                }
+            }
+            if (template == null)
+                return AppendSynthesisedBoxShape(halfExtents);
+
+            int boxSize = BoxShapeObjectSize;
+            int heOff = BoxShapeHalfExtentsOffset;
+            int src = (int)template.DataOffset;
+            if (src < 0 || src + boxSize > DataPayload.Length)
+                throw new InvalidOperationException("Template hkpBoxShape object is truncated.");
+
+            int dst = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[dst + boxSize];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            Buffer.BlockCopy(DataPayload, src, grown, dst, boxSize);
+            DataPayload = grown;
+
+            float hx = Math.Abs(halfExtents.X);
+            float hy = Math.Abs(halfExtents.Y);
+            float hz = Math.Abs(halfExtents.Z);
+            if (hx < 1e-4f) hx = 1e-4f;
+            if (hy < 1e-4f) hy = 1e-4f;
+            if (hz < 1e-4f) hz = 1e-4f;
+            float hw = Math.Min(hx, Math.Min(hy, hz));
+            WriteVector4(DataPayload, dst + heOff, new Vector4(hx, hy, hz, hw));
+
+            uint dataOffset = (uint)dst;
+
+            /* What makes the copy a real object differs by container: a packfile names its class
+             * through a virtual fixup, a tagfile through an entry in its item table. */
+            if (Tagfile != null)
+            {
+                if (!Tagfile.CloneObject(template.DataOffset, dataOffset, boxSize))
+                    throw new InvalidOperationException("The template hkpBoxShape has no item in the tagfile to copy.");
+            }
+            else
+            {
+                // VirtualFixup.SectionIndex is the *classnames* section (0), not the data section (2).
+                // Retail boxes all use Sec=0; Sec=2 makes Havok fail to resolve the class → shape=null.
+                uint classSection = 0;
+                for (int i = 0; i < VirtualFixups.Count; i++)
+                {
+                    if (VirtualFixups[i].Src == template.DataOffset)
+                    {
+                        classSection = VirtualFixups[i].SectionIndex;
+                        break;
+                    }
+                }
+                VirtualFixups.Add(new VirtualFixup
+                {
+                    Src = dataOffset,
+                    SectionIndex = classSection,
+                    NameOffset = template.ClassNameOffset,
+                });
+            }
+            Objects.Add(new PackfileObject
+            {
+                DataOffset = dataOffset,
+                ClassNameOffset = template.ClassNameOffset,
+                ClassName = "hkpBoxShape",
+                Class = ObjectClass.BoxShape,
+                ProxyIndex = -1,
+            });
+            return dataOffset;
+        }
+
+        static void GetTransformedAabb(
+            Vector3 localMin,
+            Vector3 localMax,
+            Vector3 translation,
+            Quaternion rotation,
+            Vector3 scale,
+            out Vector3 worldMin,
+            out Vector3 worldMax)
+        {
+            // System.Numerics uses row vectors (v * M). Compose S * R * T so local corners are
+            // scaled, then rotated, then translated. T * R * S (column-vector TRS) wrongly
+            // rotates around the world origin after translating and inflates host domains /
+            // BVH leaves — mid-phase then misses walkable geometry.
+            worldMin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            worldMax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 local = new Vector3(
+                    (corner & 1) == 0 ? localMin.X : localMax.X,
+                    (corner & 2) == 0 ? localMin.Y : localMax.Y,
+                    (corner & 4) == 0 ? localMin.Z : localMax.Z);
+                Vector3 world = translation + Vector3.Transform(local * scale, rotation);
+                worldMin = Vector3.Min(worldMin, world);
+                worldMax = Vector3.Max(worldMax, world);
+            }
+        }
+
+        /// <summary>
+        /// Remove one instance from a static compound by index (COLLISION.MAP Index).
+        /// Remaining instances keep relative order; indexes above the removed slot shift down by 1
+        /// (callers must remap any MAP rows that pointed at the same proxy with Index &gt; removed).
+        /// Rebuilds the compound BVH. Returns false if the proxy/index was not found.
+        /// </summary>
+        public bool RemoveInstance(int proxyIndex, int instanceIndex)
+        {
+            StaticCompoundShape compound = FindCompound(proxyIndex);
+            if (compound == null)
+                return false;
+            if (instanceIndex < 0 || instanceIndex >= compound.Instances.Count)
+                return false;
+
+            ScrubShapeFixupsForInstances(compound);
+            compound.Instances.RemoveAt(instanceIndex);
+            RewriteCompoundArrays(compound);
+            return true;
+        }
+
+        /// <summary>
+        /// Remove multiple instances from a compound in one rewrite. <paramref name="instanceIndexes"/>
+        /// may be unsorted / contain duplicates (duplicates ignored). Higher surviving indexes shift
+        /// down by the number of removed slots below them — remap MAP rows accordingly.
+        /// Returns the number of instances actually removed.
+        /// </summary>
+        public int RemoveInstances(int proxyIndex, IEnumerable<int> instanceIndexes)
+        {
+            StaticCompoundShape compound = FindCompound(proxyIndex);
+            if (compound == null || instanceIndexes == null)
+                return 0;
+
+            var remove = new HashSet<int>();
+            foreach (int idx in instanceIndexes)
+            {
+                if (idx >= 0 && idx < compound.Instances.Count)
+                    remove.Add(idx);
+            }
+            if (remove.Count == 0)
+                return 0;
+
+            ScrubShapeFixupsForInstances(compound);
+            var kept = new List<CompoundInstance>(compound.Instances.Count - remove.Count);
+            for (int i = 0; i < compound.Instances.Count; i++)
+            {
+                if (!remove.Contains(i))
+                    kept.Add(compound.Instances[i]);
+            }
+            int removed = compound.Instances.Count - kept.Count;
+            compound.Instances = kept;
+            RewriteCompoundArrays(compound);
+            return removed;
+        }
+
+        /// <summary>
+        /// Drop global fixups for the current instance shape-pointer fields before rewriting arrays,
+        /// so orphaned slots do not keep stale links.
+        /// </summary>
+        void ScrubShapeFixupsForInstances(StaticCompoundShape compound)
+        {
+            if (compound?.Instances == null || compound.Instances.Count == 0)
+                return;
+            HavokTagfile.CompoundLayout layout = Tagfile == null ? null : Tagfile.Compound();
+            uint shapeField = (uint)(layout == null ? 48 : layout.Shape);
+            var scrub = new HashSet<uint>();
+            for (int i = 0; i < compound.Instances.Count; i++)
+                scrub.Add(compound.Instances[i].DataOffset + shapeField);
+
+            for (int g = GlobalFixups.Count - 1; g >= 0; g--)
+            {
+                if (scrub.Contains(GlobalFixups[g].Src))
+                    GlobalFixups.RemoveAt(g);
+            }
+
+            //A tagfile keeps the same list in the file itself, so those slots have to leave it too -
+            //otherwise every rewrite adds to the patch table and never takes anything away
+            if (layout != null)
+                foreach (uint src in scrub)
+                    Tagfile.ClearPointer((int)src, layout.ShapeGroup);
+        }
+
+        /// <summary>Find the static compound for a COLLISION.MAP CollisionProxyIndex, or null.</summary>
+        /* hkpListShape, packfile layout: the child array pointer, then its size and capacity, and
+         * one ChildInfo per child (a shape pointer plus three zeroed words). */
+        int ListChildArrayField => Header.PointerSize == 8 ? 0x30 : 0x18;
+        int ListChildEntryStride => Header.PointerSize == 8 ? 32 : 16;
+
+        /// <summary>
+        /// The level's proxy list - the hkpListShape a rigid body carries. That body's collision
+        /// filter is NOTHING (18), so the list never collides: it is the registry that makes every
+        /// per-mesh compound addressable by the ordinal a COLLISION.MAP row stores.
+        /// </summary>
+        PackfileObject FindProxyListShape()
+        {
+            if (Tagfile != null)
+            {
+                int list = Tagfile.ProxyListOffset();
+                return list < 0 ? null : Objects.FirstOrDefault(o => o.DataOffset == (uint)list && o.Class == ObjectClass.ListShape);
+            }
+
+            Dictionary<uint, PackfileObject> byOffset = new Dictionary<uint, PackfileObject>();
+            for (int i = 0; i < Objects.Count; i++)
+                byOffset[Objects[i].DataOffset] = Objects[i];
+
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (!string.Equals(Objects[i].ClassName, "hkpRigidBody", StringComparison.Ordinal))
+                    continue;
+                uint start = Objects[i].DataOffset;
+                uint end = ObjectEnd(start);
+                for (int g = 0; g < GlobalFixups.Count; g++)
+                {
+                    if (GlobalFixups[g].Src < start || GlobalFixups[g].Src >= end)
+                        continue;
+                    if (byOffset.TryGetValue(GlobalFixups[g].Dst, out PackfileObject shape)
+                        && string.Equals(shape.ClassName, "hkpListShape", StringComparison.Ordinal))
+                        return shape;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Extend the proxy list until a child exists at every compound ordinal.
+        /// </summary>
+        public void EnsureProxyListCoversCompounds()
+        {
+            EnsureProxyListCoversCompounds(true);
+        }
+
+        /// <param name="refreshTagfileFixups">False when the caller re-reads the fixups itself straight after.</param>
+        internal void EnsureProxyListCoversCompounds(bool refreshTagfileFixups)
+        {
+            PackfileObject list = FindProxyListShape();
+            if (list == null)
+                return;
+
+            if (Tagfile != null)
+            {
+                EnsureTagfileProxyListCoversCompounds(list.DataOffset, refreshTagfileFixups);
+                return;
+            }
+
+            int ptrSize = Header.PointerSize;
+            int stride = ListChildEntryStride;
+            uint arrayField = list.DataOffset + (uint)ListChildArrayField;
+            int sizePos = (int)arrayField + ptrSize;
+            if (sizePos + 8 > DataPayload.Length)
+                return;
+
+            int existing = BitConverter.ToInt32(DataPayload, sizePos);
+            if (existing < 0)
+                existing = 0;
+            int wanted = StaticCompoundShapes.Count;
+            if (wanted <= existing)
+                return;
+
+            uint oldArray = 0;
+            bool hadOld = false;
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src != arrayField)
+                    continue;
+                oldArray = LocalFixups[i].Dst;
+                hadOld = true;
+                break;
+            }
+
+            //Keep whatever the existing slots pointed at rather than re-deriving them.
+            uint[] slots = new uint[wanted];
+            if (hadOld)
+            {
+                uint oldEnd = oldArray + (uint)(existing * stride);
+                for (int g = 0; g < GlobalFixups.Count; g++)
+                {
+                    uint src = GlobalFixups[g].Src;
+                    if (src < oldArray || src >= oldEnd)
+                        continue;
+                    int slot = (int)((src - oldArray) / (uint)stride);
+                    if (slot >= 0 && slot < existing)
+                        slots[slot] = GlobalFixups[g].Dst;
+                }
+            }
+            for (int i = existing; i < wanted; i++)
+            {
+                StaticCompoundShape compound = GetCompound(i);
+                slots[i] = compound == null ? 0 : compound.DataOffset;
+            }
+
+            int newArrOff = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[newArrOff + wanted * stride];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            if (hadOld && existing > 0 && oldArray + (uint)(existing * stride) <= (uint)DataPayload.Length)
+                Buffer.BlockCopy(DataPayload, (int)oldArray, grown, newArrOff, existing * stride);
+            DataPayload = grown;
+
+            if (hadOld)
+            {
+                uint oldEnd = oldArray + (uint)(existing * stride);
+                for (int g = GlobalFixups.Count - 1; g >= 0; g--)
+                    if (GlobalFixups[g].Src >= oldArray && GlobalFixups[g].Src < oldEnd)
+                        GlobalFixups.RemoveAt(g);
+            }
+            for (int i = LocalFixups.Count - 1; i >= 0; i--)
+                if (LocalFixups[i].Src == arrayField)
+                    LocalFixups.RemoveAt(i);
+
+            LocalFixups.Add(new LocalFixup { Src = arrayField, Dst = (uint)newArrOff });
+            WriteUInt32(DataPayload, sizePos, (uint)wanted);
+            WriteUInt32(DataPayload, sizePos + 4, (uint)wanted | 0x80000000u);
+
+            for (int i = 0; i < wanted; i++)
+            {
+                if (slots[i] == 0)
+                    continue;
+                GlobalFixups.Add(new GlobalFixup
+                {
+                    Src = (uint)(newArrOff + i * stride),
+                    DstSectionIndex = 2,
+                    Dst = slots[i],
+                });
+            }
+        }
+
+        /* Room left after the tagfile proxy list the last time it moved. Every proxy added appends its
+         * mesh after the list, so without headroom each add moves the whole list again and leaves a
+         * dead copy behind - 38 KB a proxy on bsp_torrens. Only a hint: it is re-checked against the
+         * list's own item before use, so a checkpoint restore that undid the move just moves it again. */
+        uint _tagProxyListArray;
+        int _tagProxyListCapacity;
+        const int TagProxyListHeadroom = 64;
+
+        /// <summary>
+        /// The tagfile half of <see cref="EnsureProxyListCoversCompounds"/>. The list's children are an
+        /// array item, so growing it means moving that item; each slot is a shape pointer filed in PTCH,
+        /// and every other ChildInfo field stays zero as retail leaves them. Slots past the templates
+        /// take the hosts and then whatever was imported, the same padding the packfile branch writes,
+        /// so every compound's ordinal is its list index. The list's own AABB grows to keep covering
+        /// its template children, as retail's does exactly.
+        /// </summary>
+        void EnsureTagfileProxyListCoversCompounds(uint list, bool refreshFixups)
+        {
+            HavokTagfile t = Tagfile;
+            int childField = t.OffsetOf("hkpListShape", "childInfo");
+            int stride = t.SizeOf("hkpListShape::ChildInfo");
+            int shapeAt = t.OffsetOf("hkpListShape::ChildInfo", "shape");
+            int fieldGroup = t.PatchGroupOf("hkpListShape", "childInfo");
+            int slotGroup = t.PatchGroupOf("hkpListShape::ChildInfo", "shape");
+            if (childField < 0 || stride <= 0 || shapeAt < 0 || fieldGroup <= 0 || slotGroup <= 0)
+                return;
+
+            uint field = list + (uint)childField;
+            if (!t.TryResolvePointer(field, out uint oldArray, out int existing))
+                return;
+
+            int wanted = 0;
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                wanted = Math.Max(wanted, StaticCompoundShapes[i].ProxyIndex + 1);
+            if (wanted <= existing)
+                return;
+
+            uint array;
+            bool reserved = existing > 0 && oldArray == _tagProxyListArray && wanted <= _tagProxyListCapacity
+                && _tagProxyListArray + (long)_tagProxyListCapacity * stride <= DataPayload.Length;
+            if (reserved)
+                array = oldArray;
+            else
+            {
+                int capacity = wanted + TagProxyListHeadroom;
+                bool atEnd = existing > 0 && oldArray + (long)existing * stride == DataPayload.Length && (oldArray & 15) == 0;
+                array = atEnd ? oldArray : (uint)AlignPayload(DataPayload.Length, 16);
+
+                byte[] grown = new byte[array + capacity * stride];
+                Buffer.BlockCopy(DataPayload, 0, grown, 0, Math.Min(DataPayload.Length, grown.Length));
+                if (!atEnd && existing > 0)
+                {
+                    //Move the old slots across, pointers and all, and retire the words they came from
+                    Buffer.BlockCopy(DataPayload, (int)oldArray, grown, (int)array, existing * stride);
+                    for (int i = 0; i < existing; i++)
+                    {
+                        int from = (int)oldArray + i * stride + shapeAt;
+                        int to = (int)array + i * stride + shapeAt;
+                        bool held = BitConverter.ToUInt64(grown, from) != 0;
+                        t.ClearPointer(from, slotGroup);
+                        if (held)
+                            t.SetPatch(slotGroup, to);
+                    }
+                    Array.Clear(grown, (int)oldArray, existing * stride);
+                }
+                DataPayload = grown;
+
+                _tagProxyListArray = array;
+                _tagProxyListCapacity = capacity;
+            }
+
+            //The new slots, zero but for the shape
+            Array.Clear(DataPayload, (int)array + existing * stride, (wanted - existing) * stride);
+            List<StaticCompoundShape> added = new List<StaticCompoundShape>();
+            for (int i = existing; i < wanted; i++)
+            {
+                StaticCompoundShape compound = GetCompound(i);
+                if (compound == null)
+                    continue;
+                t.SetPointer((int)array + i * stride + shapeAt, compound.DataOffset, slotGroup);
+                added.Add(compound);
+            }
+            t.SetArray((int)field, (int)array, wanted, fieldGroup);
+
+            GrowTagfileListAabb(list, added);
+
+            //The slots moved and new ones were filed, so the fixups the readers and a later port walk are re-read
+            if (refreshFixups)
+                t.RegisterNewItems(this, t.ItemCount);
+        }
+
+        /// <summary>Widen the proxy list's AABB over new template children (hosts and the empty spare excluded).</summary>
+        void GrowTagfileListAabb(uint list, List<StaticCompoundShape> added)
+        {
+            HavokTagfile t = Tagfile;
+            int halfAt = t.OffsetOf("hkpListShape", "aabbHalfExtents");
+            int centreAt = t.OffsetOf("hkpListShape", "aabbCenter");
+            int domainAt = t.Compound().Domain;
+            if (halfAt < 0 || centreAt < 0 || domainAt < 0 || list + centreAt + 16 > DataPayload.Length)
+                return;
+
+            Vector4 half = ReadVector4(DataPayload, (int)list + halfAt);
+            Vector4 centre = ReadVector4(DataPayload, (int)list + centreAt);
+            Vector3 min = new Vector3(centre.X - half.X, centre.Y - half.Y, centre.Z - half.Z);
+            Vector3 max = new Vector3(centre.X + half.X, centre.Y + half.Y, centre.Z + half.Z);
+            bool grew = false;
+
+            foreach (StaticCompoundShape compound in added)
+            {
+                //A host places other compounds; the list only ever enumerates templates
+                if (compound.Instances.Any(o => o.ShapeClassName == "hkpStaticCompoundShape"))
+                    continue;
+                int at = (int)compound.DataOffset + domainAt;
+                if (compound.Instances.Count == 0 || at + 32 > DataPayload.Length)
+                    continue;
+
+                Vector4 lo = ReadVector4(DataPayload, at);
+                Vector4 hi = ReadVector4(DataPayload, at + 16);
+                Vector3 l = new Vector3(lo.X, lo.Y, lo.Z), h = new Vector3(hi.X, hi.Y, hi.Z);
+                if (!IsFinite(l) || !IsFinite(h) || l.X > h.X || l.Y > h.Y || l.Z > h.Z
+                    || Math.Max(l.Length(), h.Length()) > 1e7f)
+                    continue;
+
+                min = Vector3.Min(min, l);
+                max = Vector3.Max(max, h);
+                grew = true;
+            }
+            if (!grew)
+                return;
+
+            Vector3 newHalf = (max - min) * 0.5f, newCentre = (max + min) * 0.5f;
+            WriteVector4(DataPayload, (int)list + halfAt, new Vector4(newHalf, half.W));
+            WriteVector4(DataPayload, (int)list + centreAt, new Vector4(newCentre, centre.W));
+        }
+
+        /// <summary>
+        /// Resize every compound's child shape key field to fit what it now holds.
+        /// </summary>
+        public void RefreshCompoundShapeKeyBits()
+        {
+            int ptrSize = Header.PointerSize;
+            int bitsField = (ptrSize == 8 ? 0x38 : 0x20) - 8;
+
+            //2018 keeps it at the same 48, and retail's hosts follow the same rule (6 of 6 on iOS)
+            if (Tagfile != null)
+                bitsField = Tagfile.OffsetOf("hkpStaticCompoundShape", "numBitsForChildShapeKey");
+            if (bitsField < 0)
+                return;
+
+            Dictionary<uint, StaticCompoundShape> byOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                byOffset[StaticCompoundShapes[i].DataOffset] = StaticCompoundShapes[i];
+
+            /* A host references templates and never the other way round, so one pass in ordinal
+             * order sees every child already at its final width. */
+            List<StaticCompoundShape> ordered = StaticCompoundShapes
+                .OrderBy(c => c.ProxyIndex)
+                .ToList();
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                StaticCompoundShape compound = ordered[i];
+                if (compound.Instances.Count == 0)
+                    continue;   //retail leaves the unused spare at 0xFF
+                int at = (int)compound.DataOffset + bitsField;
+                if (at < 0 || at >= DataPayload.Length)
+                    continue;
+
+                int required = 0;
+                for (int n = 0; n < compound.Instances.Count; n++)
+                {
+                    if (!byOffset.TryGetValue(compound.Instances[n].ShapeDataOffset, out StaticCompoundShape child))
+                        continue;   //a box or a mesh child contributes no instance bits of its own
+                    int childAt = (int)child.DataOffset + bitsField;
+                    if (childAt < 0 || childAt >= DataPayload.Length)
+                        continue;
+                    int childBits = DataPayload[childAt];
+                    if (childBits == 0xFF)
+                        childBits = 0;
+                    required = Math.Max(required, childBits + BitsToIndex(child.Instances.Count));
+                }
+
+                //Only ever widen: a child whose key space we cannot compute must not narrow it.
+                int stored = DataPayload[at];
+                if (stored != 0xFF && required <= stored)
+                    continue;
+                DataPayload[at] = (byte)Math.Min(required, 31);
+            }
+        }
+
+        /// <summary>Bits needed to hold indices 0..count-1.</summary>
+        static int BitsToIndex(int count)
+        {
+            int bits = 0;
+            while ((1 << bits) < count)
+                bits++;
+            return bits;
+        }
+
+        public StaticCompoundShape GetCompound(int proxyIndex)
+        {
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                if (StaticCompoundShapes[i].ProxyIndex == proxyIndex)
+                    return StaticCompoundShapes[i];
+            }
+            return null;
+        }
+
+        /// <summary>Find the physics system for a PHYSICS.MAP / DYNAMIC_PHYSICS_SYSTEM SystemIndex, or null.</summary>
+        public PhysicsSystem GetPhysicsSystem(int systemIndex)
+        {
+            if (systemIndex < 0 || systemIndex >= PhysicsSystems.Count)
+                return null;
+            return PhysicsSystems[systemIndex];
+        }
+
+        StaticCompoundShape FindCompound(int proxyIndex) => GetCompound(proxyIndex);
+
+        StaticCompoundShape _worldHostPrimary;
+        StaticCompoundShape _worldHostSecondary;
+        bool _worldHostsResolved;
+
+        /// <summary>
+        /// Compound holding placed non-walkable colliders (ballistic). Placed geometry lives on
+        /// these two "world host" compounds rather than on the per-mesh template compounds, which
+        /// stay as identity shape definitions.
+        /// </summary>
+        public StaticCompoundShape WorldHostPrimary { get { ResolveWorldHosts(); return _worldHostPrimary; } }
+
+        /// <summary>Compound holding placed walkable (WORLD-flagged) colliders and barrier boxes.</summary>
+        public StaticCompoundShape WorldHostSecondary { get { ResolveWorldHosts(); return _worldHostSecondary; } }
+
+        /// <summary>
+        /// Pick the host a COLLISION.MAP row belongs to. The WORLD flag selects the walkable host;
+        /// this is what makes a row's Index unambiguous without storing the compound alongside it.
+        /// </summary>
+        public StaticCompoundShape WorldHostFor(bool world)
+        {
+            ResolveWorldHosts();
+            return world && _worldHostSecondary != null ? _worldHostSecondary : _worldHostPrimary;
+        }
+
+        /// <summary>
+        /// Identify the world hosts from the packfile's structure: they are the compounds a rigid
+        /// body carries as its shape. Cached, because rebuilding empties them.
+        /// </summary>
+        void ResolveWorldHosts()
+        {
+            if (_worldHostsResolved)
+                return;
+            _worldHostsResolved = true;
+
+            /* Every level lays its collision file out the same way - four hkpRigidBody objects, the
+             * first carrying an hkpListShape that enumerates the per-mesh template compounds, then
+             * three compounds: the ballistic host, an empty spare, and the walkable host. Read the
+             * hosts off that layout rather than guessing from instance counts - a size threshold
+             * rejected Frontend's single-instance hosts and left it with nothing collidable. */
+            List<StaticCompoundShape> owned = CompoundsOwnedByRigidBodies();
+            if (owned.Count != 0)
+            {
+                _worldHostPrimary = owned[0];
+                _worldHostSecondary = owned.Count > 2 ? owned[2] : owned[owned.Count - 1];
+                return;
+            }
+
+            //A tagfile has no packfile object graph to read, so fall back to the shape of the data.
+            List<StaticCompoundShape> hosts = StaticCompoundShapes
+                .Where(c => c != null && c.Instances != null && c.Instances.Count >= 16)
+                .Where(c => c.Instances.Count(i =>
+                    string.Equals(i.ShapeClassName, "hkpStaticCompoundShape", StringComparison.Ordinal))
+                    > c.Instances.Count / 2)
+                .OrderByDescending(c => c.Instances.Count)
+                .ToList();
+
+            if (hosts.Count == 0)
+                return;
+            _worldHostPrimary = hosts[0];
+            _worldHostSecondary = hosts.Count > 1 ? hosts[1] : hosts[0];
+        }
+
+        /// <summary>
+        /// The compounds that hkpRigidBody objects point straight at, in file order. The body that
+        /// carries the template hkpListShape contributes nothing, so what comes back is the host
+        /// list: [ballistic, spare, walkable].
+        /// </summary>
+        List<StaticCompoundShape> CompoundsOwnedByRigidBodies()
+        {
+            List<StaticCompoundShape> owned = new List<StaticCompoundShape>();
+
+            Dictionary<uint, StaticCompoundShape> compoundByOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                if (StaticCompoundShapes[i] != null)
+                    compoundByOffset[StaticCompoundShapes[i].DataOffset] = StaticCompoundShapes[i];
+
+            /* A tagfile's bodies name their shape by item index at collidable.shape. The same three
+             * hosts come out, first in the file rather than last - and Frontend's, one instance each,
+             * are found at all, where the instance-count fallback below rejects them. */
+            if (Tagfile != null)
+            {
+                int shapeAt = Tagfile.OffsetOfPath("hkpRigidBody", "collidable", "shape");
+                if (shapeAt < 0)
+                    return owned;
+                foreach (PackfileObject body in Objects
+                    .Where(o => o != null && o.Class == ObjectClass.RigidBody)
+                    .OrderBy(o => o.DataOffset))
+                {
+                    if (Tagfile.TryResolvePointer(body.DataOffset + (uint)shapeAt, out uint shape, out _) && shape != 0
+                        && compoundByOffset.TryGetValue(shape, out StaticCompoundShape host))
+                        owned.Add(host);
+                }
+                return owned;
+            }
+
+            List<PackfileObject> bodies = Objects
+                .Where(o => o != null && string.Equals(o.ClassName, "hkpRigidBody", StringComparison.Ordinal))
+                .OrderBy(o => o.DataOffset)
+                .ToList();
+
+            for (int b = 0; b < bodies.Count; b++)
+            {
+                uint start = bodies[b].DataOffset;
+                uint end = ObjectEnd(start);
+                for (int g = 0; g < GlobalFixups.Count; g++)
+                {
+                    if (GlobalFixups[g].Src < start || GlobalFixups[g].Src >= end)
+                        continue;
+                    if (compoundByOffset.TryGetValue(GlobalFixups[g].Dst, out StaticCompoundShape shape))
+                    {
+                        owned.Add(shape);
+                        break;
+                    }
+                }
+            }
+            return owned;
+        }
+
+        #region CROSS_PACKFILE_IMPORT
+        /// <summary>
+        /// Import a static compound (and its referenced shapes) from another same-pointer-size packfile.
+        /// <paramref name="remapCache"/> maps source DataOffset → dest DataOffset for reuse within one port.
+        /// </summary>
+        public StaticCompoundShape ImportStaticCompoundShape(
+            HavokPackfile source,
+            StaticCompoundShape src,
+            Dictionary<uint, uint> remapCache = null)
+        {
+            if (source == null || src == null)
+                return null;
+            if (Header.PointerSize != source.Header.PointerSize)
+                throw new InvalidOperationException("Cannot import Havok data between packfiles with different pointer sizes (HKX vs HKX64).");
+
+            if (remapCache != null && remapCache.TryGetValue(src.DataOffset, out uint existing))
+            {
+                for (int i = 0; i < StaticCompoundShapes.Count; i++)
+                {
+                    if (StaticCompoundShapes[i].DataOffset == existing)
+                        return StaticCompoundShapes[i];
+                }
+            }
+
+            uint newRoot = ImportObjectGraph(source, src.DataOffset, remapCache);
+            RebuildTypedViewsFromObjects();
+            EnsureProxyListCoversCompounds();
+
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                if (StaticCompoundShapes[i].DataOffset == newRoot)
+                    return StaticCompoundShapes[i];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Import a physics system (and its referenced rigid bodies / shapes) from another same-pointer-size packfile.
+        /// Registers the system in <c>hkpPhysicsData.systems[]</c>.
+        /// </summary>
+        public PhysicsSystem ImportPhysicsSystem(
+            HavokPackfile source,
+            PhysicsSystem src,
+            Dictionary<uint, uint> remapCache = null)
+        {
+            if (source == null || src == null)
+                return null;
+            if (Header.PointerSize != source.Header.PointerSize)
+                throw new InvalidOperationException("Cannot import Havok data between packfiles with different pointer sizes (HKX vs HKX64).");
+
+            if (remapCache != null && remapCache.TryGetValue(src.DataOffset, out uint existing))
+            {
+                for (int i = 0; i < PhysicsSystems.Count; i++)
+                {
+                    if (PhysicsSystems[i].DataOffset == existing)
+                        return PhysicsSystems[i];
+                }
+            }
+
+            uint newRoot = ImportObjectGraph(source, src.DataOffset, remapCache);
+            AppendPhysicsSystemToPhysicsData(newRoot);
+            RebuildTypedViewsFromObjects();
+
+            for (int i = 0; i < PhysicsSystems.Count; i++)
+            {
+                if (PhysicsSystems[i].DataOffset == newRoot)
+                    return PhysicsSystems[i];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Copy the object subgraph rooted at <paramref name="sourceRootOffset"/> into this packfile.
+        /// Returns the new root data offset. On a tagfile the typed views (objects, compounds, systems)
+        /// do not show the copy until they are rebuilt, as <see cref="ImportStaticCompoundShape"/> and
+        /// <see cref="ImportPhysicsSystem"/> do.
+        /// </summary>
+        public uint ImportObjectGraph(HavokPackfile source, uint sourceRootOffset, Dictionary<uint, uint> remapCache = null)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (Header.PointerSize != source.Header.PointerSize)
+                throw new InvalidOperationException("Cannot import Havok data between packfiles with different pointer sizes (HKX vs HKX64).");
+
+            /* Both kinds are 64-bit, so pointer size does not tell them apart - and copied bytes mean
+             * completely different things in the two, because a tagfile stores item indices where a
+             * packfile stores addresses to be fixed up. */
+            if ((Tagfile != null) != (source.Tagfile != null))
+            {
+                throw new InvalidOperationException(
+                    "Cannot import Havok data between a packfile and a tagfile - "
+                    + (Tagfile != null ? "the destination" : "the source") + " is the tagfile.");
+            }
+
+            if (remapCache != null && remapCache.TryGetValue(sourceRootOffset, out uint cached))
+                return cached;
+
+            CollectReachable(source, sourceRootOffset, out HashSet<uint> objectOffsets, out List<(uint Start, uint End)> extraRanges);
+            if (objectOffsets.Count == 0)
+                throw new InvalidOperationException("Source Havok object graph is empty.");
+
+            // Object byte ranges (exclusive end = next object offset, the start of storage another object owns, or payload end).
+            List<uint> sortedSrcObjects = ObjectRangeBoundaries(source);
+            var objectRanges = new List<(uint Start, uint End, PackfileObject Obj)>();
+            for (int i = 0; i < source.Objects.Count; i++)
+            {
+                PackfileObject obj = source.Objects[i];
+                if (!objectOffsets.Contains(obj.DataOffset))
+                    continue;
+                uint end = NextBoundary(sortedSrcObjects, obj.DataOffset, (uint)source.DataPayload.Length);
+                objectRanges.Add((obj.DataOffset, end, obj));
+            }
+            objectRanges.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+            // Merge extra ranges and clamp so they do not overlap object blobs we already copy.
+            var extras = MergeRanges(extraRanges);
+            extras = SubtractObjectRanges(extras, objectRanges);
+
+            // Destination allocation map: source absolute offset → dest absolute offset (for any copied byte).
+            var srcToDst = new Dictionary<uint, uint>();
+            int writeAt = AlignPayload(DataPayload.Length, 16);
+            var pieces = new List<(uint SrcStart, int Length, int DstStart)>();
+
+            void Schedule(uint srcStart, uint srcEnd)
+            {
+                if (srcEnd <= srcStart) return;
+                int len = (int)(srcEnd - srcStart);
+                writeAt = AlignPayload(writeAt, 16);
+                pieces.Add((srcStart, len, writeAt));
+                for (uint o = srcStart; o < srcEnd; o++)
+                    srcToDst[o] = (uint)(writeAt + (int)(o - srcStart));
+                writeAt += len;
+            }
+
+            for (int i = 0; i < objectRanges.Count; i++)
+                Schedule(objectRanges[i].Start, objectRanges[i].End);
+            for (int i = 0; i < extras.Count; i++)
+                Schedule(extras[i].Start, extras[i].End);
+
+            if (pieces.Count == 0)
+                throw new InvalidOperationException("Nothing to copy from source Havok graph.");
+
+            //A tagfile graph whose types cannot come across is refused before anything here changes
+            if (Tagfile != null)
+            {
+                string refusal = CheckTagfileImport(source, srcToDst, out _);
+                if (refusal != null)
+                    throw new InvalidOperationException(refusal);
+            }
+
+            byte[] grown = new byte[writeAt];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                Buffer.BlockCopy(source.DataPayload, (int)pieces[i].SrcStart, grown, pieces[i].DstStart, pieces[i].Length);
+            }
+            DataPayload = grown;
+
+            // Classnames
+            var destClassByName = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var kv in ParseClassNames(ClassnamesData))
+                destClassByName[kv.Value] = kv.Key;
+
+            for (int i = 0; i < objectRanges.Count; i++)
+            {
+                PackfileObject srcObj = objectRanges[i].Obj;
+                uint newOff = srcToDst[srcObj.DataOffset];
+
+                if (Tagfile == null)
+                {
+                    int nameOff = EnsureClassName(source, srcObj, destClassByName);
+                    VirtualFixups.Add(new VirtualFixup
+                    {
+                        Src = newOff,
+                        SectionIndex = 0,
+                        NameOffset = nameOff,
+                    });
+                    Objects.Add(new PackfileObject
+                    {
+                        DataOffset = newOff,
+                        ClassNameOffset = nameOff,
+                        ClassName = srcObj.ClassName,
+                        Class = srcObj.Class,
+                        ProxyIndex = -1,
+                    });
+                }
+
+                if (remapCache != null)
+                    remapCache[srcObj.DataOffset] = newOff;
+            }
+
+            /* A tagfile does not name its objects with class-name strings - it claims them with item
+             * entries, and its pointers are indices into that table. Copying both across is the whole
+             * of the work, and afterwards everything is re-read rather than patched up in place. */
+            if (Tagfile != null)
+            {
+                ImportTagfileItems(source, srcToDst);
+
+                if (!srcToDst.TryGetValue(sourceRootOffset, out uint tagRoot))
+                    throw new InvalidOperationException("Failed to remap imported Havok root.");
+                if (remapCache != null)
+                    remapCache[sourceRootOffset] = tagRoot;
+                return tagRoot;
+            }
+
+            // Remap fixups whose source falls in copied regions.
+            for (int i = 0; i < source.LocalFixups.Count; i++)
+            {
+                LocalFixup lf = source.LocalFixups[i];
+                if (!srcToDst.TryGetValue(lf.Src, out uint newSrc))
+                    continue;
+                if (!srcToDst.TryGetValue(lf.Dst, out uint newDst))
+                    continue;
+                LocalFixups.Add(new LocalFixup { Src = newSrc, Dst = newDst });
+            }
+            for (int i = 0; i < source.GlobalFixups.Count; i++)
+            {
+                GlobalFixup gf = source.GlobalFixups[i];
+                if (!srcToDst.TryGetValue(gf.Src, out uint newSrc))
+                    continue;
+                if (!srcToDst.TryGetValue(gf.Dst, out uint newDst))
+                    continue;
+                GlobalFixups.Add(new GlobalFixup
+                {
+                    Src = newSrc,
+                    DstSectionIndex = gf.DstSectionIndex,
+                    Dst = newDst,
+                });
+            }
+
+            if (!srcToDst.TryGetValue(sourceRootOffset, out uint newRoot))
+                throw new InvalidOperationException("Failed to remap imported Havok root.");
+            if (remapCache != null)
+                remapCache[sourceRootOffset] = newRoot;
+            return newRoot;
+        }
+
+        /// <summary>
+        /// Where object byte ranges end: every object's start, and the start of every block of storage (an array or
+        /// string) that belongs to one object but sits after another. An append puts such storage at the end of the
+        /// payload - hkpPhysicsData's systems array after a new physics system's shape, the proxy list's child array
+        /// after a new compound - and without this boundary the last object's range runs over it, so a graph walk
+        /// from that object follows the array's pointers to every system (or compound) in the file.
+        /// </summary>
+        static List<uint> ObjectRangeBoundaries(HavokPackfile source)
+        {
+            if (source.CacheRangeBoundaries && source._cachedRangeBoundaries != null)
+                return source._cachedRangeBoundaries;
+            List<uint> boundaries = ComputeObjectRangeBoundaries(source);
+            if (source.CacheRangeBoundaries)
+                source._cachedRangeBoundaries = boundaries;
+            return boundaries;
+        }
+
+        /// <summary>
+        /// Set by a port on the packfiles it reads from, for as long as it runs: nothing writes to those then, and their
+        /// boundaries were worked out over the whole file twice for every compound and system a port imported.
+        /// </summary>
+        internal bool CacheRangeBoundaries
+        {
+            get => _cacheRangeBoundaries;
+            set { _cacheRangeBoundaries = value; _cachedRangeBoundaries = null; _cachedGraphIndex = null; }
+        }
+        private bool _cacheRangeBoundaries;
+        private List<uint> _cachedRangeBoundaries;
+        private GraphIndex _cachedGraphIndex;
+
+        /* The first boundary after an offset, or the payload's end if none comes before it: what a scan of the sorted
+           list for the smallest boundary above the offset found, by binary search - a port scanned the whole list once
+           for every object it copied, and once more for every array it walked. */
+        static uint NextBoundary(List<uint> sorted, uint offset, uint payloadEnd)
+        {
+            int lo = 0, hi = sorted.Count;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (sorted[mid] <= offset) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo < sorted.Count && sorted[lo] < payloadEnd ? sorted[lo] : payloadEnd;
+        }
+
+        static List<uint> ComputeObjectRangeBoundaries(HavokPackfile source)
+        {
+            List<uint> starts = source.Objects.Select(o => o.DataOffset).Distinct().OrderBy(o => o).ToList();
+            int OwnerOf(uint at)
+            {
+                int i = starts.BinarySearch(at);
+                return i >= 0 ? i : ~i - 1;
+            }
+            var bounds = new HashSet<uint>(starts);
+
+            //A tagfile says exactly where every object and array starts - its items - and says it
+            //correctly after an edit has moved an array, which a stale object list would not
+            if (source.Tagfile != null)
+                foreach (HavokTagfile.Item item in source.Tagfile.Items())
+                    if (item.Word != 0)
+                        bounds.Add((uint)item.Offset);
+
+            for (int l = 0; l < source.LocalFixups.Count; l++)
+            {
+                LocalFixup lf = source.LocalFixups[l];
+                int owner = OwnerOf(lf.Src), holder = OwnerOf(lf.Dst);
+                if (owner >= 0 && holder >= 0 && owner != holder && lf.Dst > starts[holder])
+                    bounds.Add(lf.Dst);
+            }
+            return bounds.OrderBy(o => o).ToList();
+        }
+
+        void CollectReachable(
+            HavokPackfile source,
+            uint root,
+            out HashSet<uint> objectOffsets,
+            out List<(uint Start, uint End)> extraRanges)
+        {
+            objectOffsets = new HashSet<uint>();
+            extraRanges = new List<(uint Start, uint End)>();
+
+            GraphIndex index = GraphIndexOf(source);
+            Dictionary<uint, PackfileObject> objectsByOffset = index.ObjectsByOffset;
+
+            List<uint> sorted = ObjectRangeBoundaries(source);
+            uint ObjectEnd(uint off) => NextBoundary(sorted, off, (uint)source.DataPayload.Length);
+            //An array's bytes stop where the next object or another object's storage starts: a guessed length
+            //or a probe window must not run on into, say, the proxy list's pointers to every compound
+            uint Clamp(uint arrayStart, uint arrayEnd) => Math.Min(arrayEnd, ObjectEnd(arrayStart));
+
+            var queue = new Queue<uint>();
+            if (objectsByOffset.ContainsKey(root))
+                queue.Enqueue(root);
+
+            // Seed compound instance shapes even if root offset lookup failed somehow.
+            if (index.CompoundsAt(root).Count != 0 && objectsByOffset.ContainsKey(root))
+                queue.Enqueue(root);
+
+            while (queue.Count > 0)
+            {
+                uint off = queue.Dequeue();
+                if (!objectsByOffset.ContainsKey(off) || !objectOffsets.Add(off))
+                    continue;
+
+                uint end = ObjectEnd(off);
+
+                foreach (GlobalFixup gf in index.GlobalsIn(off, end))
+                {
+                    if (objectsByOffset.ContainsKey(gf.Dst))
+                        queue.Enqueue(gf.Dst);
+                }
+
+                foreach (LocalFixup lf in index.LocalsIn(off, end))
+                {
+                    int bytes = InferArrayByteLength(source, index, lf.Src, lf.Dst);
+                    if (bytes > 0)
+                        extraRanges.Add((lf.Dst, Clamp(lf.Dst, lf.Dst + (uint)bytes)));
+
+                    /* Which slots of this array can point at further objects. A zero length array
+                     * points at nothing, so probing past it just sweeps up whatever the allocator put
+                     * next - and a fixed byte window holds twice as many pointer slots on a 32 bit
+                     * packfile as on a 64 bit one. Follow an empty array nowhere, and keep the probe
+                     * for targets that are not arrays at all inside the room before the next object. */
+                    int slotCount = (int)lf.Src + source.Header.PointerSize + 4 <= source.DataPayload.Length
+                        ? BitConverter.ToInt32(source.DataPayload, (int)lf.Src + source.Header.PointerSize)
+                        : -1;
+                    uint arrEnd;
+                    if (bytes > 0)
+                        arrEnd = lf.Dst + (uint)bytes;
+                    else if (slotCount == 0)
+                        arrEnd = lf.Dst;
+                    else
+                        arrEnd = lf.Dst + (uint)Math.Min(256, index.RoomBeforeNextObject(lf.Dst));
+                    arrEnd = Clamp(lf.Dst, arrEnd);
+                    foreach (GlobalFixup gf in index.GlobalsIn(lf.Dst, arrEnd))
+                    {
+                        if (objectsByOffset.ContainsKey(gf.Dst))
+                            queue.Enqueue(gf.Dst);
+                    }
+                }
+
+                // Typed compound shapes
+                foreach (StaticCompoundShape compound in index.CompoundsAt(off))
+                {
+                    for (int n = 0; n < compound.Instances.Count; n++)
+                    {
+                        uint shape = compound.Instances[n].ShapeDataOffset;
+                        if (shape != 0 && objectsByOffset.ContainsKey(shape))
+                            queue.Enqueue(shape);
+                    }
+                }
+            }
+
+            // Expand extras for nested local fixups (mesh internal arrays / strings).
+            /* Ranges already scheduled. Without this the loop re-adds every range it already holds on
+             * every pass, so `expanded` never goes false and extraRanges grows geometrically until the
+             * pass guard trips. MergeRanges dedupes afterwards, so the duplicates were only ever a
+             * cost, never a correctness problem - which is why this hid for so long. */
+            var seenExtras = new HashSet<(uint, uint)>(extraRanges);
+            int expandGuard = 0;
+
+            bool expanded;
+            do
+            {
+                expanded = false;
+                if (++expandGuard > 64)
+                    break;
+                var snapshot = new List<(uint Start, uint End)>(extraRanges);
+                for (int i = 0; i < snapshot.Count; i++)
+                {
+                    uint start = snapshot[i].Start;
+                    uint end = snapshot[i].End;
+                    foreach (LocalFixup lf in index.LocalsIn(start, end))
+                    {
+                        int bytes = InferArrayByteLength(source, index, lf.Src, lf.Dst);
+                        if (bytes <= 0)
+                        {
+                            // C-string or raw blob: copy until NUL or next object.
+                            int strEnd = (int)lf.Dst;
+                            while (strEnd < source.DataPayload.Length && source.DataPayload[strEnd] != 0)
+                                strEnd++;
+                            if (strEnd < source.DataPayload.Length)
+                                strEnd++; // include NUL
+                            bytes = Math.Max(1, strEnd - (int)lf.Dst);
+                        }
+                        uint newEnd = Clamp(lf.Dst, lf.Dst + (uint)bytes);
+                        if (seenExtras.Add((lf.Dst, newEnd)))
+                        {
+                            extraRanges.Add((lf.Dst, newEnd));
+                            expanded = true;
+                        }
+
+                        foreach (GlobalFixup gf in index.GlobalsIn(lf.Dst, newEnd))
+                        {
+                            if (objectsByOffset.ContainsKey(gf.Dst) && objectOffsets.Add(gf.Dst))
+                            {
+                                queue.Enqueue(gf.Dst);
+                                expanded = true;
+                            }
+                        }
+                    }
+                }
+                while (queue.Count > 0)
+                {
+                    uint off = queue.Dequeue();
+                    // Re-run object expansion lightly
+                    if (!objectsByOffset.ContainsKey(off))
+                        continue;
+                    uint oEnd = ObjectEnd(off);
+                    foreach (GlobalFixup gf in index.GlobalsIn(off, oEnd))
+                    {
+                        if (objectsByOffset.ContainsKey(gf.Dst) && objectOffsets.Add(gf.Dst))
+                        {
+                            queue.Enqueue(gf.Dst);
+                            expanded = true;
+                        }
+                    }
+                    foreach (LocalFixup lf in index.LocalsIn(off, oEnd))
+                    {
+                        int bytes = InferArrayByteLength(source, index, lf.Src, lf.Dst);
+                        if (bytes > 0)
+                        {
+                            extraRanges.Add((lf.Dst, Clamp(lf.Dst, lf.Dst + (uint)bytes)));
+                            expanded = true;
+                        }
+                    }
+                }
+            } while (expanded);
+        }
+
+        /// <summary>
+        /// A source packfile's objects, fixups and compounds, sorted and keyed for <see cref="CollectReachable"/>.
+        /// </summary>
+        sealed class GraphIndex
+        {
+            public readonly Dictionary<uint, PackfileObject> ObjectsByOffset = new Dictionary<uint, PackfileObject>();
+
+            private readonly HavokPackfile _source;
+            private readonly uint[] _objectStarts;
+            private readonly GlobalFixup[] _globals;
+            private readonly uint[] _globalSrcs;
+            private readonly LocalFixup[] _locals;
+            private readonly uint[] _localSrcs;
+            //The array length guess reads the global fixups in list order; sorted, that is the same reading only when the list already was
+            private readonly bool _globalsInListOrder = true;
+            private readonly Dictionary<uint, List<StaticCompoundShape>> _compoundsAt = new Dictionary<uint, List<StaticCompoundShape>>();
+            private readonly HashSet<uint> _instanceArrayFields = new HashSet<uint>();
+            private static readonly List<StaticCompoundShape> NoCompounds = new List<StaticCompoundShape>();
+
+            public GraphIndex(HavokPackfile source)
+            {
+                _source = source;
+                for (int i = 0; i < source.Objects.Count; i++)
+                    ObjectsByOffset[source.Objects[i].DataOffset] = source.Objects[i];
+                _objectStarts = source.Objects.Select(o => o.DataOffset).Distinct().OrderBy(o => o).ToArray();
+
+                //OrderBy is stable: fixups at one offset keep their list order
+                _globals = source.GlobalFixups.OrderBy(o => o.Src).ToArray();
+                _globalSrcs = _globals.Select(o => o.Src).ToArray();
+                for (int g = 1; g < source.GlobalFixups.Count && _globalsInListOrder; g++)
+                    _globalsInListOrder = source.GlobalFixups[g].Src >= source.GlobalFixups[g - 1].Src;
+                _locals = source.LocalFixups.OrderBy(o => o.Src).ToArray();
+                _localSrcs = _locals.Select(o => o.Src).ToArray();
+
+                uint instancesArrayOffset = source.Header.PointerSize == 8 ? 0x38u : 0x20u;
+                for (int c = 0; c < source.StaticCompoundShapes.Count; c++)
+                {
+                    StaticCompoundShape compound = source.StaticCompoundShapes[c];
+                    if (!_compoundsAt.TryGetValue(compound.DataOffset, out List<StaticCompoundShape> at))
+                        _compoundsAt[compound.DataOffset] = at = new List<StaticCompoundShape>();
+                    at.Add(compound);
+                    _instanceArrayFields.Add(compound.DataOffset + instancesArrayOffset);
+                }
+            }
+
+            /// <summary>The global fixups whose source lies in [start, end).</summary>
+            public IEnumerable<GlobalFixup> GlobalsIn(uint start, uint end)
+            {
+                for (int i = FirstAtOrAfter(_globalSrcs, start); i < _globals.Length && _globalSrcs[i] < end; i++)
+                    yield return _globals[i];
+            }
+
+            /// <summary>The local fixups whose source lies in [start, end).</summary>
+            public IEnumerable<LocalFixup> LocalsIn(uint start, uint end)
+            {
+                for (int i = FirstAtOrAfter(_localSrcs, start); i < _locals.Length && _localSrcs[i] < end; i++)
+                    yield return _locals[i];
+            }
+
+            /// <summary>The compounds that start at this offset, in list order.</summary>
+            public List<StaticCompoundShape> CompoundsAt(uint offset)
+            {
+                return _compoundsAt.TryGetValue(offset, out List<StaticCompoundShape> at) ? at : NoCompounds;
+            }
+
+            /// <summary>Whether this is the instances array field of a compound.</summary>
+            public bool IsInstanceArrayField(uint fieldOffset)
+            {
+                return _instanceArrayFields.Contains(fieldOffset);
+            }
+
+            /// <summary>How many bytes an array at this offset has before the next object starts.</summary>
+            public int RoomBeforeNextObject(uint arrayDataDst)
+            {
+                uint roomEnd = (uint)_source.DataPayload.Length;
+                int next = FirstAfter(_objectStarts, arrayDataDst);
+                if (next < _objectStarts.Length && _objectStarts[next] < roomEnd)
+                    roomEnd = _objectStarts[next];
+                return arrayDataDst >= roomEnd ? 0 : (int)(roomEnd - arrayDataDst);
+            }
+
+            /// <summary>
+            /// The first global fixup at or after an offset in list order, and the next one after it in list order that
+            /// sits further on - where the array length guess takes its stride from.
+            /// </summary>
+            public int FirstTwoGlobalsFrom(uint offset, out uint first, out uint second)
+            {
+                first = 0;
+                second = 0;
+                if (!_globalsInListOrder)
+                {
+                    int found = 0;
+                    for (int g = 0; g < _source.GlobalFixups.Count; g++)
+                    {
+                        uint src = _source.GlobalFixups[g].Src;
+                        if (src < offset)
+                            continue;
+                        if (found == 0) { first = src; found = 1; }
+                        else if (found == 1 && src > first)
+                        {
+                            second = src;
+                            return 2;
+                        }
+                    }
+                    return found;
+                }
+
+                int at = FirstAtOrAfter(_globalSrcs, offset);
+                if (at >= _globalSrcs.Length)
+                    return 0;
+                first = _globalSrcs[at];
+                int beyond = FirstAfter(_globalSrcs, first);
+                if (beyond >= _globalSrcs.Length)
+                    return 1;
+                second = _globalSrcs[beyond];
+                return 2;
+            }
+
+            private static int FirstAtOrAfter(uint[] sorted, uint value)
+            {
+                int lo = 0, hi = sorted.Length;
+                while (lo < hi)
+                {
+                    int mid = (lo + hi) >> 1;
+                    if (sorted[mid] < value) lo = mid + 1;
+                    else hi = mid;
+                }
+                return lo;
+            }
+
+            private static int FirstAfter(uint[] sorted, uint value)
+            {
+                int lo = 0, hi = sorted.Length;
+                while (lo < hi)
+                {
+                    int mid = (lo + hi) >> 1;
+                    if (sorted[mid] <= value) lo = mid + 1;
+                    else hi = mid;
+                }
+                return lo;
+            }
+        }
+
+        /* Built once per walk - or once per port, on a source that keeps its boundaries cached (CacheRangeBoundaries:
+           a port only reads it) */
+        static GraphIndex GraphIndexOf(HavokPackfile source)
+        {
+            if (source.CacheRangeBoundaries && source._cachedGraphIndex != null)
+                return source._cachedGraphIndex;
+            GraphIndex index = new GraphIndex(source);
+            if (source.CacheRangeBoundaries)
+                source._cachedGraphIndex = index;
+            return index;
+        }
+
+        /// <summary>
+        /// An array's data cannot run into the next object, so no inferred length may either. The
+        /// stride guess below borrows the gap between the first two global fixups at or after the
+        /// array, which for an array with no internal pointers belong to some later object entirely
+        /// and overshoot wildly. Unclamped that dragged unrelated objects into the copied graph, and
+        /// did so differently per pointer width - so the two widths imported different object sets
+        /// from structurally identical sources.
+        /// </summary>
+        static int ClampArrayToNextObject(GraphIndex index, uint arrayDataDst, int bytes)
+        {
+            if (bytes <= 0)
+                return bytes;
+            int room = index.RoomBeforeNextObject(arrayDataDst);
+            return bytes > room ? room : bytes;
+        }
+
+        static int InferArrayByteLength(HavokPackfile source, GraphIndex index, uint arrayFieldSrc, uint arrayDataDst)
+        {
+            int ptrSize = source.Header.PointerSize;
+            int sizePos = (int)arrayFieldSrc + ptrSize;
+            if (sizePos + 4 > source.DataPayload.Length)
+                return 0;
+            int count = BitConverter.ToInt32(source.DataPayload, sizePos);
+            if (count <= 0 || count > 1_000_000)
+                return 0;
+
+            // Prefer stride implied by consecutive global fixups in the array.
+            int found = index.FirstTwoGlobalsFrom(arrayDataDst, out uint first, out uint second);
+            if (found == 2)
+            {
+                uint stride = second - first;
+                int room = index.RoomBeforeNextObject(arrayDataDst);
+                /* Those two fixups only describe this array if they sit inside it, and a stride that
+                 * makes the array overrun the next object was borrowed from a later object entirely.
+                 * Reject the guess instead of truncating it: truncation still copies whatever the
+                 * over-long range swept up. */
+                if (stride > 0 && stride <= 512
+                    && first < arrayDataDst + (uint)room
+                    && count * (int)stride <= room)
+                    return count * (int)stride;
+            }
+
+            // Compound instance arrays
+            int instanceStride = ptrSize == 8 ? 80 : 64;
+            if (count * instanceStride < source.DataPayload.Length)
+            {
+                // If array field is the instances field of a compound, instance stride fits.
+                if (index.IsInstanceArrayField(arrayFieldSrc))
+                    return ClampArrayToNextObject(index, arrayDataDst, count * instanceStride);
+            }
+
+            return ClampArrayToNextObject(index, arrayDataDst, count * ptrSize);
+        }
+
+        static List<(uint Start, uint End)> MergeRanges(List<(uint Start, uint End)> ranges)
+        {
+            if (ranges == null || ranges.Count == 0)
+                return new List<(uint Start, uint End)>();
+            var sorted = ranges.Where(r => r.End > r.Start).OrderBy(r => r.Start).ToList();
+            var merged = new List<(uint Start, uint End)>();
+            uint start = sorted[0].Start, end = sorted[0].End;
+            for (int i = 1; i < sorted.Count; i++)
+            {
+                if (sorted[i].Start <= end)
+                    end = Math.Max(end, sorted[i].End);
+                else
+                {
+                    merged.Add((start, end));
+                    start = sorted[i].Start;
+                    end = sorted[i].End;
+                }
+            }
+            merged.Add((start, end));
+            return merged;
+        }
+
+        /* The bytes of the extras that no object range covers, merged. The object ranges are merged first, so each extra
+           is cut against the few that reach it, found by binary search - cutting every extra by every object, a list
+           apiece, cost a port of a package's 436 compounds 14 s. MergeRanges gives a set of bytes one form whichever way
+           it was cut. */
+        static List<(uint Start, uint End)> SubtractObjectRanges(
+            List<(uint Start, uint End)> extras,
+            List<(uint Start, uint End, PackfileObject Obj)> objects)
+        {
+            List<(uint Start, uint End)> covered = MergeRanges(objects.Select(o => (o.Start, o.End)).ToList());
+            var result = new List<(uint Start, uint End)>();
+            for (int i = 0; i < extras.Count; i++)
+            {
+                uint start = extras[i].Start;
+                uint end = extras[i].End;
+
+                //The first covered range that ends after this extra starts
+                int lo = 0, hi = covered.Count;
+                while (lo < hi)
+                {
+                    int mid = (lo + hi) >> 1;
+                    if (covered[mid].End <= start) lo = mid + 1;
+                    else hi = mid;
+                }
+                for (int c = lo; c < covered.Count && covered[c].Start < end; c++)
+                {
+                    if (start < covered[c].Start)
+                        result.Add((start, covered[c].Start));
+                    if (covered[c].End > start)
+                        start = covered[c].End;
+                }
+                if (start < end)
+                    result.Add((start, end));
+            }
+            return MergeRanges(result);
+        }
+
+        /// <summary>
+        /// Retail pads the classnames section with 0xFF so __data__ begins on a 16 byte boundary, and
+        /// the engine depends on it: hkpMoppBvTreeShape's finish constructor copies
+        /// m_code->m_info.m_offset as an aligned hkVector4, which faults outright on a data section
+        /// that starts off-boundary. Appending a classname changes that section's length, and
+        /// TrimClassnamePadding drops the existing filler, so re-pad before writing.
+        /// </summary>
+        void PadClassnamesForDataAlignment(int classnamesAbsoluteStart)
+        {
+            int pad = (0x10 - ((classnamesAbsoluteStart + ClassnamesData.Length) % 0x10)) % 0x10;
+            if (pad == 0)
+                return;
+            byte[] padded = new byte[ClassnamesData.Length + pad];
+            Buffer.BlockCopy(ClassnamesData, 0, padded, 0, ClassnamesData.Length);
+            for (int i = ClassnamesData.Length; i < padded.Length; i++)
+                padded[i] = 0xFF;
+            ClassnamesData = padded;
+        }
+
+        /// <summary>
+        /// Cut trailing section padding (0xFF filler, or stray NULs beyond the last entry's own
+        /// terminator) so a newly appended classname entry continues the packed run.
+        /// </summary>
+        void TrimClassnamePadding()
+        {
+            int end = ClassnamesData.Length;
+            while (end > 0 && ClassnamesData[end - 1] == 0xFF)
+                end--;
+            //keep exactly one NUL: it terminates the last real entry
+            while (end > 1 && ClassnamesData[end - 1] == 0 && ClassnamesData[end - 2] == 0)
+                end--;
+            if (end == ClassnamesData.Length)
+                return;
+            byte[] trimmed = new byte[end];
+            Buffer.BlockCopy(ClassnamesData, 0, trimmed, 0, end);
+            ClassnamesData = trimmed;
+        }
+
+        int EnsureClassName(HavokPackfile source, PackfileObject srcObj, Dictionary<string, int> destClassByName)
+        {
+            string name = srcObj.ClassName ?? "";
+            if (destClassByName.TryGetValue(name, out int existing))
+                return existing;
+
+            // Copy the 5-byte prefix (u32 sig + u8) + name + NUL from the source classnames blob.
+            int srcNameOff = srcObj.ClassNameOffset;
+            int srcEntryStart = srcNameOff - 5;
+            if (srcEntryStart < 0 || srcNameOff >= source.ClassnamesData.Length)
+                throw new InvalidOperationException("Invalid source classname offset for " + name);
+
+            int srcEnd = srcNameOff;
+            while (srcEnd < source.ClassnamesData.Length && source.ClassnamesData[srcEnd] != 0)
+                srcEnd++;
+            if (srcEnd < source.ClassnamesData.Length)
+                srcEnd++; // NUL
+
+            int copyLen = srcEnd - srcEntryStart;
+
+            /* The classnames stream is a packed run of [u32 sig][u8][name][NUL] and ParseClassNames
+             * walks it sequentially, so an entry appended after the section's trailing padding is
+             * never reached: the walk desyncs on the padding and the new name resolves to "".
+             * COLLISION sections end tightly, but PHYSICS ones are padded with 0xFF. */
+            TrimClassnamePadding();
+
+            int destEntryStart = ClassnamesData.Length;
+            // Align not required for classnames stream; append raw.
+            byte[] grown = new byte[destEntryStart + copyLen];
+
+            Buffer.BlockCopy(ClassnamesData, 0, grown, 0, ClassnamesData.Length);
+            Buffer.BlockCopy(source.ClassnamesData, srcEntryStart, grown, destEntryStart, copyLen);
+            ClassnamesData = grown;
+
+            int newNameOff = destEntryStart + 5;
+            destClassByName[name] = newNameOff;
+            return newNameOff;
+        }
+
+        /// <summary>
+        /// Give the copied bytes the two things a tagfile needs to make them objects: an item for
+        /// every object and array that came across, and a patch entry for every word that holds a
+        /// pointer - with the item indices in those words translated to name our own items.
+        /// </summary>
+        void ImportTagfileItems(HavokPackfile source, Dictionary<uint, uint> srcToDst)
+        {
+            List<HavokTagfile.Item> items = source.Tagfile.Items();
+            List<KeyValuePair<int, int>> patches = source.Tagfile.Patches();
+
+            /* Check every type this graph needs before registering any of it. Half an import is worse
+             * than none: the objects would be claimed but their pointers never listed. */
+            string refusal = CheckTagfileImport(source, srcToDst, out List<int> missing);
+            if (refusal != null)
+                throw new InvalidOperationException(refusal);
+
+            /* The two files number their types differently - each level declares only the types it
+             * uses - so every type index that comes across has to be translated into ours. One we do
+             * not declare at all is copied across from the source first, with everything it needs. */
+            int[] types = missing.Count == 0
+                ? Tagfile.MapTypesFrom(source.Tagfile)
+                : Tagfile.ImportTypes(source.Tagfile, missing);
+
+            //Items first, so the pointers below can be pointed at them
+            for (int i = 1; i < items.Count; i++)
+            {
+                if (srcToDst.TryGetValue((uint)items[i].Offset, out uint movedItem))
+                    Tagfile.AddItem((items[i].Word & 0xFF000000u) | (uint)types[(int)(items[i].Word & 0xFFFFFF)],
+                        (int)movedItem, items[i].Count);
+            }
+
+            foreach (KeyValuePair<int, int> patch in patches)
+            {
+                if (!srcToDst.TryGetValue((uint)patch.Value, out uint moved))
+                    continue;
+
+                int group = types[patch.Key];
+
+                //The copied word still holds the source file's item index; it has to name ours instead
+                int index = source.Tagfile.ReadIndex(patch.Value);
+                if (index == 0)
+                {
+                    Tagfile.WriteIndexAt((int)moved, 0);
+                    Tagfile.SetPatch(group, (int)moved);
+                    continue;
+                }
+
+                if (!source.Tagfile.TryGetItem(index, out int pointsAt, out _)
+                    || !srcToDst.TryGetValue((uint)pointsAt, out uint movedTarget))
+                {
+                    //Something outside the graph we copied - a dangling pointer is worse than none
+                    Tagfile.WriteIndexAt((int)moved, 0);
+                    continue;
+                }
+
+                int ours = Tagfile.IndexOfObjectAt((int)movedTarget);
+                if (ours <= 0)
+                {
+                    Tagfile.WriteIndexAt((int)moved, 0);
+                    continue;
+                }
+
+                Tagfile.WriteIndexAt((int)moved, ours);
+                Tagfile.SetPatch(group, (int)moved);
+            }
+
+            /* THSH hashes exactly the types in use, and this may be the first use of a type we only
+             * declared - T*<hkpConstraintMotor> comes along with Switch tech_rnd_hzdlab's swinging
+             * signs. The source uses it, so the source has its hash. And an appended type the source
+             * happened to hash but nothing here uses carries none. */
+            Tagfile.HashUsedTypesFrom(source.Tagfile, types);
+            Tagfile.DropUnusedHashes();
+        }
+
+        /// <summary>
+        /// Whether a tagfile graph can come across: every item's type and every pointer's declared
+        /// type either exists here or can be added from the source. Returns why not, or null - with
+        /// the source types that will have to be added. Changes nothing, so it can run before the
+        /// payload grows and a refusal leaves the destination exactly as it was.
+        /// </summary>
+        string CheckTagfileImport(HavokPackfile source, Dictionary<uint, uint> srcToDst, out List<int> missing)
+        {
+            missing = new List<int>();
+            int[] types = Tagfile.MapTypesFrom(source.Tagfile);
+            HashSet<int> needed = new HashSet<int>();
+
+            List<HavokTagfile.Item> items = source.Tagfile.Items();
+            for (int i = 1; i < items.Count; i++)
+            {
+                if (!srcToDst.ContainsKey((uint)items[i].Offset))
+                    continue;
+
+                int theirs = (int)(items[i].Word & 0xFFFFFF);
+                if (theirs < 1 || theirs >= types.Length)
+                    return "Cannot import this Havok object: the source names type " + theirs + " for one of its objects, which it does not declare.";
+                if (types[theirs] < 0 && needed.Add(theirs))
+                    missing.Add(theirs);
+            }
+            foreach (KeyValuePair<int, int> patch in source.Tagfile.Patches())
+            {
+                if (!srcToDst.ContainsKey((uint)patch.Value))
+                    continue;
+
+                if (patch.Key < 1 || patch.Key >= types.Length)
+                    return "Cannot import this Havok object: the source files one of its pointers under type " + patch.Key + ", which it does not declare.";
+                if (types[patch.Key] < 0 && needed.Add(patch.Key))
+                    missing.Add(patch.Key);
+            }
+
+            if (missing.Count == 0)
+                return null;
+
+            string why = Tagfile.CanImportTypes(source.Tagfile, missing);
+            return why == null ? null : "Cannot import this Havok object: " + why;
+        }
+
+        internal void AppendPhysicsSystemToPhysicsData(uint systemDataOffset)
+        {
+            PackfileObject physicsData = null;
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].Class == ObjectClass.PhysicsData)
+                {
+                    physicsData = Objects[i];
+                    break;
+                }
+            }
+            if (physicsData == null)
+                return;
+
+            int ptrSize = Header.PointerSize;
+
+            //2018 grew hkReferencedObject, so the array is not where the 2012 arithmetic puts it
+            int systemsMember = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpPhysicsData", "systems");
+            uint systemsField = physicsData.DataOffset
+                + (systemsMember >= 0 ? (uint)systemsMember : ObjectHeaderSize + (uint)ptrSize);
+
+            TryReadPointerArray(systemsField, out List<uint> existing);
+            if (existing == null)
+                existing = new List<uint>();
+
+            // Avoid duplicating the same system pointer.
+            for (int i = 0; i < existing.Count; i++)
+            {
+                if (existing[i] == systemDataOffset)
+                    return;
+            }
+            existing.Add(systemDataOffset);
+
+            if (Tagfile != null)
+            {
+                AppendPhysicsSystemToTagfile(physicsData, systemsField, existing);
+                return;
+            }
+
+            // Scrub previous systems-array storage fixups.
+            uint oldArr = 0;
+            bool hadOldArr = false;
+            int oldCount = 0;
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src == systemsField)
+                {
+                    oldArr = LocalFixups[i].Dst;
+                    hadOldArr = true;
+                    break;
+                }
+            }
+            int sizePos = (int)systemsField + ptrSize;
+            if (sizePos + 4 <= DataPayload.Length)
+                oldCount = BitConverter.ToInt32(DataPayload, sizePos);
+            if (oldCount < 0) oldCount = 0;
+
+            for (int i = LocalFixups.Count - 1; i >= 0; i--)
+            {
+                if (LocalFixups[i].Src == systemsField)
+                    LocalFixups.RemoveAt(i);
+            }
+            if (hadOldArr)
+            {
+                uint oldEnd = oldArr + (uint)(oldCount * ptrSize);
+                for (int g = GlobalFixups.Count - 1; g >= 0; g--)
+                {
+                    uint src = GlobalFixups[g].Src;
+                    if (src >= oldArr && src < oldEnd)
+                        GlobalFixups.RemoveAt(g);
+                }
+            }
+
+            int count = existing.Count;
+            int newArrOff = AlignPayload(DataPayload.Length, 16);
+            int arrBytes = count * ptrSize;
+            byte[] grown = new byte[newArrOff + arrBytes];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            DataPayload = grown;
+
+            LocalFixups.Add(new LocalFixup { Src = systemsField, Dst = (uint)newArrOff });
+            WriteUInt32(DataPayload, (int)systemsField + ptrSize, (uint)count);
+            WriteUInt32(DataPayload, (int)systemsField + ptrSize + 4, (uint)count | 0x80000000u);
+
+            for (int n = 0; n < count; n++)
+            {
+                uint slot = (uint)(newArrOff + n * ptrSize);
+                GlobalFixups.Add(new GlobalFixup
+                {
+                    Src = slot,
+                    DstSectionIndex = 2,
+                    Dst = existing[n],
+                });
+            }
+        }
+
+        /// <summary>
+        /// Grow <c>hkpPhysicsData.systems</c> in a tagfile: write the pointers out fresh at the end of
+        /// the data, move the item that names them, and mark every slot as a pointer.
+        /// </summary>
+        void AppendPhysicsSystemToTagfile(PackfileObject physicsData, uint systemsField, List<uint> systems)
+        {
+            int group = Tagfile.PatchGroupOf("hkpPhysicsData", "systems");
+            if (group <= 0)
+                throw new InvalidOperationException("The tagfile does not describe hkpPhysicsData.systems.");
+
+            /* Which group the element slots belong to is not something the member's own type answers -
+             * so read it off the array that is already there rather than guessing at it. */
+            Tagfile.TryResolvePointer(systemsField, out uint oldArray, out int oldCount);
+            int slotGroup = oldCount > 0 ? Tagfile.GroupContaining((int)oldArray) : -1;
+            if (slotGroup <= 0)
+                throw new InvalidOperationException("The tagfile has no existing physics system pointers to follow.");
+
+            //Retire the slots the old array used, so the patch table does not keep growing - and clear
+            //them, so no stale item index or fixup is left in bytes nothing claims any more
+            for (int n = 0; n < oldCount; n++)
+                Tagfile.ClearPointer((int)(oldArray + (uint)(n * 8)), slotGroup);
+            if (oldCount > 0 && oldArray + (uint)(oldCount * 8) <= (uint)DataPayload.Length)
+            {
+                Array.Clear(DataPayload, (int)oldArray, oldCount * 8);
+                uint oldEnd = oldArray + (uint)(oldCount * 8);
+                GlobalFixups.RemoveAll(o => o.Src >= oldArray && o.Src < oldEnd);
+            }
+
+            int at = AlignPayload(DataPayload.Length, 16);
+            byte[] grown = new byte[at + systems.Count * 8];
+            Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+            DataPayload = grown;
+
+            for (int n = 0; n < systems.Count; n++)
+            {
+                int slot = at + n * 8;
+                if (!Tagfile.SetPointer(slot, systems[n], slotGroup))
+                    throw new InvalidOperationException("No item in the tagfile for physics system at " + systems[n] + ".");
+
+                GlobalFixups.Add(new GlobalFixup { Src = (uint)slot, DstSectionIndex = 2, Dst = systems[n] });
+            }
+
+            if (!Tagfile.SetArray((int)systemsField, at, systems.Count, group))
+                throw new InvalidOperationException("Could not move the hkpPhysicsData.systems array.");
+        }
+
+        void RebuildTypedViewsFromObjects()
+        {
+            /* Everything below reads class names out of the packfile's own table to work out what each
+             * object is. A tagfile has no such table - it says so in its item entries - so it reads
+             * itself again instead. */
+            if (Tagfile != null)
+            {
+                Tagfile.RereadTypedViews(this);
+                _worldHostPrimary = null;
+                _worldHostSecondary = null;
+                _worldHostsResolved = false;
+                return;
+            }
+
+            // Reassign compound ordinals in virtual-fixup / Objects order.
+            int compoundOrdinal = 0;
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].Class == ObjectClass.StaticCompoundShape)
+                    Objects[i].ProxyIndex = compoundOrdinal++;
+                else if (Objects[i].Class != ObjectClass.PhysicsSystem)
+                    Objects[i].ProxyIndex = -1;
+            }
+
+            StaticCompoundShapes.Clear();
+            PhysicsSystems.Clear();
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                PackfileObject obj = Objects[i];
+                if (obj.Class == ObjectClass.PhysicsSystem)
+                {
+                    PhysicsSystems.Add(new PhysicsSystem
+                    {
+                        SystemIndex = -1,
+                        DataOffset = obj.DataOffset,
+                        Object = obj,
+                    });
+                }
+            }
+
+            Dictionary<int, string> classNames = ParseClassNames(ClassnamesData);
+            ParseStaticCompoundInstances(classNames);
+            ParsePhysicsSystemIndexes();
+            /* Clearing the cached hosts is not enough on its own - ResolveWorldHosts early-returns on
+             * _worldHostsResolved, so leaving it set means the hosts stay null for the rest of the
+             * packfile's life, and the next instancing pass throws "compound has zero instances". */
+            _worldHostPrimary = null;
+            _worldHostSecondary = null;
+            _worldHostsResolved = false;
+        }
+        #endregion
+
+        #region FILE_IO
+        override protected bool LoadInternal(MemoryStream stream)
+        {
+            Objects.Clear();
+            StaticCompoundShapes.Clear();
+            PhysicsSystems.Clear();
+            LocalFixups.Clear();
+            GlobalFixups.Clear();
+            VirtualFixups.Clear();
+
+            _compressed = _filepath != null && _filepath.EndsWith("_SWITCH.GZ", StringComparison.OrdinalIgnoreCase);
+
+            byte[] file = (_compressed ? Utilities.GZIPDecompress(stream) : stream).ToArray();
+            if (file.Length < 0x40)
+                return false;
+
+            /* The mobile and Switch builds ship the same data as a Havok tagfile rather than a
+             * packfile. It reads into the same structures, so nothing downstream needs to know. */
+            Tagfile = null;
+            if (HavokTagfile.IsTagfile(file))
+            {
+                HavokTagfile tags = new HavokTagfile();
+                if (!tags.Read(file))
+                    return false;
+
+                tags.Populate(this);
+                Tagfile = tags;
+                Header.PointerSize = 8;
+                Header.ContentsVersion = tags.Version;
+                return true;
+            }
+
+            using (BinaryReader reader = new BinaryReader(new MemoryStream(file)))
+            {
+                if (!ReadHeader(reader))
+                    return false;
+
+                // Section headers (0x30 each) start at 0x40:
+                //   char[16] tag | uint32 marker(0xFF000000) | abs | local | global | virtual | exports | imports | end
+                reader.BaseStream.Position = 0x40;
+                uint classAbs = 0, classLocal = 0;
+                uint typesAbs = 0, typesLocal = 0;
+                uint dataAbs = 0, dataLocal = 0, dataGlobal = 0, dataVirtual = 0, dataExports = 0;
+
+                for (int i = 0; i < Header.NumSections; i++)
+                {
+                    string name = ReadSectionTag(reader);
+                    reader.ReadUInt32(); // marker 0xFF000000
+                    uint abs = reader.ReadUInt32();
+                    uint local = reader.ReadUInt32();
+                    uint global = reader.ReadUInt32();
+                    uint virt = reader.ReadUInt32();
+                    uint exports = reader.ReadUInt32();
+                    reader.ReadUInt32(); // imports
+                    reader.ReadUInt32(); // end
+
+                    if (name == "__classnames__")
+                    {
+                        classAbs = abs; classLocal = local;
+                    }
+                    else if (name == "__types__")
+                    {
+                        typesAbs = abs; typesLocal = local;
+                    }
+                    else if (name == "__data__")
+                    {
+                        dataAbs = abs; dataLocal = local; dataGlobal = global;
+                        dataVirtual = virt; dataExports = exports;
+                    }
+                }
+
+                ClassnamesData = Slice(file, (int)classAbs, (int)classLocal);
+                TypesData = typesLocal == 0 ? Array.Empty<byte>() : Slice(file, (int)typesAbs, (int)typesLocal);
+                DataPayload = Slice(file, (int)dataAbs, (int)dataLocal);
+                _rawFile = file;
+                _dataSectionOffset = dataAbs;
+
+                ReadLocalFixups(file, (int)(dataAbs + dataLocal), (int)(dataAbs + dataGlobal));
+                ReadGlobalFixups(file, (int)(dataAbs + dataGlobal), (int)(dataAbs + dataVirtual));
+                ReadVirtualFixups(file, (int)(dataAbs + dataVirtual), (int)(dataAbs + dataExports));
+
+                Dictionary<int, string> classNames = ParseClassNames(ClassnamesData);
+                BuildObjectList(classNames);
+                ParseStaticCompoundInstances(classNames);
+                ParsePhysicsSystemIndexes();
+            }
+
+            return Objects.Count > 0;
+        }
+
+        override protected bool SaveInternal()
+        {
+            byte[] content = ToBytes();
+            if (content == null) return false;
+
+            if (_compressed && !_filepath.EndsWith("_SWITCH.GZ", StringComparison.OrdinalIgnoreCase))
+                _filepath += "_SWITCH.GZ";
+            else if (!_compressed && _filepath.EndsWith("_SWITCH.GZ", StringComparison.OrdinalIgnoreCase))
+                _filepath = _filepath.Substring(0, _filepath.Length - "_SWITCH.GZ".Length);
+
+            File.WriteAllBytes(_filepath, content);
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+
+            return true;
+        }
+
+        /// <summary>
+        /// Serialise the packfile as it stands. Everything that holds one of these keeps it inside
+        /// another file, so writing to disk is the special case rather than the normal one.
+        /// </summary>
+        public byte[] ToBytes()
+        {
+            if (DataPayload == null || ClassnamesData == null)
+                return null;
+
+            // Apply any in-place instance edits back into the data payload before writing.
+            WriteBackCompoundInstances();
+
+            /* A tagfile keeps its schema and its item and patch tables in chunks of its own, so it
+             * puts itself back together rather than going through the packfile's sections. */
+            if (Tagfile != null)
+                return Tagfile.ToBytes(DataPayload);
+
+            int headerSize = 0x40;
+            int sectionHeaderSize = Header.NumSections * 0x30;
+            int classAbs = headerSize + sectionHeaderSize;
+            PadClassnamesForDataAlignment(classAbs);
+            int dataAbs = classAbs + ClassnamesData.Length;
+
+
+            int localBytes = LocalFixups.Count * 8;
+            int globalBytes = GlobalFixups.Count * 12;
+            int virtualBytes = VirtualFixups.Count * 12;
+            const int virtualTerminatorBytes = 4; // trailing 0xFFFFFFFF
+
+            int dataLocal = DataPayload.Length;
+            int dataGlobal = dataLocal + localBytes;
+            int dataVirtual = dataGlobal + globalBytes;
+            int dataExports = dataVirtual + virtualBytes + virtualTerminatorBytes;
+            int dataEnd = dataExports; // no exports/imports on AI collision files
+
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(ms))
+            {
+                WriteHeader(writer);
+
+                // __classnames__
+                WriteSectionHeader(writer, "__classnames__", (uint)classAbs,
+                    (uint)ClassnamesData.Length, (uint)ClassnamesData.Length, (uint)ClassnamesData.Length,
+                    (uint)ClassnamesData.Length, (uint)ClassnamesData.Length, (uint)ClassnamesData.Length);
+
+                // __types__ (empty placeholder; AbsoluteDataStart == dataAbs)
+                WriteSectionHeader(writer, "__types__", (uint)dataAbs, 0, 0, 0, 0, 0, 0);
+
+                // __data__
+                WriteSectionHeader(writer, "__data__", (uint)dataAbs,
+                    (uint)dataLocal, (uint)dataGlobal, (uint)dataVirtual,
+                    (uint)dataExports, (uint)dataEnd, (uint)dataEnd);
+
+                writer.Write(ClassnamesData);
+                writer.Write(DataPayload);
+
+                // Retail / Havok writers emit fixups ordered by destination (local) / source (global/virtual).
+                LocalFixups.Sort((a, b) => a.Dst.CompareTo(b.Dst));
+                GlobalFixups.Sort((a, b) => a.Src.CompareTo(b.Src));
+                VirtualFixups.Sort((a, b) => a.Src.CompareTo(b.Src));
+
+                for (int i = 0; i < LocalFixups.Count; i++)
+                {
+                    writer.Write(LocalFixups[i].Src);
+                    writer.Write(LocalFixups[i].Dst);
+                }
+                for (int i = 0; i < GlobalFixups.Count; i++)
+                {
+                    writer.Write(GlobalFixups[i].Src);
+                    writer.Write(GlobalFixups[i].DstSectionIndex);
+                    writer.Write(GlobalFixups[i].Dst);
+                }
+                for (int i = 0; i < VirtualFixups.Count; i++)
+                {
+                    writer.Write(VirtualFixups[i].Src);
+                    writer.Write(VirtualFixups[i].SectionIndex);
+                    writer.Write(VirtualFixups[i].NameOffset);
+                }
+                writer.Write(unchecked((int)0xFFFFFFFF));
+                return ms.ToArray();
+            }
+        }
+        #endregion
+
+        #region ANIMATION
+        /* Field offsets for the animation classes. hkReferencedObject is 8 bytes on 32 bit and 16 on
+         * 64 bit, pointers follow suit, and hkArray is a pointer plus size and capacity. */
+        internal uint ObjectHeaderSize => Header.PointerSize == 8 ? 16u : 8u;
+        private uint ArraySize => (uint)Header.PointerSize + 8u;
+
+        /// <summary>
+        /// Where the members of the animation classes sit. A packfile carries no schema, so these are
+        /// the 2012 layout worked out by hand; a tagfile describes itself and says what its own are.
+        /// </summary>
+        internal sealed class AnimationLayout
+        {
+            public int BindingName;
+            public int BindingAnimation;
+            public int BindingTrackToBone;
+            public int BindingBlendHint;
+
+            public int AnimationDuration;
+            public int AnimationTransformTracks;
+            public int AnimationFloatTracks;
+
+            /// <summary>Where a spline animation's own members begin - the end of hkaAnimation.</summary>
+            public int SplineStart;
+
+            /// <summary>The two arrays an interleaved animation adds to hkaAnimation: its transforms, then its floats.</summary>
+            public int InterleavedTransforms;
+            public int InterleavedFloats;
+
+            public int ArrayStride;
+        }
+
+        private AnimationLayout _animation;
+
+        private AnimationLayout Animation()
+        {
+            if (_animation != null)
+                return _animation;
+
+            int header = (int)ObjectHeaderSize;
+            int array = (int)ArraySize;
+            _animation = new AnimationLayout()
+            {
+                //hkaAnimationBinding: a name, the animation it binds, then three arrays and a hint
+                BindingName = header,
+                BindingAnimation = header + Header.PointerSize,
+                BindingTrackToBone = header + Header.PointerSize * 2,
+                BindingBlendHint = header + Header.PointerSize * 2 + array * 3,
+
+                //hkaAnimation: a type, a duration, two track counts, a pointer and an array
+                AnimationDuration = header + 4,
+                AnimationTransformTracks = header + 8,
+                AnimationFloatTracks = header + 12,
+                SplineStart = header + 16 + Header.PointerSize + array,
+                InterleavedTransforms = header + 16 + Header.PointerSize + array,
+                InterleavedFloats = header + 16 + Header.PointerSize + array * 2,
+
+                ArrayStride = array,
+            };
+
+            if (Tagfile == null)
+                return _animation;
+
+            /* 2018 grew hkReferencedObject by eight for a property bag, which moves every one of
+             * these - and moves them by different amounts, because the compiler packs a derived
+             * class's first member into the tail padding of its base. Read them, don't adjust them. */
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "originalSkeletonName"), ref _animation.BindingName);
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "animation"), ref _animation.BindingAnimation);
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "transformTrackToBoneIndices"), ref _animation.BindingTrackToBone);
+            Take(Tagfile.OffsetOf("hkaAnimationBinding", "blendHint"), ref _animation.BindingBlendHint);
+
+            Take(Tagfile.OffsetOf("hkaAnimation", "duration"), ref _animation.AnimationDuration);
+            Take(Tagfile.OffsetOf("hkaAnimation", "numberOfTransformTracks"), ref _animation.AnimationTransformTracks);
+            Take(Tagfile.OffsetOf("hkaAnimation", "numberOfFloatTracks"), ref _animation.AnimationFloatTracks);
+
+            /* hkaSplineCompressedAnimation is the one animation class the file does NOT describe -
+             * Havok serialises its contents by hand rather than by reflection - so where its own
+             * members start has to come from the size of the class it derives from. */
+            Take(Tagfile.SizeOf("hkaAnimation"), ref _animation.SplineStart);
+
+            /* The interleaved class is described normally, so its two arrays sit wherever the file
+             * says - and failing that, straight after hkaAnimation like the spline members. */
+            _animation.InterleavedTransforms = _animation.SplineStart;
+            _animation.InterleavedFloats = _animation.SplineStart + _animation.ArrayStride;
+            Take(Tagfile.OffsetOf("hkaInterleavedUncompressedAnimation", "transforms"), ref _animation.InterleavedTransforms);
+            Take(Tagfile.OffsetOf("hkaInterleavedUncompressedAnimation", "floats"), ref _animation.InterleavedFloats);
+
+            return _animation;
+        }
+
+        private static void Take(int described, ref int target)
+        {
+            if (described >= 0) target = described;
+        }
+
+        /// <summary>
+        /// Read every animation in the packfile, paired with the binding that says which skeleton
+        /// and which bones it drives. Nearly all of retail is <c>hkaSplineCompressedAnimation</c>;
+        /// a handful of clips - the corpse bake poses, a few cutscene shots, the pistol pickup -
+        /// were left as <c>hkaInterleavedUncompressedAnimation</c>, and read the same way out.
+        /// </summary>
+        public List<AnimationClip> GetAnimations()
+        {
+            List<AnimationClip> clips = new List<AnimationClip>();
+            if (DataPayload.Length == 0) return clips;
+
+            //Bindings point at their animation, so index the animations by where they live
+            Dictionary<uint, PackfileObject> animations = new Dictionary<uint, PackfileObject>();
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].ClassName == "hkaSplineCompressedAnimation" || Objects[i].ClassName == InterleavedClass)
+                    animations[Objects[i].DataOffset] = Objects[i];
+
+            Dictionary<uint, uint> globalBySrc = new Dictionary<uint, uint>();
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].ClassName != "hkaAnimationBinding") continue;
+
+                AnimationClip clip = ReadBinding(Objects[i].DataOffset, globalBySrc);
+                if (clip == null) continue;
+
+                if (clip.AnimationOffset != 0 && animations.TryGetValue(clip.AnimationOffset, out PackfileObject animation))
+                    ReadAnimation(animation, clip);
+                clips.Add(clip);
+            }
+
+            //Any animation without a binding is still worth reporting
+            foreach (KeyValuePair<uint, PackfileObject> entry in animations)
+            {
+                if (clips.Any(x => x.AnimationOffset == entry.Key)) continue;
+                AnimationClip clip = new AnimationClip { AnimationOffset = entry.Key };
+                ReadAnimation(entry.Value, clip);
+                clips.Add(clip);
+            }
+            return clips;
+        }
+
+        private AnimationClip ReadBinding(uint at, Dictionary<uint, uint> globalBySrc)
+        {
+            AnimationLayout layout = Animation();
+            uint name = at + (uint)layout.BindingName;
+            uint animation = at + (uint)layout.BindingAnimation;
+            uint tracks = at + (uint)layout.BindingTrackToBone;
+            if (tracks + (uint)layout.ArrayStride > DataPayload.Length) return null;
+
+            AnimationClip clip = new AnimationClip
+            {
+                SkeletonName = TryResolveLocal(name, out uint nameAt) ? ReadStringAt(nameAt) : "",
+                AnimationOffset = globalBySrc.TryGetValue(animation, out uint target) ? target : 0,
+            };
+
+            //Which skeleton bone each transform track drives
+            if (TryGetHkArray(tracks, out uint data, out int count))
+                for (int i = 0; i < count && data + (i * 2) + 2 <= DataPayload.Length; i++)
+                    clip.TrackToBone.Add(BitConverter.ToInt16(DataPayload, (int)(data + (i * 2))));
+
+            /* Three arrays in a row - the bone indices above, then the float slots and the
+             * partitions - and the blend hint is the byte straight after them. */
+            uint hint = at + (uint)layout.BindingBlendHint;
+            if (hint < DataPayload.Length) clip.Additive = DataPayload[hint] != 0;
+
+            return clip;
+        }
+
+        private const string InterleavedClass = "hkaInterleavedUncompressedAnimation";
+
+        private void ReadAnimation(PackfileObject animation, AnimationClip clip)
+        {
+            if (animation.ClassName == InterleavedClass) ReadInterleavedAnimation(animation.DataOffset, clip);
+            else ReadSplineAnimation(animation.DataOffset, clip);
+        }
+
+        /// <summary>
+        /// Read an <c>hkaInterleavedUncompressedAnimation</c>: no curves, just every track's
+        /// transform at every frame, laid out a frame at a time. The frame count isn't stored - it
+        /// is the transform count over the track count - and the frames are spread evenly over the
+        /// duration, which is how Havok times them.
+        /// </summary>
+        private void ReadInterleavedAnimation(uint at, AnimationClip clip)
+        {
+            AnimationLayout layout = Animation();
+            if (at + (uint)layout.AnimationFloatTracks + 4 > DataPayload.Length) return;
+
+            clip.Interleaved = true;
+            clip.Duration = BitConverter.ToSingle(DataPayload, (int)at + layout.AnimationDuration);
+            clip.TransformTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationTransformTracks);
+            clip.FloatTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationFloatTracks);
+            if (clip.TransformTrackCount <= 0) return;
+
+            if (!TryGetHkArray(at + (uint)layout.InterleavedTransforms, out uint transforms, out int transformCount)) return;
+            if (transformCount <= 0 || (long)transforms + (long)transformCount * TransformSize > DataPayload.Length) return;
+            clip.TransformsOffset = transforms;
+            clip.TransformCount = transformCount;
+
+            if (TryGetHkArray(at + (uint)layout.InterleavedFloats, out uint floats, out int floatCount)
+                && (long)floats + (long)floatCount * 4 <= DataPayload.Length)
+            {
+                clip.FloatsOffset = floats;
+                clip.FloatCount = floatCount;
+            }
+
+            clip.FrameCount = transformCount / clip.TransformTrackCount;
+            clip.FrameDuration = clip.FrameCount > 1 ? clip.Duration / (clip.FrameCount - 1) : clip.Duration;
+        }
+
+        /// <summary>An hkQsTransform: translation, rotation and scale, each padded to sixteen bytes.</summary>
+        private const int TransformSize = 48;
+
+        /* Every channel of an uncompressed transform is stored, so nothing here has to ask whether
+         * the clip drove it. */
+        private SampledTransform ReadTransform(uint at)
+        {
+            return new SampledTransform
+            {
+                Translation = ReadVector3((int)at),
+                Rotation = ReadQuaternion((int)at + 16),
+                Scale = ReadVector3((int)at + 32),
+                HasTranslation = true,
+                HasRotation = true,
+                HasScale = true,
+            };
+        }
+
+        private void ReadSplineAnimation(uint at, AnimationClip clip)
+        {
+            AnimationLayout layout = Animation();
+            if (at + (uint)layout.AnimationFloatTracks + 4 > DataPayload.Length) return;
+
+            clip.Duration = BitConverter.ToSingle(DataPayload, (int)at + layout.AnimationDuration);
+            clip.TransformTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationTransformTracks);
+            clip.FloatTrackCount = BitConverter.ToInt32(DataPayload, (int)at + layout.AnimationFloatTracks);
+
+            //hkaAnimation is the type, duration and two counts, then a pointer and an array
+            uint spline = at + (uint)layout.SplineStart;
+            if (spline + 28 > DataPayload.Length) return;
+
+            clip.FrameCount = BitConverter.ToInt32(DataPayload, (int)spline);
+            clip.BlockCount = BitConverter.ToInt32(DataPayload, (int)spline + 4);
+            clip.MaxFramesPerBlock = BitConverter.ToInt32(DataPayload, (int)spline + 8);
+            clip.MaskAndQuantizationSize = BitConverter.ToInt32(DataPayload, (int)spline + 12);
+            clip.BlockDuration = BitConverter.ToSingle(DataPayload, (int)spline + 16);
+            clip.FrameDuration = BitConverter.ToSingle(DataPayload, (int)spline + 24);
+
+            /* Then five hkArrays: the offset of each block into the stream, the same for float
+             * tracks, per-track offsets for the two, and the stream itself. */
+            /* Seven scalars, then the arrays - which on a 64 bit packfile have to start on an eight
+             * byte boundary, so there are four bytes of padding in front of them. */
+            uint arrays = spline + 28;
+            if (Header.PointerSize == 8) arrays = (arrays + 7u) & ~7u;
+
+            if (TryGetHkArray(arrays, out uint blockData, out int blockCount))
+                for (int i = 0; i < blockCount && blockData + (i * 4) + 4 <= DataPayload.Length; i++)
+                    clip.BlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(blockData + (i * 4))));
+
+            //the float tracks live in the same stream, starting where the transform tracks stop
+            if (TryGetHkArray(arrays + (uint)layout.ArrayStride, out uint floatData, out int floatCount))
+                for (int i = 0; i < floatCount && floatData + (i * 4) + 4 <= DataPayload.Length; i++)
+                    clip.FloatBlockOffsets.Add(BitConverter.ToUInt32(DataPayload, (int)(floatData + (i * 4))));
+
+            if (!TryGetHkArray(arrays + (uint)(layout.ArrayStride * 4), out uint stream, out int streamLength)) return;
+            clip.DataOffset = stream;
+            clip.DataLength = streamLength;
+
+            //each block opens with a four byte mask per transform track saying what it stores
+            for (int b = 0; b < clip.BlockOffsets.Count; b++)
+            {
+                uint blockStart = stream + clip.BlockOffsets[b];
+                List<TransformMask> masks = new List<TransformMask>();
+                for (int t = 0; t < clip.TransformTrackCount; t++)
+                {
+                    uint mask = blockStart + (uint)(t * 4);
+                    if (mask + 4 > DataPayload.Length) break;
+                    masks.Add(new TransformMask
+                    {
+                        Quantization = DataPayload[mask],
+                        Position = DataPayload[mask + 1],
+                        Rotation = DataPayload[mask + 2],
+                        Scale = DataPayload[mask + 3],
+                    });
+                }
+                clip.Blocks.Add(masks);
+            }
+        }
+
+        /// <summary>
+        /// Walk one block of a clip's compressed stream and describe what each transform track holds.
+        ///
+        /// This reads the *structure* - which components are curves, their knot vectors and where
+        /// their control points sit - and decodes the values that are stored plainly. It does not
+        /// yet dequantize control points or evaluate the curves, so animated components come back
+        /// as spans rather than samples. <see cref="BlockTracks.Complete"/> says whether the walk
+        /// landed exactly on the end of the block, which is the check that the layout was right.
+        /// </summary>
+        public BlockTracks ReadBlockTracks(AnimationClip clip, int block)
+        {
+            BlockTracks result = new BlockTracks();
+            if (clip == null || block < 0 || block >= clip.Blocks.Count || block >= clip.BlockOffsets.Count)
+                return result;
+
+            //the mask is a byte per float track on top of four per transform track, so it can land odd
+            long at = Align4(clip.DataOffset + clip.BlockOffsets[block] + clip.MaskAndQuantizationSize);
+            /* The float track data shares the block and starts where the transform tracks stop, but
+             * its offset is measured from the block rather than from the start of the stream. */
+            long end = clip.DataOffset + (block < clip.FloatBlockOffsets.Count && clip.FloatTrackCount > 0
+                ? clip.BlockOffsets[block] + clip.FloatBlockOffsets[block]
+                : (block + 1 < clip.BlockOffsets.Count ? clip.BlockOffsets[block + 1] : (uint)clip.DataLength));
+
+            foreach (TransformMask mask in clip.Blocks[block])
+            {
+                TrackCurves track = new TrackCurves();
+                result.Tracks.Add(track);
+                if (at > end) return result;
+
+                track.Position = ReadCurve(mask.Position, ScalarWidth(mask.TranslationQuantization), ref at);
+                at = Align4(at);
+                track.Rotation = ReadRotationCurve(mask.Rotation, RotationWidth(mask.RotationQuantization), ref at);
+                at = Align4(at);
+                track.Scale = ReadCurve(mask.Scale, ScalarWidth(mask.ScaleQuantization), ref at);
+                at = Align4(at);
+                if (at < 0) return result;
+            }
+
+            /* Whatever follows a block starts on a sixteen byte boundary, so landing anywhere in the
+             * pad before it is right. Anything further out means the layout didn't hold. */
+            long padded = clip.DataOffset + (((at - clip.DataOffset) + 15) & ~15L);
+            result.Complete = at >= 0 && (at == end || padded == end);
+            return result;
+        }
+
+        private static long Align4(long at) { return at < 0 ? at : (at + 3) & ~3L; }
+        private static bool IsFinite(float value) { return !float.IsNaN(value) && !float.IsInfinity(value); }
+        private static int ScalarWidth(int quantization) { return quantization == 0 ? 1 : quantization == 1 ? 2 : 4; }
+        private static int RotationWidth(int quantization)
+        {
+            switch (quantization)
+            {
+                case 0: return 4;    //POLAR32
+                case 1: return 5;    //THREECOMP40
+                case 2: return 6;    //THREECOMP48
+                case 3: return 3;    //THREECOMP24
+                case 4: return 2;    //STRAIGHT16
+                default: return 16;  //UNCOMPRESSED
+            }
+        }
+
+        /* A vector track: a curve for some components, a plain float for the rest. */
+        private ComponentCurve ReadCurve(byte mask, int width, ref long at)
+        {
+            int spline = (mask >> 4) & 0x0F, stat = mask & 0x0F;
+            if (spline == 0 && stat == 0) return null;
+
+            ComponentCurve curve = new ComponentCurve { SplineComponents = spline, StaticComponents = stat, Width = width };
+            if (spline != 0 && !ReadNurbs(curve, ref at)) { at = -1; return curve; }
+            if (at < 0) return curve;
+
+            /* Floats come first, in X Y Z order: a curved component contributes the range it was
+             * quantized into, a held one contributes its value. Only then do the control points
+             * follow, which are packed bytes and need no alignment of their own. */
+            at = Align4(at);
+            for (int c = 0; c < 3; c++)
+            {
+                if ((spline & (1 << c)) != 0)
+                {
+                    if (at < 0 || at + 8 > DataPayload.Length) { at = -1; return curve; }
+                    curve.Minimum[c] = BitConverter.ToSingle(DataPayload, (int)at);
+                    curve.Maximum[c] = BitConverter.ToSingle(DataPayload, (int)at + 4);
+                    //a range that isn't a finite number means we are not where we think we are
+                    if (!IsFinite(curve.Minimum[c]) || !IsFinite(curve.Maximum[c])) { at = -1; return curve; }
+                    at += 8;
+                }
+                else if ((stat & (1 << c)) != 0)
+                {
+                    if (at < 0 || at + 4 > DataPayload.Length) { at = -1; return curve; }
+                    curve.Static[c] = BitConverter.ToSingle(DataPayload, (int)at);
+                    if (!IsFinite(curve.Static[c])) { at = -1; return curve; }
+                    at += 4;
+                }
+            }
+
+            /* The splined axes share one curve, and their control points are stored a point at a time
+             * rather than an axis at a time: x0 y0 z0, x1 y1 z1, ... So each axis starts one value
+             * further in than the last and then steps over the others. The total is the same either
+             * way, which is why the block accounting never noticed - reading them as three contiguous
+             * lanes still lands on the end of the block, it just samples x, y, z into the x axis. */
+            int lanes = 0;
+            for (int c = 0; c < 3; c++) if ((spline & (1 << c)) != 0) lanes++;
+
+            long start = at;
+            int lane = 0;
+            for (int c = 0; c < 3; c++)
+            {
+                if ((spline & (1 << c)) == 0) continue;
+                if (at < 0) return curve;
+                curve.ControlPoints[c] = (uint)(start + (lane * width));
+                lane++;
+            }
+            curve.Stride = lanes * width;
+            at = start + ((curve.Items + 1) * (long)curve.Stride);
+            return curve;
+        }
+
+        /* A rotation is stored whole rather than per component, so it is one value or one curve. */
+        private ComponentCurve ReadRotationCurve(byte mask, int width, ref long at)
+        {
+            int spline = (mask >> 4) & 0x0F, stat = mask & 0x0F;
+            if (spline == 0 && stat == 0) return null;
+
+            ComponentCurve curve = new ComponentCurve { SplineComponents = spline, StaticComponents = stat, Width = width };
+            if (spline != 0)
+            {
+                if (!ReadNurbs(curve, ref at)) { at = -1; return curve; }
+                curve.ControlPoints[0] = (uint)at;
+                curve.Stride = width;
+                at += (curve.Items + 1) * width;
+            }
+            else
+            {
+                curve.ControlPoints[0] = (uint)at;
+                curve.Stride = width;
+                at += width;
+            }
+            return curve;
+        }
+
+        /* uint16 item count, byte degree, then count + degree + 2 byte knots. */
+        private bool ReadNurbs(ComponentCurve curve, ref long at)
+        {
+            if (at < 0 || at + 3 > DataPayload.Length) return false;
+            curve.Items = BitConverter.ToUInt16(DataPayload, (int)at);
+            curve.Degree = DataPayload[at + 2];
+            if (curve.Items > 4096) return false;
+
+            curve.Knots = (uint)(at + 3);
+            curve.KnotCount = curve.Items + curve.Degree + 2;
+            at += 3 + curve.KnotCount;
+            return at <= DataPayload.Length;
+        }
+
+        /// <summary>
+        /// Sample every transform track of a clip at one frame. Tracks come back in track order, so
+        /// <see cref="AnimationClip.TrackToBone"/> maps them onto the skeleton. Returns an empty list
+        /// if the frame's block doesn't decode - see <see cref="BlockTracks.Complete"/>.
+        /// </summary>
+        public List<SampledTransform> Sample(AnimationClip clip, int frame)
+        {
+            List<SampledTransform> pose = new List<SampledTransform>();
+            if (clip == null || frame < 0 || frame >= clip.FrameCount) return pose;
+
+            if (clip.Interleaved)
+            {
+                //a frame is every track's transform in turn, and the frames follow each other
+                uint start = clip.TransformsOffset + (uint)(frame * clip.TransformTrackCount * TransformSize);
+                for (int t = 0; t < clip.TransformTrackCount && start + (uint)((t + 1) * TransformSize) <= DataPayload.Length; t++)
+                    pose.Add(ReadTransform(start + (uint)(t * TransformSize)));
+                return pose;
+            }
+
+            if (clip.MaxFramesPerBlock <= 0) return pose;
+            int block = frame / clip.MaxFramesPerBlock;
+            float at = frame % clip.MaxFramesPerBlock;
+            if (block >= clip.Blocks.Count) return pose;
+
+            BlockTracks tracks = ReadBlockTracks(clip, block);
+            if (!tracks.Complete) return pose;
+
+            foreach (TrackCurves track in tracks.Tracks)
+            {
+                pose.Add(new SampledTransform
+                {
+                    Translation = SampleVector(track.Position, at, 0f),
+                    Rotation = SampleRotation(track.Rotation, at),
+                    Scale = SampleVector(track.Scale, at, 1f),
+                    HasTranslation = Carries(track.Position),
+                    HasRotation = Carries(track.Rotation),
+                    HasScale = Carries(track.Scale),
+                });
+            }
+            return pose;
+        }
+
+        /// <summary>Sample every frame of a clip, which is what an exporter wants.</summary>
+        public List<List<SampledTransform>> SampleAll(AnimationClip clip)
+        {
+            List<List<SampledTransform>> frames = new List<List<SampledTransform>>();
+            if (clip == null) return frames;
+            for (int i = 0; i < clip.FrameCount; i++) frames.Add(Sample(clip, i));
+            return frames;
+        }
+
+        /* Components the track doesn't mention keep the default - zero for a translation, one for a scale. */
+        /// <summary>Whether this track stored anything at all for one channel.</summary>
+        private static bool Carries(ComponentCurve curve)
+        {
+            return curve != null && (curve.SplineComponents != 0 || curve.StaticComponents != 0);
+        }
+
+        private System.Numerics.Vector3 SampleVector(ComponentCurve curve, float at, float fallback)
+        {
+            System.Numerics.Vector3 value = new System.Numerics.Vector3(fallback, fallback, fallback);
+            if (curve == null) return value;
+
+            for (int c = 0; c < 3; c++)
+            {
+                if ((curve.SplineComponents & (1 << c)) != 0)
+                {
+                    float[] points = new float[curve.Items + 1];
+                    for (int i = 0; i <= curve.Items; i++)
+                        points[i] = Dequantize(curve.ControlPoints[c] + (uint)(i * curve.Stride), curve.Width, curve.Minimum[c], curve.Maximum[c]);
+                    SetComponent(ref value, c, Evaluate(points, curve, at));
+                }
+                else if ((curve.StaticComponents & (1 << c)) != 0) SetComponent(ref value, c, curve.Static[c]);
+            }
+            return value;
+        }
+
+        private System.Numerics.Quaternion SampleRotation(ComponentCurve curve, float at)
+        {
+            if (curve == null) return System.Numerics.Quaternion.Identity;
+            if (!curve.IsSpline) return DecodeQuaternion(curve.ControlPoints[0], curve.Width);
+
+            /* Interpolate the components and renormalise. Line up each control point with the one
+             * before it first, or the double cover makes the curve jump halfway through. */
+            System.Numerics.Quaternion[] points = new System.Numerics.Quaternion[curve.Items + 1];
+            for (int i = 0; i <= curve.Items; i++)
+            {
+                points[i] = DecodeQuaternion(curve.ControlPoints[0] + (uint)(i * curve.Stride), curve.Width);
+                if (i != 0 && System.Numerics.Quaternion.Dot(points[i - 1], points[i]) < 0)
+                    points[i] = new System.Numerics.Quaternion(-points[i].X, -points[i].Y, -points[i].Z, -points[i].W);
+            }
+
+            float[] lane = new float[points.Length];
+            float[] result = new float[4];
+            for (int c = 0; c < 4; c++)
+            {
+                for (int i = 0; i < points.Length; i++)
+                    lane[i] = c == 0 ? points[i].X : c == 1 ? points[i].Y : c == 2 ? points[i].Z : points[i].W;
+                result[c] = Evaluate(lane, curve, at);
+            }
+
+            System.Numerics.Quaternion sampled = new System.Numerics.Quaternion(result[0], result[1], result[2], result[3]);
+            float length = sampled.Length();
+            return length > 1e-8f ? System.Numerics.Quaternion.Normalize(sampled) : System.Numerics.Quaternion.Identity;
+        }
+
+        private static void SetComponent(ref System.Numerics.Vector3 value, int component, float to)
+        {
+            if (component == 0) value.X = to;
+            else if (component == 1) value.Y = to;
+            else value.Z = to;
+        }
+
+        /* A control point is a fraction of the range the curve declared, or a plain float at 32 bits. */
+        private float Dequantize(uint at, int width, float minimum, float maximum)
+        {
+            if (at + width > DataPayload.Length) return minimum;
+            switch (width)
+            {
+                case 1: return minimum + (DataPayload[at] / 255f) * (maximum - minimum);
+                case 2: return minimum + (BitConverter.ToUInt16(DataPayload, (int)at) / 65535f) * (maximum - minimum);
+                default: return BitConverter.ToSingle(DataPayload, (int)at);
+            }
+        }
+
+        /// <summary>
+        /// Unpack one quantized rotation. Retail only ever uses THREECOMP40: three 12 bit components,
+        /// two bits naming the one left out, and a bit for its sign. The missing component is whatever
+        /// makes the quaternion unit length.
+        /// </summary>
+        public System.Numerics.Quaternion DecodeQuaternion(uint at, int width)
+        {
+            if (at + width > DataPayload.Length) return System.Numerics.Quaternion.Identity;
+            if (width != 5) return System.Numerics.Quaternion.Identity;
+
+            ulong packed = 0;
+            for (int i = 0; i < 5; i++) packed |= (ulong)DataPayload[at + i] << (8 * i);
+
+            const double range = 1.4142135623730951;   //the three smallest components live in +-1/sqrt(2)
+            const double offset = -0.7071067811865476;
+            double[] three =
+            {
+                (packed & 0xFFF) * (range / 4095.0) + offset,
+                ((packed >> 12) & 0xFFF) * (range / 4095.0) + offset,
+                ((packed >> 24) & 0xFFF) * (range / 4095.0) + offset,
+            };
+
+            int missing = (int)((packed >> 36) & 0x03);
+            double[] q = new double[4];
+            int next = 0;
+            for (int i = 0; i < 4; i++) if (i != missing) q[i] = three[next++];
+
+            double largest = Math.Sqrt(Math.Max(0.0, 1.0 - (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3])));
+            if (((packed >> 38) & 1) != 0) largest = -largest;
+            q[missing] = largest;
+
+            return new System.Numerics.Quaternion((float)q[0], (float)q[1], (float)q[2], (float)q[3]);
+        }
+
+        /* de Boor over the byte knot vector the curve carries. Degree 0 is a step, 1 is linear. */
+        private float Evaluate(float[] points, ComponentCurve curve, float at)
+        {
+            if (points.Length == 0) return 0f;
+            if (points.Length == 1 || curve.Degree == 0) return points[Math.Min(points.Length - 1, (int)at)];
+
+            int degree = curve.Degree;
+            int knotCount = curve.KnotCount;
+            if (curve.Knots + knotCount > DataPayload.Length) return points[0];
+
+            //the span holding this frame
+            int span = degree;
+            while (span < knotCount - 1 && DataPayload[curve.Knots + span + 1] <= at) span++;
+            if (span - degree < 0) span = degree;
+            if (span > points.Length - 1) span = points.Length - 1;
+
+            float[] work = new float[degree + 1];
+            for (int i = 0; i <= degree; i++)
+            {
+                int index = span - degree + i;
+                work[i] = points[Math.Max(0, Math.Min(points.Length - 1, index))];
+            }
+
+            for (int r = 1; r <= degree; r++)
+                for (int i = degree; i >= r; i--)
+                {
+                    int low = span - degree + i, high = span + 1 + i - r;
+                    if (low < 0 || high >= knotCount) continue;
+                    float a = DataPayload[curve.Knots + low], b = DataPayload[curve.Knots + high];
+                    float alpha = b - a <= 0 ? 0f : (at - a) / (b - a);
+                    work[i] = (1f - alpha) * work[i - 1] + alpha * work[i];
+                }
+            return work[degree];
+        }
+
+        /// <summary>
+        /// Read every <c>hkaSkeletonMapper</c>: which bones of one skeleton drive which of another.
+        /// </summary>
+        public List<SkeletonMapper> GetSkeletonMappers()
+        {
+            List<SkeletonMapper> mappers = new List<SkeletonMapper>();
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].ClassName != "hkaSkeletonMapper") continue;
+
+                SkeletonMapper mapper = new SkeletonMapper { DataOffset = Objects[i].DataOffset };
+                uint end = ObjectEnd(Objects[i].DataOffset);
+
+                /* A tagfile names its members, so ask it which array is which. Telling them apart by
+                 * element size is a guess that works until another int16 array turns up in the same
+                 * object - hkaSkeletonMapperData has a partitionMap that is exactly that. */
+                if (TryReadMapperByName(Objects[i].DataOffset, mapper))
+                {
+                    mappers.Add(mapper);
+                    continue;
+                }
+
+                /* An empty hkArray has no fixup at all, so rather than hardcoding field offsets,
+                 * take the arrays this object actually points at and tell them apart by how many
+                 * bytes each element gets: a simple mapping is two bone indices plus a 16 byte
+                 * aligned hkQsTransform (64), an unmapped bone is a bare int16. */
+                foreach (int[] array in ObjectArrays(Objects[i].DataOffset, end))
+                {
+                    uint data = (uint)array[0];
+                    int count = array[1];
+                    int stride = array[2];
+                    if (stride >= 48)
+                    {
+                        /* Two bone indices, then the hkQsTransform on the next sixteen byte boundary:
+                         * translation, rotation and scale as four floats each, of which the last of
+                         * the translation and scale is padding. */
+                        for (int x = 0; x < count && data + (x * 64) + 64 <= DataPayload.Length; x++)
+                        {
+                            int at = (int)(data + (x * 64));
+                            mapper.Mappings.Add(new BoneMapping
+                            {
+                                BoneA = BitConverter.ToInt16(DataPayload, at),
+                                BoneB = BitConverter.ToInt16(DataPayload, at + 2),
+                                Translation = ReadVector3(at + 16),
+                                Rotation = ReadQuaternion(at + 32),
+                                Scale = ReadVector3(at + 48),
+                            });
+                        }
+                    }
+                    else if (stride <= 2)
+                    {
+                        for (int x = 0; x < count && data + (x * 2) + 2 <= DataPayload.Length; x++)
+                            mapper.UnmappedBones.Add(BitConverter.ToInt16(DataPayload, (int)(data + (x * 2))));
+                    }
+                }
+                mappers.Add(mapper);
+            }
+            return mappers;
+        }
+
+        private System.Numerics.Vector3 ReadVector3(int at)
+        {
+            return new System.Numerics.Vector3(
+                BitConverter.ToSingle(DataPayload, at),
+                BitConverter.ToSingle(DataPayload, at + 4),
+                BitConverter.ToSingle(DataPayload, at + 8));
+        }
+
+        private System.Numerics.Quaternion ReadQuaternion(int at)
+        {
+            return new System.Numerics.Quaternion(
+                BitConverter.ToSingle(DataPayload, at),
+                BitConverter.ToSingle(DataPayload, at + 4),
+                BitConverter.ToSingle(DataPayload, at + 8),
+                BitConverter.ToSingle(DataPayload, at + 12));
+        }
+
+        /// <summary>
+        /// Read the <c>hkaRagdollInstance</c>: the physics bodies standing in for the skeleton,
+        /// and which bone each one belongs to.
+        /// </summary>
+        public RagdollInstance GetRagdoll()
+        {
+            PackfileObject instance = Objects.FirstOrDefault(x => x.ClassName == "hkaRagdollInstance");
+            if (instance == null) return null;
+
+            uint ptr = (uint)Header.PointerSize;
+
+            /* Three arrays in a row in 2012 - but 2018 grew the object header they follow, so take
+             * them from the file's own type table when it has one. */
+            int bodiesAt = Tagfile == null ? -1 : Tagfile.OffsetOf("hkaRagdollInstance", "rigidBodies");
+            int constraintsAt = Tagfile == null ? -1 : Tagfile.OffsetOf("hkaRagdollInstance", "constraints");
+            int boneMapAt = Tagfile == null ? -1 : Tagfile.OffsetOf("hkaRagdollInstance", "boneToRigidBodyMap");
+
+            uint bodies = instance.DataOffset + (bodiesAt >= 0 ? (uint)bodiesAt : ObjectHeaderSize);
+            uint constraints = constraintsAt >= 0 ? instance.DataOffset + (uint)constraintsAt : bodies + ArraySize;
+            uint boneMap = boneMapAt >= 0 ? instance.DataOffset + (uint)boneMapAt : constraints + ArraySize;
+
+            RagdollInstance ragdoll = new RagdollInstance();
+            Dictionary<uint, uint> globalBySrc = new Dictionary<uint, uint>();
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            //Each element is a pointer to an hkpRigidBody elsewhere in the file
+            if (TryGetHkArray(bodies, out uint bodyList, out int bodyCount))
+            {
+                int describedName = Tagfile == null ? -1 : Tagfile.OffsetOf("hkpWorldObject", "name");
+                uint nameField = describedName >= 0 ? (uint)describedName
+                    : (Header.PointerSize == 8 ? 0xB0u : 0x78u);
+                for (int i = 0; i < bodyCount; i++)
+                {
+                    if (!globalBySrc.TryGetValue(bodyList + (uint)(i * ptr), out uint body)) { ragdoll.Bodies.Add(""); continue; }
+                    ragdoll.Bodies.Add(TryResolveLocal(body + nameField, out uint nameAt) ? ReadStringAt(nameAt) : "");
+                }
+            }
+
+            if (TryGetHkArray(constraints, out uint _, out int constraintCount))
+                ragdoll.ConstraintCount = constraintCount;
+
+            if (TryGetHkArray(boneMap, out uint map, out int mapCount))
+                for (int i = 0; i < mapCount && map + (i * 4) + 4 <= DataPayload.Length; i++)
+                    ragdoll.BoneToBody.Add(BitConverter.ToInt32(DataPayload, (int)(map + (i * 4))));
+
+            return ragdoll;
+        }
+
+        /* Where the object's data runs to - the next object, or the end of the payload */
+        private uint ObjectEnd(uint start)
+        {
+            /* A packfile only lists real objects, so the next one along is where this one stops. A
+             * tagfile's item table also claims every array and string, and those sit INSIDE the
+             * object they belong to - taking the next entry there would cut the object short, right
+             * before the arrays we were looking for. It describes its own sizes, so ask. */
+            if (Tagfile != null)
+            {
+                for (int i = 0; i < Objects.Count; i++)
+                {
+                    if (Objects[i].DataOffset != start) continue;
+
+                    int size = Tagfile.SizeOf(Objects[i].ClassName);
+                    if (size > 0) return start + (uint)size;
+                    break;
+                }
+            }
+
+            uint end = (uint)DataPayload.Length;
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].DataOffset > start && Objects[i].DataOffset < end) end = Objects[i].DataOffset;
+            return end;
+        }
+
+        /* Every array this object points at, as data offset -> element count */
+        /// <summary>
+        /// Fill a mapper from the members the file names, rather than from what its arrays look like.
+        /// Only a tagfile can answer this; returns false when there is no schema to ask.
+        /// </summary>
+        bool TryReadMapperByName(uint at, SkeletonMapper mapper)
+        {
+            if (Tagfile == null)
+                return false;
+
+            int data = Tagfile.OffsetOf("hkaSkeletonMapper", "mapping");
+            int simple = Tagfile.OffsetOf("hkaSkeletonMapperData", "simpleMappings");
+            int unmapped = Tagfile.OffsetOf("hkaSkeletonMapperData", "unmappedBones");
+            int stride = Tagfile.SizeOf("hkaSkeletonMapperData::SimpleMapping");
+            if (data < 0 || simple < 0 || unmapped < 0 || stride <= 0)
+                return false;
+
+            if (TryGetHkArray((uint)(at + data + simple), out uint mappings, out int mappingCount))
+            {
+                for (int x = 0; x < mappingCount && mappings + (x * stride) + stride <= DataPayload.Length; x++)
+                {
+                    int element = (int)(mappings + (x * stride));
+                    mapper.Mappings.Add(new BoneMapping
+                    {
+                        BoneA = BitConverter.ToInt16(DataPayload, element),
+                        BoneB = BitConverter.ToInt16(DataPayload, element + 2),
+                        Translation = ReadVector3(element + 16),
+                        Rotation = ReadQuaternion(element + 32),
+                        Scale = ReadVector3(element + 48),
+                    });
+                }
+            }
+
+            if (TryGetHkArray((uint)(at + data + unmapped), out uint bones, out int boneCount))
+                for (int x = 0; x < boneCount && bones + (x * 2) + 2 <= DataPayload.Length; x++)
+                    mapper.UnmappedBones.Add(BitConverter.ToInt16(DataPayload, (int)(bones + (x * 2))));
+
+            return true;
+        }
+
+        /// <summary>
+        /// The arrays an object points at, as offset, count and element size. A packfile finds them by
+        /// the fixups that land inside the object and has to work the element size out from the gap to
+        /// whatever comes next; a tagfile lists both the count and the element's type on the item.
+        /// </summary>
+        private List<int[]> ObjectArrays(uint start, uint end)
+        {
+            if (Tagfile != null)
+                return Tagfile.ArraysIn((int)start, (int)end);
+
+            List<int[]> arrays = new List<int[]>();
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src < start || LocalFixups[i].Src >= end) continue;
+                int sizeAt = (int)LocalFixups[i].Src + Header.PointerSize;
+                if (sizeAt + 4 > DataPayload.Length) continue;
+
+                int count = BitConverter.ToInt32(DataPayload, sizeAt);
+                if (count > 0 && count < 1_000_000)
+                    arrays.Add(new int[] { (int)LocalFixups[i].Dst, count, ElementStride(LocalFixups[i].Dst, count) });
+            }
+            return arrays;
+        }
+
+        /* How many bytes each element of an array gets, from the space before whatever follows it */
+        private int ElementStride(uint data, int count)
+        {
+            if (count <= 0) return 0;
+            uint next = (uint)DataPayload.Length;
+            for (int i = 0; i < LocalFixups.Count; i++)
+                if (LocalFixups[i].Dst > data && LocalFixups[i].Dst < next) next = LocalFixups[i].Dst;
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].DataOffset > data && Objects[i].DataOffset < next) next = Objects[i].DataOffset;
+            return (int)((next - data) / count);
+        }
+
+        /// <summary>
+        /// A ragdoll: the rigid bodies that stand in for a skeleton while it's simulated.
+        /// </summary>
+        public class RagdollInstance
+        {
+            /// <summary>Rigid body names, in ragdoll order.</summary>
+            public List<string> Bodies = new List<string>();
+
+            public int ConstraintCount;
+
+            /// <summary>Body index for each skeleton bone, or -1 where a bone isn't simulated.</summary>
+            public List<int> BoneToBody = new List<int>();
+
+            public override string ToString() => Bodies.Count + " bodies, " + ConstraintCount + " constraints";
+        }
+
+        /// <summary>
+        /// One animation clip: how long it is, and which bones of which skeleton it drives.
+        /// </summary>
+        public class AnimationClip
+        {
+            /// <summary>Skeleton the clip was authored against.</summary>
+            public string SkeletonName = "";
+
+            public float Duration;
+            public int TransformTrackCount;
+            public int FloatTrackCount;
+            public int FrameCount;
+            public int BlockCount;
+            public int MaxFramesPerBlock;
+            public float FrameDuration;
+
+            /// <summary>Skeleton bone index driven by each transform track.</summary>
+            public List<int> TrackToBone = new List<int>();
+
+            /// <summary>
+            /// Whether the clip holds deltas to layer over a base pose rather than a pose of its own.
+            /// The impact and recoil clips are all built this way: on their own their tracks read as
+            /// no rotation and no offset, and they only mean anything added on top of something else.
+            /// </summary>
+            public bool Additive;
+
+            /// <summary>Where the animation sits in __data__, so callers can match it back up.</summary>
+            public uint AnimationOffset;
+
+            /// <summary>
+            /// Whether the clip is stored uncompressed - every track's transform at every frame -
+            /// rather than as spline curves. The block members below are all zero for one of these,
+            /// and <see cref="TransformsOffset"/> is where its frames start.
+            /// </summary>
+            public bool Interleaved;
+
+            /// <summary>An interleaved clip's transforms and floats in __data__, a frame at a time.</summary>
+            public uint TransformsOffset;
+            public int TransformCount;
+            public uint FloatsOffset;
+            public int FloatCount;
+
+            /// <summary>Bytes of mask at the head of every block - four per transform track.</summary>
+            public int MaskAndQuantizationSize;
+
+            public float BlockDuration;
+
+            /// <summary>Where each block begins, relative to <see cref="DataOffset"/>.</summary>
+            public List<uint> BlockOffsets = new List<uint>();
+
+            /// <summary>Where each block's float track data begins, relative to <see cref="DataOffset"/>.</summary>
+            public List<uint> FloatBlockOffsets = new List<uint>();
+
+            /// <summary>What each transform track stores, per block. See <see cref="TransformMask"/>.</summary>
+            public List<List<TransformMask>> Blocks = new List<List<TransformMask>>();
+
+            /// <summary>The compressed stream inside __data__, and how long it runs.</summary>
+            public uint DataOffset;
+            public int DataLength;
+
+            public override string ToString() => (SkeletonName.Length == 0 ? "animation" : SkeletonName) + " " + Duration.ToString("0.###") + "s";
+        }
+
+        /// <summary>One bone's transform at one frame.</summary>
+        public class SampledTransform
+        {
+            public System.Numerics.Vector3 Translation;
+            public System.Numerics.Quaternion Rotation;
+            public System.Numerics.Vector3 Scale;
+
+            /* A track only stores the channels the clip actually drives, so a value can be here
+             * because the clip said so or because nothing did. The two are not the same thing: an
+             * unwritten channel means "leave the bone as the rig rests", not "zero". */
+            public bool HasTranslation;
+            public bool HasRotation;
+            public bool HasScale;
+
+            public override string ToString() => Translation.ToString() + " " + Rotation.ToString();
+        }
+
+        /// <summary>What every transform track in one block of a clip holds.</summary>
+        public class BlockTracks
+        {
+            public List<TrackCurves> Tracks = new List<TrackCurves>();
+
+            /// <summary>
+            /// Whether the walk consumed the block exactly. False means the layout didn't hold for
+            /// this block and nothing on it should be trusted.
+            /// </summary>
+            public bool Complete;
+
+            public override string ToString() => Tracks.Count + " track(s)" + (Complete ? "" : " (incomplete)");
+        }
+
+        /// <summary>One transform track: up to three curves, any of which may be absent.</summary>
+        public class TrackCurves
+        {
+            public ComponentCurve Position;
+            public ComponentCurve Rotation;
+            public ComponentCurve Scale;
+        }
+
+        /// <summary>
+        /// A component of a track. Components named by <see cref="StaticComponents"/> hold one value
+        /// in <see cref="Static"/>; those named by <see cref="SplineComponents"/> are a curve whose
+        /// control points have not been dequantized yet - <see cref="ControlPoints"/> says where they
+        /// are and <see cref="Minimum"/>/<see cref="Maximum"/> the range they expand into.
+        /// </summary>
+        public class ComponentCurve
+        {
+            /// <summary>X/Y/Z (and W, for a rotation) bits driven by a curve.</summary>
+            public int SplineComponents;
+
+            /// <summary>X/Y/Z (and W) bits held at a single value.</summary>
+            public int StaticComponents;
+
+            /// <summary>Fully decoded, for the components <see cref="StaticComponents"/> names.</summary>
+            public float[] Static = new float[3];
+
+            public float[] Minimum = new float[3];
+            public float[] Maximum = new float[3];
+
+            /// <summary>Where each component's control points start in <c>DataPayload</c>.</summary>
+            public uint[] ControlPoints = new uint[3];
+
+            /// <summary>Bytes per control point.</summary>
+            public int Width;
+
+            public int Items, Degree, KnotCount;
+
+            /// <summary>Bytes between one control point of a component and the next. Splined axes
+            /// share a curve and interleave their points, so this is width times the axis count.</summary>
+            public int Stride;
+
+            /// <summary>Where the byte knot vector starts in <c>DataPayload</c>.</summary>
+            public uint Knots;
+
+            public bool IsSpline { get { return SplineComponents != 0; } }
+
+            public override string ToString() =>
+                IsSpline ? "curve items=" + Items + " degree=" + Degree : "static";
+        }
+
+        /// <summary>
+        /// The four bytes at the head of a block that say what one transform track stores.
+        ///
+        /// The curves themselves are not decoded yet. What is confirmed: the stream that follows the
+        /// masks holds, per spline, a <c>uint16</c> item count, a <c>byte</c> degree, then
+        /// <c>count + degree + 2</c> byte knots, then <c>count + 1</c> control points quantized to
+        /// the width <see cref="RotationQuantization"/> names - 5 bytes each for THREECOMP40.
+        /// </summary>
+        public class TransformMask
+        {
+            /// <summary>Packed quantization widths - see the properties below.</summary>
+            public byte Quantization;
+
+            /// <summary>Which position components are stored, and how.</summary>
+            public byte Position;
+
+            /// <summary>Which rotation components are stored. The nibbles do not read as cleanly
+            /// as the position ones do, so this is left raw.</summary>
+            public byte Rotation;
+
+            /// <summary>Which scale components are stored, and how.</summary>
+            public byte Scale;
+
+            /// <summary>Bits 0-1: how translation control points are quantized.</summary>
+            public int TranslationQuantization { get { return Quantization & 0x03; } }
+
+            /// <summary>Bits 2-5: 0 POLAR32, 1 THREECOMP40, 2 THREECOMP48, 3 THREECOMP24, 4 STRAIGHT16, 5 UNCOMPRESSED.</summary>
+            public int RotationQuantization { get { return (Quantization >> 2) & 0x0F; } }
+
+            /// <summary>Bits 6-7: how scale control points are quantized.</summary>
+            public int ScaleQuantization { get { return (Quantization >> 6) & 0x03; } }
+
+            /// <summary>Position components driven by a curve, as X/Y/Z bits.</summary>
+            public int PositionSpline { get { return Position & 0x0F; } }
+
+            /// <summary>Position components held at one value, as X/Y/Z bits.</summary>
+            public int PositionStatic { get { return (Position >> 4) & 0x0F; } }
+
+            public int ScaleSpline { get { return Scale & 0x0F; } }
+            public int ScaleStatic { get { return (Scale >> 4) & 0x0F; } }
+
+            public override string ToString() =>
+                "pos=0x" + Position.ToString("X2") + " rot=0x" + Rotation.ToString("X2") + " scale=0x" + Scale.ToString("X2");
+        }
+
+        /// <summary>
+        /// A retargeting mapper between two skeletons.
+        /// </summary>
+        public class SkeletonMapper
+        {
+            public uint DataOffset;
+            public List<BoneMapping> Mappings = new List<BoneMapping>();
+            public List<int> UnmappedBones = new List<int>();
+
+            public override string ToString() => Mappings.Count + " mapped, " + UnmappedBones.Count + " unmapped";
+        }
+
+        public class BoneMapping
+        {
+            public int BoneA;
+            public int BoneB;
+
+            /// <summary>
+            /// Where bone A sits relative to bone B - Havok's <c>m_aFromBTransform</c>. Two rigs that
+            /// share a bone rarely rest it the same way, and this is the difference. Without it a
+            /// retarget copies raw local transforms and the mesh comes out twisted.
+            /// </summary>
+            public System.Numerics.Vector3 Translation;
+            public System.Numerics.Quaternion Rotation = System.Numerics.Quaternion.Identity;
+            public System.Numerics.Vector3 Scale = System.Numerics.Vector3.One;
+
+            public override string ToString() => BoneA + " -> " + BoneB;
+        }
+        #endregion
+
+        #region HEADER_SECTIONS
+        bool ReadHeader(BinaryReader reader)
+        {
+            Header.Magic0 = reader.ReadUInt32();
+            Header.Magic1 = reader.ReadUInt32();
+            if (Header.Magic0 != 0x57E0E057 || Header.Magic1 != 0x10C0C010)
+                return false;
+
+            Header.UserTag = reader.ReadInt32();
+            Header.FileVersion = reader.ReadInt32();
+            Header.PointerSize = reader.ReadByte();
+            Header.LittleEndian = reader.ReadByte();
+            Header.PaddingOption = reader.ReadByte();
+            Header.BaseClass = reader.ReadByte();
+            Header.NumSections = reader.ReadInt32();
+            Header.ContentsSectionIndex = reader.ReadInt32();
+            Header.ContentsSectionOffset = reader.ReadInt32();
+            Header.ContentsClassNameSectionIndex = reader.ReadInt32();
+            Header.ContentsClassNameSectionOffset = reader.ReadInt32();
+
+            byte[] verBytes = reader.ReadBytes(16);
+            int verLen = Array.IndexOf(verBytes, (byte)0);
+            if (verLen < 0) verLen = verBytes.Length;
+            Header.ContentsVersion = Encoding.ASCII.GetString(verBytes, 0, verLen);
+            Header.Flags = reader.ReadInt32();
+            Header.MaxPredicate = reader.ReadInt32();
+            return true;
+        }
+
+        void WriteHeader(BinaryWriter writer)
+        {
+            writer.Write(Header.Magic0);
+            writer.Write(Header.Magic1);
+            writer.Write(Header.UserTag);
+            writer.Write(Header.FileVersion);
+            writer.Write(Header.PointerSize);
+            writer.Write(Header.LittleEndian);
+            writer.Write(Header.PaddingOption);
+            writer.Write(Header.BaseClass);
+            writer.Write(Header.NumSections);
+            writer.Write(Header.ContentsSectionIndex);
+            writer.Write(Header.ContentsSectionOffset);
+            writer.Write(Header.ContentsClassNameSectionIndex);
+            writer.Write(Header.ContentsClassNameSectionOffset);
+
+            byte[] ver = new byte[16];
+            for (int i = 0; i < ver.Length; i++) ver[i] = 0xFF;
+            byte[] name = Encoding.ASCII.GetBytes(Header.ContentsVersion ?? "");
+            int copy = Math.Min(name.Length, 15);
+            Array.Copy(name, ver, copy);
+            ver[copy] = 0;
+            writer.Write(ver);
+            writer.Write(Header.Flags);
+            writer.Write(Header.MaxPredicate);
+        }
+
+        static string ReadSectionTag(BinaryReader reader)
+        {
+            byte[] nameBytes = reader.ReadBytes(16);
+            int nameLen = Array.IndexOf(nameBytes, (byte)0);
+            if (nameLen < 0) nameLen = 16;
+            return Encoding.ASCII.GetString(nameBytes, 0, nameLen);
+        }
+
+        static void WriteSectionHeader(BinaryWriter writer, string name,
+            uint abs, uint local, uint global, uint virt, uint exports, uint imports, uint end)
+        {
+            byte[] tag = new byte[16];
+            byte[] nb = Encoding.ASCII.GetBytes(name ?? "");
+            Array.Copy(nb, tag, Math.Min(nb.Length, 16));
+            writer.Write(tag);
+            writer.Write(0xFF000000); // Havok section AbsoluteDataStart high-byte marker
+            writer.Write(abs);
+            writer.Write(local);
+            writer.Write(global);
+            writer.Write(virt);
+            writer.Write(exports);
+            writer.Write(imports);
+            writer.Write(end);
+        }
+
+        static byte[] Slice(byte[] data, int offset, int length)
+        {
+            if (offset < 0 || length < 0 || offset + length > data.Length)
+                return Array.Empty<byte>();
+            byte[] slice = new byte[length];
+            Buffer.BlockCopy(data, offset, slice, 0, length);
+            return slice;
+        }
+        #endregion
+
+        #region FIXUPS
+        void ReadLocalFixups(byte[] file, int start, int end)
+        {
+            for (int p = start; p + 8 <= end && p + 8 <= file.Length; p += 8)
+            {
+                uint src = BitConverter.ToUInt32(file, p);
+                uint dst = BitConverter.ToUInt32(file, p + 4);
+                if (src == 0xFFFFFFFF) break;
+                LocalFixups.Add(new LocalFixup { Src = src, Dst = dst });
+            }
+        }
+
+        void ReadGlobalFixups(byte[] file, int start, int end)
+        {
+            for (int p = start; p + 12 <= end && p + 12 <= file.Length; p += 12)
+            {
+                uint src = BitConverter.ToUInt32(file, p);
+                uint sec = BitConverter.ToUInt32(file, p + 4);
+                uint dst = BitConverter.ToUInt32(file, p + 8);
+                if (src == 0xFFFFFFFF) break;
+                GlobalFixups.Add(new GlobalFixup { Src = src, DstSectionIndex = sec, Dst = dst });
+            }
+        }
+
+        void ReadVirtualFixups(byte[] file, int start, int end)
+        {
+            for (int p = start; p + 12 <= end && p + 12 <= file.Length; p += 12)
+            {
+                uint src = BitConverter.ToUInt32(file, p);
+                uint sec = BitConverter.ToUInt32(file, p + 4);
+                int nameOff = BitConverter.ToInt32(file, p + 8);
+                if (src == 0xFFFFFFFF) break;
+                VirtualFixups.Add(new VirtualFixup { Src = src, SectionIndex = sec, NameOffset = nameOff });
+            }
+        }
+        #endregion
+
+        #region OBJECTS_AND_COMPOUNDS
+        static Dictionary<int, string> ParseClassNames(byte[] classnames)
+        {
+            var map = new Dictionary<int, string>();
+            int i = 0;
+            while (i + 5 < classnames.Length)
+            {
+                i += 4;
+                if (i >= classnames.Length) break;
+                i++;
+                int s = i;
+                while (i < classnames.Length && classnames[i] != 0) i++;
+                if (i > s)
+                    map[s] = Encoding.ASCII.GetString(classnames, s, i - s);
+                i++;
+            }
+            return map;
+        }
+
+        void BuildObjectList(Dictionary<int, string> classNames)
+        {
+            int compoundOrdinal = 0;
+            PhysicsSystems.Clear();
+            for (int i = 0; i < VirtualFixups.Count; i++)
+            {
+                VirtualFixup vf = VirtualFixups[i];
+                classNames.TryGetValue(vf.NameOffset, out string className);
+                var obj = new PackfileObject
+                {
+                    DataOffset = vf.Src,
+                    ClassNameOffset = vf.NameOffset,
+                    ClassName = className ?? "",
+                    Class = Classify(className),
+                };
+                if (obj.Class == ObjectClass.StaticCompoundShape)
+                {
+                    obj.ProxyIndex = compoundOrdinal++;
+                }
+                else if (obj.Class == ObjectClass.PhysicsSystem)
+                {
+                    // SystemIndex assigned later from hkpPhysicsData.systems[] order.
+                    PhysicsSystems.Add(new PhysicsSystem
+                    {
+                        SystemIndex = -1,
+                        DataOffset = obj.DataOffset,
+                        Object = obj,
+                    });
+                }
+                Objects.Add(obj);
+            }
+        }
+
+        /// <summary>
+        /// Assign <see cref="PhysicsSystem.SystemIndex"/> from <c>hkpPhysicsData.systems[]</c>
+        /// (the order Commands / PHYSICS.MAP use). Falls back to appearance order if PhysicsData
+        /// is missing.
+        /// </summary>
+        void ParsePhysicsSystemIndexes()
+        {
+            if (PhysicsSystems.Count == 0)
+                return;
+
+            var byOffset = new Dictionary<uint, PhysicsSystem>(PhysicsSystems.Count);
+            int nameFieldOffset = Header.PointerSize == 8 ? 80 : 56; // hkArray packing differs 32 vs 64
+            for (int i = 0; i < PhysicsSystems.Count; i++)
+            {
+                PhysicsSystem ps = PhysicsSystems[i];
+                byOffset[ps.DataOffset] = ps;
+                ps.Name = ReadStringPtr(ps.DataOffset + (uint)nameFieldOffset);
+            }
+
+            PackfileObject physicsData = null;
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                if (Objects[i].Class == ObjectClass.PhysicsData)
+                {
+                    physicsData = Objects[i];
+                    break;
+                }
+            }
+
+            List<PhysicsSystem> ordered = null;
+            if (physicsData != null)
+            {
+                int ptrSize = Header.PointerSize;
+                /* hkpPhysicsData: hkReferencedObject + worldCinfo ptr + systems hkArray. The
+                 * header is 16 bytes on 64 bit but only 8 on 32 bit, so it cannot be a constant:
+                 * assuming 16 put the field 8 bytes past the array on every 32 bit packfile,
+                 * which read as "no systems" here and, worse, made AppendPhysicsSystem write a
+                 * second systems array over hkArray::m_capacityAndFlags - leaving the real array
+                 * untouched, so ported physics systems were never wired into hkpPhysicsData. */
+                uint systemsField = physicsData.DataOffset + ObjectHeaderSize + (uint)ptrSize;
+                if (TryReadPointerArray(systemsField, out List<uint> systemOffsets) && systemOffsets.Count > 0)
+                {
+                    ordered = new List<PhysicsSystem>(systemOffsets.Count);
+                    for (int i = 0; i < systemOffsets.Count; i++)
+                    {
+                        if (!byOffset.TryGetValue(systemOffsets[i], out PhysicsSystem ps))
+                            continue;
+                        ordered.Add(ps);
+                    }
+                    if (ordered.Count != PhysicsSystems.Count)
+                        ordered = null; // incomplete — fall back
+                }
+            }
+
+            if (ordered == null)
+            {
+                // Appearance / virtual-fixup order (stable but not the game index).
+                ordered = new List<PhysicsSystem>(PhysicsSystems);
+            }
+
+            PhysicsSystems.Clear();
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                PhysicsSystem ps = ordered[i];
+                ps.SystemIndex = i;
+                if (ps.Object != null)
+                    ps.Object.ProxyIndex = i;
+                PhysicsSystems.Add(ps);
+            }
+        }
+
+        /// <summary>
+        /// Resolve an hkArray&lt;T*&gt; field: local fixup to storage, global fixups for each element.
+        /// </summary>
+        internal bool TryReadPointerArray(uint arrayFieldOffset, out List<uint> elementOffsets)
+        {
+            elementOffsets = null;
+            int ptrSize = Header.PointerSize;
+
+            /* In a tagfile the length is on the item and each slot holds an item index, so the array
+             * resolves through the same call the geometry readers use. */
+            if (Tagfile != null)
+            {
+                if (!Tagfile.TryResolvePointer(arrayFieldOffset, out uint elements, out int elementCount))
+                    return false;
+
+                elementOffsets = new List<uint>(Math.Max(0, elementCount));
+                for (int n = 0; n < elementCount; n++)
+                {
+                    if (!Tagfile.TryResolvePointer(elements + (uint)(n * ptrSize), out uint element, out _))
+                        return false;
+                    elementOffsets.Add(element);
+                }
+                return true;
+            }
+
+            int sizePos = (int)arrayFieldOffset + ptrSize;
+            if (sizePos + 4 > DataPayload.Length)
+                return false;
+
+            int count = BitConverter.ToInt32(DataPayload, sizePos);
+            if (count < 0)
+                return false;
+
+            uint arrayDataOffset = 0;
+            bool foundLocal = false;
+            for (int f = 0; f < LocalFixups.Count; f++)
+            {
+                if (LocalFixups[f].Src == arrayFieldOffset)
+                {
+                    arrayDataOffset = LocalFixups[f].Dst;
+                    foundLocal = true;
+                    break;
+                }
+            }
+            if (!foundLocal && count > 0)
+                return false;
+
+            elementOffsets = new List<uint>(count);
+            if (count == 0)
+                return true;
+
+            var globalBySrc = new Dictionary<uint, uint>(GlobalFixups.Count);
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            for (int n = 0; n < count; n++)
+            {
+                uint slot = arrayDataOffset + (uint)(n * ptrSize);
+                if (!globalBySrc.TryGetValue(slot, out uint dst))
+                    return false;
+                elementOffsets.Add(dst);
+            }
+            return true;
+        }
+
+        internal string ReadStringPtr(uint stringPtrFieldOffset)
+        {
+            //A tagfile string is an item of chars the word names by index, not a local fixup
+            if (Tagfile != null)
+                return Tagfile.ReadString((int)stringPtrFieldOffset);
+
+            for (int f = 0; f < LocalFixups.Count; f++)
+            {
+                if (LocalFixups[f].Src != stringPtrFieldOffset)
+                    continue;
+                int off = (int)LocalFixups[f].Dst;
+                if (off < 0 || off >= DataPayload.Length)
+                    return null;
+                int end = off;
+                while (end < DataPayload.Length && DataPayload[end] != 0)
+                    end++;
+                return Encoding.ASCII.GetString(DataPayload, off, end - off);
+            }
+            return null;
+        }
+
+        void ParseStaticCompoundInstances(Dictionary<int, string> classNames)
+        {
+            var classAtOffset = new Dictionary<uint, string>();
+            for (int i = 0; i < Objects.Count; i++)
+                classAtOffset[Objects[i].DataOffset] = Objects[i].ClassName;
+
+            var globalBySrc = new Dictionary<uint, uint>();
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                globalBySrc[GlobalFixups[i].Src] = GlobalFixups[i].Dst;
+
+            /* Index the local fixups once for the whole pass. Every compound needs two lookups in
+             * here - where its instance array lives, and the range scan TryGetCompoundArrayFields
+             * does - and doing them by scanning the list is quadratic in a file that holds
+             * thousands of compounds and tens of thousands of fixups. Porting a composite calls
+             * this once per imported compound, so it was most of the cost of a port. */
+            var localBySrc = new Dictionary<uint, uint>(LocalFixups.Count);
+            uint[] sortedLocalSrc = new uint[LocalFixups.Count];
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                sortedLocalSrc[i] = LocalFixups[i].Src;
+                if (!localBySrc.ContainsKey(LocalFixups[i].Src))
+                    localBySrc[LocalFixups[i].Src] = LocalFixups[i].Dst;
+            }
+            Array.Sort(sortedLocalSrc);
+
+            int ptrSize = Header.PointerSize;
+            int instancesArrayOffset = ptrSize == 8 ? 0x38 : 0x20;
+            int instanceStride = ptrSize == 8 ? 80 : 64;
+
+            for (int i = 0; i < Objects.Count; i++)
+            {
+                PackfileObject obj = Objects[i];
+                if (obj.Class != ObjectClass.StaticCompoundShape)
+                    continue;
+
+                var compound = new StaticCompoundShape
+                {
+                    ProxyIndex = obj.ProxyIndex,
+                    DataOffset = obj.DataOffset,
+                };
+
+                int arrayField = (int)obj.DataOffset + instancesArrayOffset;
+                if (arrayField + ptrSize + 8 > DataPayload.Length)
+                {
+                    StaticCompoundShapes.Add(compound);
+                    continue;
+                }
+
+                // hkArray: pointer (ignored in file — resolved via local fixup), size, capacity|flags
+                int sizePos = arrayField + ptrSize;
+                int count = BitConverter.ToInt32(DataPayload, sizePos);
+                if (count < 0) count = 0;
+
+                uint arrayDataOffset;
+                bool foundLocal = localBySrc.TryGetValue((uint)arrayField, out arrayDataOffset);
+
+                if (foundLocal && count > 0)
+                {
+                    for (int n = 0; n < count; n++)
+                    {
+                        uint instOff = arrayDataOffset + (uint)(n * instanceStride);
+                        if (instOff + instanceStride > DataPayload.Length)
+                            break;
+
+                        var inst = ReadCompoundInstance(instOff, ptrSize, globalBySrc, classAtOffset);
+                        compound.AddInstance(inst);
+                    }
+                }
+
+                // Domain AABB sits in the embedded tree header (after the nodes hkArray field).
+                if (TryGetCompoundTreeField(compound.DataOffset, out uint treeField, out uint domainOff, sortedLocalSrc))
+                {
+                    if (domainOff + 32 <= (uint)DataPayload.Length)
+                    {
+                        compound.DomainMin = ReadVector4(DataPayload, (int)domainOff);
+                        compound.DomainMax = ReadVector4(DataPayload, (int)domainOff + 16);
+                    }
+                }
+
+                StaticCompoundShapes.Add(compound);
+            }
+        }
+
+        /// <param name="sortedLocalSrc">
+        /// Optional: every local fixup's Src, sorted. Pass it when calling this in a loop - without
+        /// it the two fields are found by scanning the whole fixup list.
+        /// </param>
+        bool TryGetCompoundArrayFields(uint compoundDataOffset, out uint instancesField, out uint treeField, uint[] sortedLocalSrc = null)
+        {
+            instancesField = 0;
+            treeField = 0;
+
+            /* A tagfile has no local fixups to find the arrays by, but it does describe its own
+             * layout - so ask it where the members are rather than looking for pointers. */
+            if (Tagfile != null)
+            {
+                HavokTagfile.CompoundLayout layout = Tagfile.Compound();
+                if (!layout.Complete)
+                    return false;
+
+                instancesField = compoundDataOffset + (uint)layout.Instances;
+                treeField = compoundDataOffset + (uint)layout.Nodes;
+                return true;
+            }
+
+            uint end = compoundDataOffset + 0x100;
+
+            if (sortedLocalSrc != null)
+            {
+                //Same answer as the scan below: the list is sorted, so the first two in range are
+                //the two lowest.
+                int at = Array.BinarySearch(sortedLocalSrc, compoundDataOffset);
+                if (at < 0) at = ~at;
+                while (at > 0 && sortedLocalSrc[at - 1] >= compoundDataOffset) at--;
+                int found = 0;
+                for (; at < sortedLocalSrc.Length && sortedLocalSrc[at] < end; at++)
+                {
+                    if (sortedLocalSrc[at] < compoundDataOffset) continue;
+                    if (found == 0) instancesField = sortedLocalSrc[at];
+                    else { treeField = sortedLocalSrc[at]; return true; }
+                    found++;
+                }
+                return false;
+            }
+
+            var fields = new List<uint>();
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                uint src = LocalFixups[i].Src;
+                if (src >= compoundDataOffset && src < end)
+                    fields.Add(src);
+            }
+            fields.Sort();
+            if (fields.Count < 2)
+                return false;
+            instancesField = fields[0];
+            treeField = fields[1];
+            return true;
+        }
+
+        bool TryGetCompoundTreeField(uint compoundDataOffset, out uint treeField, out uint domainOffset, uint[] sortedLocalSrc = null)
+        {
+            domainOffset = 0;
+            if (!TryGetCompoundArrayFields(compoundDataOffset, out _, out treeField, sortedLocalSrc))
+                return false;
+
+            if (Tagfile != null)
+            {
+                domainOffset = compoundDataOffset + (uint)Tagfile.Compound().Domain;
+                return true;
+            }
+
+            // nodes hkArray then pad to 16, then domain AABB (32 bytes).
+            uint afterArray = treeField + (uint)Header.PointerSize + 8;
+            domainOffset = (afterArray + 15u) & ~15u;
+            return true;
+        }
+
+        internal void RewriteCompoundArrays(StaticCompoundShape compound)
+        {
+            int ptrSize = Header.PointerSize;
+            int instanceStride = ptrSize == 8 ? 80 : 64;
+            int count = compound.Instances.Count;
+
+            if (!TryGetCompoundArrayFields(compound.DataOffset, out uint instancesField, out uint treeField))
+                throw new InvalidOperationException("Could not locate compound instance/tree array fields.");
+            if (!TryGetCompoundTreeField(compound.DataOffset, out _, out uint domainOffset))
+                throw new InvalidOperationException("Could not locate compound domain AABB.");
+
+            // Build Storage6 BVH with quantized child AABBs (retail-style). All-zero xyz on
+            // non-root nodes is unsafe — Havok treats those as empty during mid-phase queries.
+            List<byte[]> nodes = count > 0
+                ? BuildStorage6Tree(compound)
+                : new List<byte[]>();
+
+            int instancesBytes = count * instanceStride;
+            int nodesBytes = nodes.Count * 6;
+            int nodesAligned = nodesBytes == 0 ? 0 : ((nodesBytes + 15) & ~15);
+
+            /* Write back over the arrays this compound already had, when the new ones fit.
+             *
+             * Appending unconditionally leaves the previous instance and node arrays behind as payload
+             * nothing points at any more. Nothing ever reclaims them, so saving a level twice with no
+             * changes at all grows COLLISION.HKX by about 1.5MB and 231 objects a time, for ever - the
+             * same source data producing a bigger file on every pass. Reusing the space keeps an
+             * unchanged save the same size, and a level that genuinely gains collision still appends. */
+            int newInstancesOff, newNodesOff;
+            if (Tagfile == null
+                && TryGetArrayRegion(instancesField, instanceStride, out uint oldInstancesOff, out int oldInstancesBytes)
+                && TryGetArrayRegion(treeField, 6, out uint oldNodesOff, out int oldNodesBytes)
+                && instancesBytes <= oldInstancesBytes
+                && nodesBytes <= oldNodesBytes)
+            {
+                newInstancesOff = (int)oldInstancesOff;
+                newNodesOff = (int)oldNodesOff;
+            }
+            /* The same on a tagfile, where the storage an array word names is its item's offset and
+             * count. Without it every Save & Build grew iOS bsp_torrens' collision file by 336 KB. What
+             * the old arrays held past their new ends belongs to no item any more, so it is cleared. */
+            else if (Tagfile != null
+                && TryGetTagfileArrayRegion(instancesField, instanceStride, out uint tagInstancesOff, out int tagInstancesBytes)
+                && TryGetTagfileArrayRegion(treeField, 6, out uint tagNodesOff, out int tagNodesBytes)
+                && instancesBytes <= tagInstancesBytes
+                && nodesBytes <= tagNodesBytes)
+            {
+                newInstancesOff = (int)tagInstancesOff;
+                newNodesOff = (int)tagNodesOff;
+                Array.Clear(DataPayload, newInstancesOff + instancesBytes, tagInstancesBytes - instancesBytes);
+                Array.Clear(DataPayload, newNodesOff + nodesBytes, tagNodesBytes - nodesBytes);
+            }
+            else
+            {
+                //Arrays that are about to move out belong to no item afterwards: clear them, as retail has no stale bytes
+                if (Tagfile != null)
+                {
+                    if (TryGetTagfileArrayRegion(instancesField, instanceStride, out uint staleInstances, out int staleInstancesBytes))
+                        Array.Clear(DataPayload, (int)staleInstances, staleInstancesBytes);
+                    if (TryGetTagfileArrayRegion(treeField, 6, out uint staleNodes, out int staleNodesBytes))
+                        Array.Clear(DataPayload, (int)staleNodes, staleNodesBytes);
+                }
+
+                newInstancesOff = AlignPayload(DataPayload.Length, 16);
+                newNodesOff = AlignPayload(newInstancesOff + Math.Max(instancesBytes, 0), 16);
+                int newPayloadLen = newNodesOff + nodesAligned;
+                // Always grow at least to the instances write cursor so size-0 still has a stable Dst.
+                if (newPayloadLen < newInstancesOff)
+                    newPayloadLen = newInstancesOff;
+
+                byte[] grown = new byte[newPayloadLen];
+                Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
+                DataPayload = grown;
+            }
+
+            HavokTagfile.CompoundLayout layout = Tagfile == null ? null : Tagfile.Compound();
+            int shapeField = layout == null ? 48 : layout.Shape;
+
+            for (int n = 0; n < count; n++)
+            {
+                int o = newInstancesOff + n * instanceStride;
+                CompoundInstance inst = compound.Instances[n];
+                WriteCompoundInstanceBytes(DataPayload, o, inst, ptrSize);
+                inst.DataOffset = (uint)o;
+
+                uint shapePtrField = (uint)(o + shapeField);
+
+                /* A tagfile spells the link out in the data as an item index and lists the word in
+                 * PTCH; a packfile leaves the word at zero and carries the link in its fixup table. */
+                if (layout != null && !Tagfile.SetPointer((int)shapePtrField, inst.ShapeDataOffset, layout.ShapeGroup))
+                {
+                    throw new InvalidOperationException(
+                        "No object in the tagfile at " + inst.ShapeDataOffset + " for an instance shape pointer.");
+                }
+
+                GlobalFixups.Add(new GlobalFixup
+                {
+                    Src = shapePtrField,
+                    DstSectionIndex = 2,
+                    Dst = inst.ShapeDataOffset,
+                });
+            }
+
+            for (int n = 0; n < nodes.Count; n++)
+                Buffer.BlockCopy(nodes[n], 0, DataPayload, newNodesOff + n * 6, 6);
+
+            int nodesOffset = nodes.Count > 0 ? newNodesOff : newInstancesOff;
+            if (layout != null)
+            {
+                /* An array's length lives on the item its m_data names, not in the data - so both
+                 * arrays move by moving their item, and m_size stays zero exactly as retail leaves it. */
+                if (!Tagfile.SetArray((int)instancesField, newInstancesOff, count, layout.InstancesGroup)
+                    || !Tagfile.SetArray((int)treeField, nodesOffset, nodes.Count, layout.NodesGroup))
+                {
+                    throw new InvalidOperationException(
+                        "Could not move the instance or node array for compound proxy " + compound.ProxyIndex + ".");
+                }
+            }
+            else
+            {
+                // Update hkArray size/capacity and local fixups.
+                WriteUInt32(DataPayload, (int)instancesField + ptrSize, (uint)count);
+                WriteUInt32(DataPayload, (int)instancesField + ptrSize + 4, (uint)count | 0x80000000u);
+                WriteUInt32(DataPayload, (int)treeField + ptrSize, (uint)nodes.Count);
+                WriteUInt32(DataPayload, (int)treeField + ptrSize + 4, (uint)nodes.Count | 0x80000000u);
+
+                // size 0 arrays: Havok still accepts a local fixup Dst; point at the append cursor.
+                SetLocalFixupDst(instancesField, (uint)newInstancesOff);
+                SetLocalFixupDst(treeField, (uint)nodesOffset);
+            }
+
+            // Domain AABB in embedded tree header (leave as-is if empty — still valid bounds).
+            WriteVector4(DataPayload, (int)domainOffset, compound.DomainMin);
+            WriteVector4(DataPayload, (int)domainOffset + 16, compound.DomainMax);
+        }
+
+        /// <summary>Where a tagfile array word's storage is: its item's offset, and count times the stride.</summary>
+        bool TryGetTagfileArrayRegion(uint arrayField, int stride, out uint dataOffset, out int byteCount)
+        {
+            dataOffset = 0;
+            byteCount = 0;
+            if (!Tagfile.TryResolvePointer(arrayField, out uint at, out int count) || at == 0 || count <= 0)
+                return false;
+            if ((long)at + (long)count * stride > DataPayload.Length)
+                return false;
+            dataOffset = at;
+            byteCount = count * stride;
+            return true;
+        }
+
+        /// <summary>
+        /// Where an hkArray field's data currently lives and how many bytes it has room for.
+        /// </summary>
+        bool TryGetArrayRegion(uint arrayField, int stride, out uint dataOffset, out int byteCount)
+        {
+            dataOffset = 0;
+            byteCount = 0;
+            if ((int)arrayField + Header.PointerSize + 4 > DataPayload.Length)
+                return false;
+
+            bool found = false;
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src != arrayField)
+                    continue;
+                dataOffset = LocalFixups[i].Dst;
+                found = true;
+                break;
+            }
+            if (!found)
+                return false;
+
+            int count = BitConverter.ToInt32(DataPayload, (int)arrayField + Header.PointerSize);
+            if (count <= 0)
+                return false;
+
+            byteCount = count * stride;
+            return dataOffset + (uint)byteCount <= (uint)DataPayload.Length;
+        }
+
+        void SetLocalFixupDst(uint src, uint dst)
+        {
+            for (int i = 0; i < LocalFixups.Count; i++)
+            {
+                if (LocalFixups[i].Src == src)
+                {
+                    LocalFixup lf = LocalFixups[i];
+                    lf.Dst = dst;
+                    LocalFixups[i] = lf;
+                    return;
+                }
+            }
+            LocalFixups.Add(new LocalFixup { Src = src, Dst = dst });
+        }
+
+        void WriteCompoundInstanceBytes(byte[] data, int offset, CompoundInstance inst, int ptrSize)
+        {
+            int o = offset;
+            WriteVector4(data, o, inst.Translation); o += 16;
+            WriteSingle(data, o, inst.Rotation.X); o += 4;
+            WriteSingle(data, o, inst.Rotation.Y); o += 4;
+            WriteSingle(data, o, inst.Rotation.Z); o += 4;
+            WriteSingle(data, o, inst.Rotation.W); o += 4;
+            WriteVector4(data, o, inst.Scale); o += 16;
+            // shape pointer zeroed; global fixup carries the link
+            if (ptrSize == 8)
+            {
+                WriteUInt64(data, o, 0); o += 8;
+            }
+            else
+            {
+                WriteUInt32(data, o, 0); o += 4;
+            }
+            WriteUInt32(data, o, inst.FilterInfo); o += 4;
+            WriteUInt32(data, o, inst.ChildFilterInfoMask); o += 4;
+            if (ptrSize == 8)
+                WriteUInt64(data, o, inst.UserData);
+            else
+                WriteUInt32(data, o, (uint)inst.UserData);
+        }
+
+        /// <summary>
+        /// Build a balanced Storage6 BVH with 2N-1 nodes. Leaf AABBs come from each instance's
+        /// referenced child compound domain (transformed into host space). Each node's three
+        /// <c>xyz</c> bytes hold the child AABB compressed against the parent AABB — see
+        /// <see cref="EncodeCodec3Axis"/>.
+        /// </summary>
+        List<byte[]> BuildStorage6Tree(StaticCompoundShape compound)
+        {
+            int leafCount = compound.Instances.Count;
+            var leafAabbs = new (Vector3 Min, Vector3 Max)[leafCount];
+            var shapeByOffset = new Dictionary<uint, StaticCompoundShape>();
+            for (int i = 0; i < StaticCompoundShapes.Count; i++)
+            {
+                StaticCompoundShape s = StaticCompoundShapes[i];
+                if (s != null && !shapeByOffset.ContainsKey(s.DataOffset))
+                    shapeByOffset[s.DataOffset] = s;
+            }
+
+            Vector3 unionMin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 unionMax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+            for (int i = 0; i < leafCount; i++)
+            {
+                CompoundInstance inst = compound.Instances[i];
+                Vector3 t = new Vector3(inst.Translation.X, inst.Translation.Y, inst.Translation.Z);
+                Vector3 s = new Vector3(inst.Scale.X, inst.Scale.Y, inst.Scale.Z);
+                if (shapeByOffset.TryGetValue(inst.ShapeDataOffset, out StaticCompoundShape child)
+                    && child.DomainMin.X <= child.DomainMax.X)
+                {
+                    GetTransformedAabb(
+                        new Vector3(child.DomainMin.X, child.DomainMin.Y, child.DomainMin.Z),
+                        new Vector3(child.DomainMax.X, child.DomainMax.Y, child.DomainMax.Z),
+                        t, inst.Rotation, s,
+                        out leafAabbs[i].Min, out leafAabbs[i].Max);
+                }
+                else if (TryGetShapeLocalAabb(inst.ShapeDataOffset, inst.ShapeClassName, out Vector3 lmin, out Vector3 lmax))
+                {
+                    GetTransformedAabb(lmin, lmax, t, inst.Rotation, s,
+                        out leafAabbs[i].Min, out leafAabbs[i].Max);
+                }
+                else if (_rebuildOriginal != null && _rebuildOriginal.TryGetValue(compound, out var before)
+                    && before.DomainMin.X <= before.DomainMax.X && !float.IsInfinity(before.DomainMin.X))
+                {
+                    /* A child we cannot size: the whole of what the compound covered before is a safe box
+                       for it. A guessed box around the instance origin is not - anything of the shape
+                       outside it is skipped by every query, and was (issue 706). */
+                    leafAabbs[i].Min = new Vector3(before.DomainMin.X, before.DomainMin.Y, before.DomainMin.Z);
+                    leafAabbs[i].Max = new Vector3(before.DomainMax.X, before.DomainMax.Y, before.DomainMax.Z);
+                }
+                else
+                {
+                    // Point / unknown shape — small pad around the instance origin.
+                    Vector3 pad = new Vector3(0.5f, 0.5f, 0.5f);
+                    leafAabbs[i].Min = t - pad;
+                    leafAabbs[i].Max = t + pad;
+                }
+
+                unionMin = Vector3.Min(unionMin, leafAabbs[i].Min);
+                unionMax = Vector3.Max(unionMax, leafAabbs[i].Max);
+            }
+
+            // Retail roots use xyz=(0,0,0): domain must tightly contain leaf AABBs. Rebuild from
+            // the union so inflated ExpandDomain padding cannot shrink the root away from content.
+            if (leafCount > 0 && unionMin.X <= unionMax.X)
+            {
+                const float domainPad = 0.01f;
+                Vector3 pad = new Vector3(domainPad, domainPad, domainPad);
+                unionMin -= pad;
+                unionMax += pad;
+                compound.DomainMin = new Vector4(unionMin.X, unionMin.Y, unionMin.Z, 0);
+                compound.DomainMax = new Vector4(unionMax.X, unionMax.Y, unionMax.Z, 0);
+            }
+
+            Vector3 domainMin = new Vector3(compound.DomainMin.X, compound.DomainMin.Y, compound.DomainMin.Z);
+            Vector3 domainMax = new Vector3(compound.DomainMax.X, compound.DomainMax.Y, compound.DomainMax.Z);
+
+            for (int i = 0; i < leafCount; i++)
+            {
+                leafAabbs[i].Min = Vector3.Clamp(leafAabbs[i].Min, domainMin, domainMax);
+                leafAabbs[i].Max = Vector3.Clamp(leafAabbs[i].Max, domainMin, domainMax);
+            }
+
+            var leafIndices = new List<int>(leafCount);
+            for (int i = 0; i < leafCount; i++)
+                leafIndices.Add(i);
+
+            var nodes = new List<byte[]>();
+            if (leafCount > 0)
+                BuildStorage6Recursive(nodes, leafIndices, leafAabbs, domainMin, domainMax);
+            VerifyStorage6Tree(nodes, leafAabbs, domainMin, domainMax);
+            return nodes;
+        }
+
+        /// <summary>
+        /// Walk the built tree exactly as Havok will and check every leaf's decoded AABB still
+        /// contains its instance. A clipped leaf is invisible to mid-phase queries, which shows up
+        /// in game as geometry you fall straight through.
+        /// </summary>
+        static void VerifyStorage6Tree(
+            List<byte[]> nodes,
+            (Vector3 Min, Vector3 Max)[] leafAabbs,
+            Vector3 domainMin,
+            Vector3 domainMax)
+        {
+            if (nodes.Count == 0)
+                return;
+
+            int clipped = 0;
+            float worst = 0f;
+            var stack = new Stack<(int Index, Vector3 Min, Vector3 Max)>();
+            stack.Push((0, domainMin, domainMax));
+            while (stack.Count > 0)
+            {
+                var cur = stack.Pop();
+                byte[] node = nodes[cur.Index];
+                DecodeCodec3Axis(cur.Min, cur.Max, node[0], node[1], node[2],
+                    out Vector3 min, out Vector3 max);
+
+                int payload = node[4] | (node[5] << 8);
+                if ((node[3] & 0x80) == 0)
+                {
+                    var leaf = leafAabbs[payload];
+                    float over = Math.Max(
+                        Math.Max(Math.Max(min.X - leaf.Min.X, min.Y - leaf.Min.Y), min.Z - leaf.Min.Z),
+                        Math.Max(Math.Max(leaf.Max.X - max.X, leaf.Max.Y - max.Y), leaf.Max.Z - max.Z));
+                    if (over > 1e-4f)
+                    {
+                        clipped++;
+                        if (over > worst) worst = over;
+                    }
+                    continue;
+                }
+
+                stack.Push((cur.Index + 1, min, max));
+                stack.Push((cur.Index + 2 * payload, min, max));
+            }
+
+            if (clipped > 0)
+                Console.WriteLine("  WARNING: " + clipped + " BVH leaves clipped (worst " + worst + "m)");
+        }
+
+        static int BuildStorage6Recursive(
+            List<byte[]> nodes,
+            List<int> leaves,
+            (Vector3 Min, Vector3 Max)[] leafAabbs,
+            Vector3 parentMin,
+            Vector3 parentMax)
+        {
+            int nodeIndex = nodes.Count;
+            nodes.Add(new byte[6]); // placeholder
+
+            Vector3 trueMin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 trueMax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            for (int i = 0; i < leaves.Count; i++)
+            {
+                var a = leafAabbs[leaves[i]];
+                trueMin = Vector3.Min(trueMin, a.Min);
+                trueMax = Vector3.Max(trueMax, a.Max);
+            }
+            trueMin = Vector3.Max(trueMin, parentMin);
+            trueMax = Vector3.Min(trueMax, parentMax);
+
+            byte qx = EncodeCodec3Axis(parentMin.X, parentMax.X, trueMin.X, trueMax.X);
+            byte qy = EncodeCodec3Axis(parentMin.Y, parentMax.Y, trueMin.Y, trueMax.Y);
+            byte qz = EncodeCodec3Axis(parentMin.Z, parentMax.Z, trueMin.Z, trueMax.Z);
+
+            // Children are compressed against the box the runtime will decode, not the tight one.
+            DecodeCodec3Axis(parentMin, parentMax, qx, qy, qz, out Vector3 nodeMin, out Vector3 nodeMax);
+
+            if (leaves.Count == 1)
+            {
+                nodes[nodeIndex] = EncodeStorage6Node(qx, qy, qz, 0, (ushort)leaves[0]);
+                return 1; // leaf count
+            }
+
+            // Split along longest axis of the true (tight) AABB.
+            Vector3 extent = trueMax - trueMin;
+            int axis = 0;
+            if (extent.Y > extent.X) axis = 1;
+            if (extent.Z > ((axis == 0) ? extent.X : extent.Y)) axis = 2;
+
+            leaves.Sort((a, b) =>
+            {
+                float ca = Centre(leafAabbs[a], axis);
+                float cb = Centre(leafAabbs[b], axis);
+                return ca.CompareTo(cb);
+            });
+
+            /* Split where the box divides, not where the count divides.
+             *
+             * Handing each side half the objects builds a perfectly balanced tree - every retail leaf
+             * would sit at depth 13 or 14. Retail's own trees are nothing like that: leaves run from
+             * depth 4 to 25, deep where the level is dense and shallow where it is empty, which is
+             * what splitting space rather than counting objects produces. The difference is not
+             * cosmetic. A count split will happily put two objects at opposite ends of a room in one
+             * node, so that node's box barely shrinks from its parent's - and with four bits an axis,
+             * a box that does not shrink spends its precision describing empty space. Splitting at the
+             * midpoint keeps every box tight around what is actually in it. Where everything lands on
+             * one side (a row of identical panels, all centred on the same plane) there is no spatial
+             * split to make, so fall back to halving the count and let the next level try again. */
+            float mid = (Centre(leafAabbs[leaves[0]], axis) + Centre(leafAabbs[leaves[leaves.Count - 1]], axis)) * 0.5f;
+            int split = 0;
+            while (split < leaves.Count && Centre(leafAabbs[leaves[split]], axis) < mid)
+                split++;
+            if (split < 1 || split >= leaves.Count)
+                split = leaves.Count / 2;
+            if (split < 1) split = 1;
+            if (split >= leaves.Count) split = leaves.Count - 1;
+
+            var left = leaves.GetRange(0, split);
+            var right = leaves.GetRange(split, leaves.Count - split);
+
+            int leftLeaves = BuildStorage6Recursive(nodes, left, leafAabbs, nodeMin, nodeMax);
+            int rightLeaves = BuildStorage6Recursive(nodes, right, leafAabbs, nodeMin, nodeMax);
+            _ = rightLeaves;
+
+            // Storage6 loData = number of LEAVES in the left subtree (not node count).
+            // Traversal: left = i+1, right = i + 2*loData.
+            nodes[nodeIndex] = EncodeStorage6Node(qx, qy, qz, 0x80, (ushort)leftLeaves);
+            return leftLeaves + rightLeaves;
+        }
+
+        static float Centre((Vector3 Min, Vector3 Max) a, int axis)
+        {
+            switch (axis)
+            {
+                case 1: return (a.Min.Y + a.Max.Y) * 0.5f;
+                case 2: return (a.Min.Z + a.Max.Z) * 0.5f;
+                default: return (a.Min.X + a.Max.X) * 0.5f;
+            }
+        }
+
+        /// <summary>
+        /// Codec3Axis packs one axis of a child AABB into a single byte, as two 4-bit insets
+        /// measured from each end of the parent AABB. Both insets are squared on decode:
+        /// <c>childMin = parentMin + hi*hi/226 * extent</c> and
+        /// <c>childMax = parentMax - lo*lo/226 * extent</c>, giving fine resolution where a child
+        /// hugs the parent bounds and coarse resolution in the middle. A collapsed axis stores
+        /// 255, which decodes back to the (zero-width) parent range.
+        /// </summary>
+        internal static byte EncodeCodec3Axis(float parentMin, float parentMax, float childMin, float childMax)
+        {
+            float extent = parentMax - parentMin;
+            if (Math.Abs(extent) < 1e-6f)
+                return 255;
+            int hi = Codec3AxisNibble(parentMin, extent, childMin, +1f);
+            int lo = Codec3AxisNibble(parentMax, extent, childMax, -1f);
+            return (byte)((hi << 4) | lo);
+        }
+
+        /// <summary>Squared-inset scale shared by encode and decode: nibble n means an inset of n*n/226 of the parent extent.</summary>
+        const float Codec3AxisScale = 1f / 226f;
+
+        /// <summary>
+        /// Largest nibble whose decoded edge still stays outside the child bound.
+        /// </summary>
+        static int Codec3AxisNibble(float parentEdge, float extent, float childEdge, float dir)
+        {
+            float inset = (childEdge - parentEdge) * dir / extent;
+            if (!(inset > 0f)) return 0;
+            int n = (int)Math.Sqrt(inset * 226.0);
+            if (n > 15) n = 15;
+            while (n > 0)
+            {
+                float decoded = parentEdge + dir * ((n * n) * Codec3AxisScale * extent);
+                bool contained = dir > 0f ? decoded <= childEdge : decoded >= childEdge;
+                if (contained) break;
+                n--;
+            }
+            return n;
+        }
+
+        internal static void DecodeCodec3Axis(
+            Vector3 parentMin, Vector3 parentMax, byte qx, byte qy, byte qz,
+            out Vector3 childMin, out Vector3 childMax)
+        {
+            DecodeCodec3AxisComponent(parentMin.X, parentMax.X, qx, out float minX, out float maxX);
+            DecodeCodec3AxisComponent(parentMin.Y, parentMax.Y, qy, out float minY, out float maxY);
+            DecodeCodec3AxisComponent(parentMin.Z, parentMax.Z, qz, out float minZ, out float maxZ);
+            childMin = new Vector3(minX, minY, minZ);
+            childMax = new Vector3(maxX, maxY, maxZ);
+        }
+
+        static void DecodeCodec3AxisComponent(float parentMin, float parentMax, byte q, out float min, out float max)
+        {
+            float extent = parentMax - parentMin;
+            int hi = q >> 4;
+            int lo = q & 0xF;
+            min = parentMin + (hi * hi) * Codec3AxisScale * extent;
+            max = parentMax - (lo * lo) * Codec3AxisScale * extent;
+        }
+
+        [Obsolete("Use BuildStorage6Tree — all-zero xyz mid-phase is unsafe for non-root nodes.")]
+        static List<byte[]> BuildLooseStorage6Tree(int leafCount)
+        {
+            var nodes = new List<byte[]>();
+            if (leafCount <= 0)
+                return nodes;
+
+            var leafIndices = new List<int>(leafCount);
+            for (int i = 0; i < leafCount; i++)
+                leafIndices.Add(i);
+
+            BuildLooseStorage6Recursive(nodes, leafIndices);
+            return nodes;
+        }
+
+        static int BuildLooseStorage6Recursive(List<byte[]> nodes, List<int> leaves)
+        {
+            int nodeIndex = nodes.Count;
+            nodes.Add(new byte[6]); // placeholder
+
+            if (leaves.Count == 1)
+            {
+                nodes[nodeIndex] = EncodeStorage6Node(0, 0, 0, 0, (ushort)leaves[0]);
+                return 1; // leaf count
+            }
+
+            int mid = leaves.Count / 2;
+            if (mid < 1) mid = 1;
+            var left = leaves.GetRange(0, mid);
+            var right = leaves.GetRange(mid, leaves.Count - mid);
+
+            int leftLeaves = BuildLooseStorage6Recursive(nodes, left);
+            int rightLeaves = BuildLooseStorage6Recursive(nodes, right);
+            _ = rightLeaves;
+
+            nodes[nodeIndex] = EncodeStorage6Node(0, 0, 0, 0x80, (ushort)leftLeaves);
+            return leftLeaves + rightLeaves;
+        }
+
+        static byte[] EncodeStorage6Node(byte x, byte y, byte z, byte hi, ushort lo)
+        {
+            return new byte[]
+            {
+                x, y, z, hi,
+                (byte)(lo & 0xFF),
+                (byte)((lo >> 8) & 0xFF),
+            };
+        }
+
+        internal static int AlignPayload(int offset, int align)
+        {
+            int mask = align - 1;
+            return (offset + mask) & ~mask;
+        }
+
+        static uint FloatToUInt(float f)
+        {
+            return BitConverter.ToUInt32(BitConverter.GetBytes(f), 0);
+        }
+
+        static float UIntToFloat(uint u)
+        {
+            return BitConverter.ToSingle(BitConverter.GetBytes(u), 0);
+        }
+
+        CompoundInstance ReadCompoundInstance(
+            uint offset,
+            int ptrSize,
+            Dictionary<uint, uint> globalBySrc,
+            Dictionary<uint, string> classAtOffset)
+        {
+            int o = (int)offset;
+            var inst = new CompoundInstance { DataOffset = offset };
+
+            inst.Translation = ReadVector4(DataPayload, o); o += 16;
+            inst.Rotation = new Quaternion(
+                BitConverter.ToSingle(DataPayload, o),
+                BitConverter.ToSingle(DataPayload, o + 4),
+                BitConverter.ToSingle(DataPayload, o + 8),
+                BitConverter.ToSingle(DataPayload, o + 12));
+            o += 16;
+            inst.Scale = ReadVector4(DataPayload, o); o += 16;
+
+            uint shapePtrField = offset + 48;
+            if (globalBySrc.TryGetValue(shapePtrField, out uint shapeOff))
+            {
+                inst.ShapeDataOffset = shapeOff;
+                classAtOffset.TryGetValue(shapeOff, out string shapeClass);
+                inst.ShapeClassName = shapeClass ?? "";
+            }
+
+            o = (int)offset + 48 + ptrSize;
+            inst.FilterInfo = BitConverter.ToUInt32(DataPayload, o); o += 4;
+            inst.ChildFilterInfoMask = BitConverter.ToUInt32(DataPayload, o); o += 4;
+            if (ptrSize == 8)
+            {
+                inst.UserData = BitConverter.ToUInt64(DataPayload, o);
+            }
+            else
+            {
+                inst.UserData = BitConverter.ToUInt32(DataPayload, o);
+            }
+
+            return inst;
+        }
+
+        /// <summary>Original file bytes as loaded; see <see cref="SavePatched"/>.</summary>
+        private byte[] _rawFile;
+
+        /// <summary>
+        /// Write the file back as the ORIGINAL bytes with only the in-memory compound-instance
+        /// and BVH-domain edits patched in at their absolute offsets. Unlike <c>Save</c>, this
+        /// cannot disturb any structure the parser does not model - measured necessary for
+        /// editing RETAIL collision files: a full reconstruction of a pristine COLLISION.HKX
+        /// (even with zero edits) breaks zone streaming level-wide and crashes the game, while
+        /// our own rebuilt files survive it because they were constructed by this writer.
+        /// </summary>
+        public bool SavePatched()
+        {
+            if (_rawFile == null || string.IsNullOrEmpty(_filepath))
+                return false;
+            byte[] outBytes = (byte[])_rawFile.Clone();
+            int baseOff = (int)_dataSectionOffset;
+            foreach (StaticCompoundShape compound in StaticCompoundShapes)
+            {
+                foreach (CompoundInstance inst in compound.Instances)
+                {
+                    int o = baseOff + (int)inst.DataOffset;
+                    if (o < 0 || o + 48 > outBytes.Length)
+                        continue;
+                    WriteVector4(outBytes, o, inst.Translation);
+                    WriteSingle(outBytes, o + 16, inst.Rotation.X);
+                    WriteSingle(outBytes, o + 20, inst.Rotation.Y);
+                    WriteSingle(outBytes, o + 24, inst.Rotation.Z);
+                    WriteSingle(outBytes, o + 28, inst.Rotation.W);
+                    WriteVector4(outBytes, o + 32, inst.Scale);
+                }
+                if (compound.DomainMin.X <= compound.DomainMax.X &&
+                    TryGetCompoundTreeField(compound.DataOffset, out _, out uint domainOff) &&
+                    baseOff + (int)domainOff + 32 <= outBytes.Length)
+                {
+                    WriteVector4(outBytes, baseOff + (int)domainOff, compound.DomainMin);
+                    WriteVector4(outBytes, baseOff + (int)domainOff + 16, compound.DomainMax);
+                }
+            }
+            System.IO.File.WriteAllBytes(_filepath, outBytes);
+            return true;
+        }
+
+        /// <summary>
+        /// Rigidly translate every static-compound collision instance (and each compound's BVH
+        /// domain) by <paramref name="delta"/>. The Storage6 tree quantises node AABBs relative
+        /// to the domain, so moving instances and domain together keeps every quantised tree
+        /// byte valid - no rebuild. Instance W flag bits are preserved. Call Save afterwards.
+        /// Returns the number of instances moved.
+        /// </summary>
+        public int TranslateStaticGeometry(Vector3 delta)
+        {
+            int moved = 0;
+            if (delta == Vector3.Zero)
+                return moved;
+            foreach (StaticCompoundShape compound in StaticCompoundShapes)
+            {
+                foreach (CompoundInstance inst in compound.Instances)
+                {
+                    inst.Translation = new Vector4(inst.Translation.X + delta.X,
+                                                   inst.Translation.Y + delta.Y,
+                                                   inst.Translation.Z + delta.Z,
+                                                   inst.Translation.W);
+                    moved++;
+                }
+                if (compound.DomainMin.X <= compound.DomainMax.X)
+                {
+                    compound.DomainMin = new Vector4(compound.DomainMin.X + delta.X, compound.DomainMin.Y + delta.Y,
+                                                     compound.DomainMin.Z + delta.Z, compound.DomainMin.W);
+                    compound.DomainMax = new Vector4(compound.DomainMax.X + delta.X, compound.DomainMax.Y + delta.Y,
+                                                     compound.DomainMax.Z + delta.Z, compound.DomainMax.W);
+                    if (TryGetCompoundTreeField(compound.DataOffset, out _, out uint domainOff) &&
+                        domainOff + 32 <= (uint)DataPayload.Length)
+                    {
+                        WriteVector4(DataPayload, (int)domainOff, compound.DomainMin);
+                        WriteVector4(DataPayload, (int)domainOff + 16, compound.DomainMax);
+                    }
+                }
+            }
+            return moved;
+        }
+
+        void WriteBackCompoundInstances()
+        {
+            int ptrSize = Header.PointerSize;
+            for (int c = 0; c < StaticCompoundShapes.Count; c++)
+            {
+                StaticCompoundShape compound = StaticCompoundShapes[c];
+                for (int n = 0; n < compound.Instances.Count; n++)
+                {
+                    CompoundInstance inst = compound.Instances[n];
+                    int o = (int)inst.DataOffset;
+                    if (o < 0 || o + 48 + ptrSize + 8 > DataPayload.Length)
+                        continue;
+
+                    WriteVector4(DataPayload, o, inst.Translation); o += 16;
+                    WriteSingle(DataPayload, o, inst.Rotation.X); o += 4;
+                    WriteSingle(DataPayload, o, inst.Rotation.Y); o += 4;
+                    WriteSingle(DataPayload, o, inst.Rotation.Z); o += 4;
+                    WriteSingle(DataPayload, o, inst.Rotation.W); o += 4;
+                    WriteVector4(DataPayload, o, inst.Scale); o += 16;
+
+                    // Shape pointer stays zero in-file; global fixup table owns the link.
+                    o = (int)inst.DataOffset + 48 + ptrSize;
+                    WriteUInt32(DataPayload, o, inst.FilterInfo); o += 4;
+                    WriteUInt32(DataPayload, o, inst.ChildFilterInfoMask); o += 4;
+                    if (ptrSize == 8)
+                        WriteUInt64(DataPayload, o, inst.UserData);
+                    else
+                        WriteUInt32(DataPayload, o, (uint)inst.UserData);
+                }
+            }
+        }
+
+        static Vector4 ReadVector4(byte[] data, int offset)
+        {
+            return new Vector4(
+                BitConverter.ToSingle(data, offset),
+                BitConverter.ToSingle(data, offset + 4),
+                BitConverter.ToSingle(data, offset + 8),
+                BitConverter.ToSingle(data, offset + 12));
+        }
+
+        internal static void WriteVector4(byte[] data, int offset, Vector4 v)
+        {
+            WriteSingle(data, offset, v.X);
+            WriteSingle(data, offset + 4, v.Y);
+            WriteSingle(data, offset + 8, v.Z);
+            WriteSingle(data, offset + 12, v.W);
+        }
+
+        internal static void WriteSingle(byte[] data, int offset, float v)
+        {
+            byte[] bytes = BitConverter.GetBytes(v);
+            Buffer.BlockCopy(bytes, 0, data, offset, 4);
+        }
+
+        internal static void WriteUInt32(byte[] data, int offset, uint v)
+        {
+            byte[] bytes = BitConverter.GetBytes(v);
+            Buffer.BlockCopy(bytes, 0, data, offset, 4);
+        }
+
+        static void WriteUInt64(byte[] data, int offset, ulong v)
+        {
+            byte[] bytes = BitConverter.GetBytes(v);
+            Buffer.BlockCopy(bytes, 0, data, offset, 8);
+        }
+
+        static ObjectClass Classify(string className)
+        {
+            if (string.IsNullOrEmpty(className))
+                return ObjectClass.Unknown;
+            switch (className)
+            {
+                case "hkRootLevelContainer": return ObjectClass.RootLevelContainer;
+                case "hkpPhysicsData": return ObjectClass.PhysicsData;
+                case "hkpPhysicsSystem": return ObjectClass.PhysicsSystem;
+                case "hkpWorldCinfo": return ObjectClass.WorldCinfo;
+                case "hkpGroupFilter": return ObjectClass.GroupFilter;
+                case "hkpDefaultConvexListFilter": return ObjectClass.DefaultConvexListFilter;
+                case "hkpRigidBody": return ObjectClass.RigidBody;
+                case "hkpListShape": return ObjectClass.ListShape;
+                case "hkpStaticCompoundShape": return ObjectClass.StaticCompoundShape;
+                case "hkpBvCompressedMeshShape": return ObjectClass.BvCompressedMeshShape;
+                case "hkpBoxShape": return ObjectClass.BoxShape;
+                default: return ObjectClass.Unknown;
+            }
+        }
+        #endregion
+    }
+}

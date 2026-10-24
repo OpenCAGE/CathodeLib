@@ -1,0 +1,2591 @@
+#if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using CATHODE;
+using CATHODE.Enums;
+using CathodeLib;
+using DotRecast.Core;
+using DotRecast.Core.Numerics;
+using DotRecast.Detour;
+using DotRecast.Recast;
+using DotRecast.Recast.Geom;
+
+namespace CathodeLib.NavMesh
+{
+    public static class NavMeshBaker
+    {
+        const int DT_NULL_LINK = unchecked((int)0xffffffff);
+
+        public sealed class BakeResult
+        {
+            public NavigationMesh NavMesh;
+            public int InputTriangles;
+            public int InputVertices;
+            public int ReachablePolysKept;
+            public int ReachablePolysCulled;
+            public int ExclusionPolysCulled;
+            public int BarrierPolysStamped;
+            public int BarriersWithCoverage;
+            public int BackstagePolys;
+            public int BackstageConnections;
+            public string BackstageWarning;
+            public List<PathBarrierResources.NAV_MESH_BARRIER_RESOURCE> PathBarriers =
+                new List<PathBarrierResources.NAV_MESH_BARRIER_RESOURCE>();
+            public string Message;
+        }
+
+        /// <summary>
+        /// Bakes a navmesh for every state in <see cref="Instancing.States"/> and hands the results
+        /// back through the level: each <see cref="Level.State.NavMesh"/> is replaced, and
+        /// PATH_BARRIER_RESOURCES is rebuilt from state 0. Nothing is written to disk here —
+        /// <see cref="Level.Save"/> persists it in the same pass as the rest of the level so
+        /// resource indexes stay consistent.
+        /// </summary>
+        /// <summary>
+        /// Bake the level's navmesh, retrying at a coarser vertical voxel if Recast cannot encode it.
+        /// </summary>
+        public static void BakeLevel(
+            Level level,
+            Instancing instancing,
+            NavMeshBakeSettings settings,
+            Action<string> log = null)
+        {
+            if (settings == null)
+                return;
+
+            float authoredCellHeight = settings.CellHeight;
+            try
+            {
+                for (int attempt = 0; ; attempt++)
+                {
+                    try
+                    {
+                        BakeLevelOnce(level, instancing, settings, log);
+                        return;
+                    }
+                    catch (Exception e) when (attempt < settings.CellHeightRetries && IsTooManyLayers(e))
+                    {
+                        settings.CellHeight *= 2.0f;
+                        log?.Invoke("NavMesh: " + e.Message + " - retrying at cell height " +
+                                    settings.CellHeight.ToString(System.Globalization.CultureInfo.InvariantCulture) + ".");
+                    }
+                }
+            }
+            finally
+            {
+                settings.CellHeight = authoredCellHeight;
+            }
+        }
+
+        /// <summary>The one failure a coarser vertical voxel can actually clear.</summary>
+        private static bool IsTooManyLayers(Exception e)
+        {
+            return e != null && e.Message != null && e.Message.IndexOf("too many layers", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void BakeLevelOnce(
+            Level level,
+            Instancing instancing,
+            NavMeshBakeSettings settings,
+            Action<string> log = null)
+        {
+            // No settings means the caller did not ask for a navmesh, so nothing is baked and
+            // whatever the level already carries is left untouched.
+            if (settings == null)
+                return;
+            if (level == null)
+                throw new ArgumentNullException(nameof(level));
+            if (instancing == null)
+                throw new ArgumentNullException(nameof(instancing));
+
+            IReadOnlyList<Instancing.StateProperties> states = instancing.States;
+            if (states == null || states.Count == 0)
+                throw new ArgumentException("No state data to bake - needs a full Instancing pass.", nameof(instancing));
+
+            //State 0 collects the authoring data (seeds, off-mesh links, barriers) that later states reuse.
+            CollisionNavMeshSoup sharedAuthoring = null;
+            BakeResult firstResult = null;
+
+            /* Each state's Recast build is single-threaded and seconds long (~7 s a state on HAB_Airport),
+             * and the states share nothing a bake writes: the soups are collected here on this thread, in
+             * state order exactly as before (collecting reads nothing a bake changes), and each state's
+             * bake starts on its own thread as soon as its soup is ready. The bakes only write their own
+             * results - plus the area ids of the barrier list the soups share, which every bake sets to
+             * the same values. What the sequential loop did in between - the log lines, publishing each
+             * state's navmesh, the flood diagnostics - is then done in state order, and the first failure
+             * in state order is the one rethrown, after the states before it were published and with every
+             * bake finished, which is where the sequential loop would have stopped. */
+            int stateCount = states.Count;
+            var pending = new List<PendingStateBake>(stateCount);
+            Exception collectFailure = null;
+            try
+            {
+                foreach (Instancing.StateProperties state in states)
+                {
+                    //The sequential loop stopped at a failed bake: nothing past it is collected or baked
+                    if (pending.Exists(p => p.Task != null && p.Task.IsFaulted))
+                        break;
+
+                    var bake = new PendingStateBake { State = state };
+                    pending.Add(bake);
+                    bake.Log.Add("NavMesh STATE_" + state.StateIndex + ": " + state.Summary);
+
+                    CollisionNavMeshSoup soup = CollisionNavMeshSoup.CollectFromLevel(
+                        level,
+                        state.ExcludedCollision != null && state.ExcludedCollision.Count > 0 ? state.ExcludedCollision : null,
+                        sharedAuthoring,
+                        settings,
+                        instancing);
+                    if (sharedAuthoring == null)
+                        sharedAuthoring = soup;
+
+                    bake.Log.Add("  soup: verts=" + soup.VertexCount + " tris=" + soup.TriangleCount +
+                                " seeds=" + soup.ReachabilitySeeds.Count + " excluded=" + (state.ExcludedCollision?.Count ?? 0) +
+                                " propsSkipped=" + soup.PropInstancesSkipped + " absurdTrisCulled=" + soup.AbsurdTrisCulled);
+
+                    SeedFloodDiagnostics diagnostics = bake.Diagnostics;
+                    bake.Task = System.Threading.Tasks.Task.Factory.StartNew(() =>
+                    {
+                        //Recast's own warnings are held too, and printed where the sequential bake printed them
+                        RcContext.Capture = diagnostics.RecastLines;
+                        try { return Bake(soup, settings, diagnostics); }
+                        finally { RcContext.Capture = null; }
+                    }, System.Threading.CancellationToken.None, System.Threading.Tasks.TaskCreationOptions.LongRunning,
+                        System.Threading.Tasks.TaskScheduler.Default);
+                }
+            }
+            catch (Exception e)
+            {
+                //The state whose soup failed never baked; the ones before it are published first, below
+                collectFailure = e;
+            }
+
+            Exception failure = null;
+            foreach (PendingStateBake bake in pending)
+            {
+                if (failure != null)
+                    break;
+                foreach (string line in bake.Log)
+                    log?.Invoke(line);
+                if (bake.Task == null)
+                    break;
+
+                BakeResult result;
+                try
+                {
+                    result = bake.Task.GetAwaiter().GetResult();
+                }
+                catch (Exception e)
+                {
+                    foreach (string line in bake.Diagnostics.RecastLines)
+                        Console.WriteLine(line);
+                    if (bake.Diagnostics.Stats != null)
+                        LastSeedFloodStats = bake.Diagnostics.Stats;
+                    failure = e;
+                    break;
+                }
+                foreach (string line in bake.Diagnostics.RecastLines)
+                    Console.WriteLine(line);
+                if (bake.Diagnostics.Stats != null)
+                    LastSeedFloodStats = bake.Diagnostics.Stats;
+                log?.Invoke("  " + result.Message);
+
+                if (bake.State.State != null)
+                    bake.State.State.NavMesh = result.NavMesh;
+                if (firstResult == null)
+                    firstResult = result;
+            }
+            if (failure == null)
+                failure = collectFailure;
+            if (failure != null)
+            {
+                //Nothing may still be baking when the caller retries at another cell height or gives up
+                foreach (PendingStateBake bake in pending)
+                {
+                    try { bake.Task?.Wait(); }
+                    catch { /* the first failure in state order is the one reported */ }
+                }
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            }
+
+            if (firstResult != null && level.PathBarrierResources != null)
+            {
+                level.PathBarrierResources.Entries.Clear();
+                level.PathBarrierResources.Entries.AddRange(firstResult.PathBarriers);
+                log?.Invoke("PATH_BARRIER_RESOURCES: " + firstResult.PathBarriers.Count + " barriers");
+            }
+        }
+
+        /// <summary>One state of <see cref="BakeLevelOnce"/>: its log lines, its bake, and what its flood reported.</summary>
+        private sealed class PendingStateBake
+        {
+            public Instancing.StateProperties State;
+            public readonly List<string> Log = new List<string>(2);
+            public System.Threading.Tasks.Task<BakeResult> Task;
+            public readonly SeedFloodDiagnostics Diagnostics = new SeedFloodDiagnostics();
+        }
+
+        /// <summary>
+        /// Where a bake running beside others puts its <see cref="LastSeedFloodStats"/>, so they are
+        /// published in state order rather than by whichever bake finishes last.
+        /// </summary>
+        private sealed class SeedFloodDiagnostics
+        {
+            public string Stats;
+            //What Recast's context wrote while this bake ran (RcContext.Capture), for the console in state order
+            public readonly List<string> RecastLines = new List<string>();
+        }
+
+        public static BakeResult Bake(CollisionNavMeshSoup soup, NavMeshBakeSettings settings = null)
+        {
+            return Bake(soup, settings, null);
+        }
+
+        private static BakeResult Bake(CollisionNavMeshSoup soup, NavMeshBakeSettings settings, SeedFloodDiagnostics diagnostics)
+        {
+            if (soup == null)
+                throw new ArgumentNullException(nameof(soup));
+
+
+            if (soup.TriangleCount <= 0)
+                throw new InvalidOperationException("No triangles to bake.");
+
+            AssignBarrierAreaIds(soup.Barriers);
+
+            var geom = new RcSampleInputGeomProvider(soup.Verts, soup.Tris);
+            AddExclusionConvexVolumes(geom, soup.ExclusionAreas);
+            // Barriers are carved into the polygon layout rather than stamped over it, so their
+            // flags land on the footprint the designer drew. Has to happen before the build.
+            int[] barrierRecastAreas = AddBarrierConvexVolumes(geom, soup.Barriers, settings);
+
+            RcVec3f bmin = geom.GetMeshBoundsMin();
+            RcVec3f bmax = geom.GetMeshBoundsMax();
+            // Align the tile origin to the cell grid so every emitted vertex lands on absolute
+            // cell-size multiples, the way retail meshes do (their bmin is always grid-aligned).
+            bmin = new RcVec3f(
+                MathF.Floor(bmin.X / settings.CellSize) * settings.CellSize,
+                MathF.Floor(bmin.Y / settings.CellHeight) * settings.CellHeight,
+                MathF.Floor(bmin.Z / settings.CellSize) * settings.CellSize);
+
+            float sizeX = bmax.X - bmin.X;
+            float sizeZ = bmax.Z - bmin.Z;
+            float sizeY = bmax.Y - bmin.Y;
+            if (sizeX > settings.RecastMaxBoundsSize || sizeZ > settings.RecastMaxBoundsSize)
+                throw new InvalidOperationException(
+                    $"XZ bounds ({sizeX:F1} x {sizeZ:F1}) exceed recast_max_bounds_size ({settings.RecastMaxBoundsSize}). Tiling not implemented yet.");
+            if (sizeY > settings.RecastMaxBoundsSizeY)
+                throw new InvalidOperationException(
+                    $"Y bounds ({sizeY:F1}) exceed recast_max_bounds_size_y ({settings.RecastMaxBoundsSizeY}).");
+
+            // Detail distances are authored in world units; RcConfig expects the Recast-demo
+            // multipliers (world = cell * multiplier) when multiplier >= 0.9.
+            float detailDistParam = settings.DetailSampleDist / settings.CellSize;
+            float detailErrorParam = settings.MaxDetailError / settings.CellHeight;
+
+            var cfg = new RcConfig(
+                useTiles: false,
+                tileSizeX: 0,
+                tileSizeZ: 0,
+                borderSize: 0,
+                partition: RcPartition.WATERSHED,
+                cellSize: settings.CellSize,
+                cellHeight: settings.CellHeight,
+                agentMaxSlope: settings.WalkableSlopeAngle,
+                agentHeight: settings.LowestNavigableHeight,
+                agentRadius: settings.WalkableRadius,
+                agentMaxClimb: settings.WalkableClimb,
+                minRegionArea: settings.MinRegionArea,
+                mergeRegionArea: settings.MergeRegionArea,
+                edgeMaxLen: settings.MaxEdgeLength,
+                edgeMaxError: settings.MaxContourError,
+                vertsPerPoly: settings.MaxVertsInPolyMeshTriangle,
+                detailSampleDist: detailDistParam,
+                detailSampleMaxError: detailErrorParam,
+                filterLowHangingObstacles: true,
+                filterLedgeSpans: true,
+                filterWalkableLowHeightSpans: true,
+                walkableAreaMod: new RcAreaModification(RcRecast.RC_WALKABLE_AREA),
+                buildMeshDetail: true);
+
+            var bcfg = new RcBuilderConfig(cfg, bmin, bmax);
+            // Keep compact heightfield for crouch / deep-crouch clearance sampling.
+            RcBuilderResult rcResult = settings.HeightLimitedMarkedBeforePolygons
+                ? BuildWithHeightClasses(geom, bcfg, settings)
+                : new RcBuilder().Build(geom, bcfg, keepInterResults: true);
+            if (rcResult?.Mesh == null || rcResult.Mesh.npolys <= 0)
+                throw new InvalidOperationException("Recast produced an empty poly mesh.");
+
+            DtNavMeshCreateParams createParams = BuildCreateParams(cfg, rcResult, settings);
+            DtMeshData meshData = DtNavMeshBuilder.CreateNavMeshData(createParams);
+            if (meshData == null)
+                throw new InvalidOperationException("DtNavMeshBuilder.CreateNavMeshData failed.");
+
+            var detour = new DtNavMesh();
+            DtStatus status = detour.Init(meshData, settings.MaxVertsInPolyMeshTriangle, 0);
+            if (status.Failed())
+                throw new InvalidOperationException("DtNavMesh.Init failed: " + status);
+
+            DtMeshTile tile = detour.GetTile(0);
+            if (tile?.data == null)
+                throw new InvalidOperationException("DtNavMesh produced no tile.");
+
+            int polyCount = tile.data.header.polyCount;
+            bool[] keep = null;
+            int culled = 0;
+            int exclusionCulled = 0;
+
+            if (soup.ExclusionAreas != null && soup.ExclusionAreas.Count > 0)
+            {
+                keep = new bool[polyCount];
+                for (int i = 0; i < polyCount; i++)
+                    keep[i] = true;
+                exclusionCulled = CullPolysInsideExclusions(tile, soup.ExclusionAreas, keep);
+            }
+
+            int islandCulled = 0;
+            bool usedSeedFilter = false;
+            bool usedIslandCull = false;
+
+            if (settings.FilterUnreachable && soup.ReachabilitySeeds != null && soup.ReachabilitySeeds.Count > 0)
+            {
+                bool[] reachable = MarkReachablePolys(detour, tile, soup.ReachabilitySeeds, settings, soup.OffMeshLinks, soup.BackstageNodes, diagnostics);
+                int reachableCount = 0;
+                for (int i = 0; i < reachable.Length; i++)
+                    if (reachable[i]) reachableCount++;
+
+                // If seeds only reach a tiny island (common when ExclusiveMaster
+                // excludes large regions), fall through to island cull / keep exclusions.
+                int minKeep = Math.Max(settings.SeedFilterMinKeepPolys, (int)(polyCount * settings.SeedFilterMinKeepFraction));
+                if (reachableCount >= minKeep)
+                {
+                    if (keep == null)
+                        keep = reachable;
+                    else
+                    {
+                        for (int i = 0; i < polyCount; i++)
+                            keep[i] = keep[i] && reachable[i];
+                    }
+                    usedSeedFilter = true;
+                }
+            }
+
+            if (!usedSeedFilter && settings.CullUnseededIslands)
+            {
+                // Torrens and many levels ship zero NavMeshReachabilitySeedPoint entities.
+                // Recast still marks ceiling tops / duct lids as walkable; drop disconnected
+                // islands whose median Y sits outside the primary floor band.
+                bool[] floorKeep = MarkPrimaryFloorPolys(tile, settings);
+                if (keep == null)
+                {
+                    keep = floorKeep;
+                }
+                else
+                {
+                    for (int i = 0; i < polyCount; i++)
+                        keep[i] = keep[i] && floorKeep[i];
+                }
+                usedIslandCull = true;
+                for (int i = 0; i < polyCount; i++)
+                    if (!floorKeep[i]) islandCulled++;
+            }
+
+            int elevatedCulled = 0;
+            if (keep != null)
+            {
+                if (settings.CullElevatedPolyStrips)
+                    elevatedCulled = StripElevatedPolys(tile, settings, keep);
+                for (int i = 0; i < keep.Length; i++)
+                    if (!keep[i]) culled++;
+            }
+
+            int stamped = 0;
+            int barriersWithCoverage = 0;
+            NavigationMesh.dt_area_t[] polyAreas = BuildPolyAreas(
+                tile, soup.Barriers, barrierRecastAreas, settings, keep, out stamped, out barriersWithCoverage);
+
+            int crouchMarked = 0, deepCrouchMarked = 0;
+            ApplyHeightLimitedMarkup(
+                tile, rcResult.CompactHeightfield, settings, keep, polyAreas,
+                out crouchMarked, out deepCrouchMarked);
+
+            // Backstage: the alien's ceiling sheet, triangulated over the node tops. Failure is
+            // a warning, not an error - the level simply ships without a backstage.
+            BackstageMeshBuilder.Result backstage = null;
+            string backstageWarning = null;
+            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMeshDrafts = soup.OffMeshLinks;
+            if (soup.BackstageNodes != null && soup.BackstageNodes.Count > 0)
+            {
+                backstage = BuildBackstageSheets(soup.BackstageNodes, settings, out backstageWarning);
+
+                // Each node becomes a vertical Backstage off-mesh connection from its frontstage
+                // mouth to the sheet, whether or not its own network managed to triangulate -
+                // retail ENG_TowPlatform ships all 19 connections with a sheet over only some of
+                // them. Retail admits only the alien on these.
+                offMeshDrafts = new List<CollisionNavMeshSoup.OffMeshLinkDraft>(soup.OffMeshLinks ?? new List<CollisionNavMeshSoup.OffMeshLinkDraft>());
+                foreach (CollisionNavMeshSoup.BackstageNodeDraft node in soup.BackstageNodes)
+                {
+                    offMeshDrafts.Add(new CollisionNavMeshSoup.OffMeshLinkDraft
+                    {
+                        Start = node.Bottom,
+                        End = node.Bottom + new Vector3(0f, settings.BackstageNodeHeight, 0f),
+                        LinkType = NavigationMesh.OffMeshLinkType.Backstage,
+                        ExtraCost = node.ExtraCost,
+                        CharacterClasses = NAVIGATION_CHARACTER_CLASS_COMBINATION.ALIEN,
+                        OpenOnReset = node.OpenOnReset,
+                        Entity = node.Entity,
+                    });
+                }
+            }
+
+            NavigationMesh nav = new NavigationMesh("");
+            AdaptTile(nav, tile, settings, keep, polyAreas, offMeshDrafts, backstage);
+
+            var pathBarriers = new List<PathBarrierResources.NAV_MESH_BARRIER_RESOURCE>(soup.Barriers?.Count ?? 0);
+            if (soup.Barriers != null)
+            {
+                for (int i = 0; i < soup.Barriers.Count; i++)
+                {
+                    CollisionNavMeshSoup.BarrierVolume b = soup.Barriers[i];
+                    pathBarriers.Add(new PathBarrierResources.NAV_MESH_BARRIER_RESOURCE
+                    {
+                        Resource = b.Resource,
+                        area_id = b.AreaId,
+                        allowed_character_classes = b.InitialClasses
+                    });
+                }
+            }
+
+            string message;
+            if (keep == null)
+            {
+                if (settings.FilterUnreachable && soup.ReachabilitySeeds != null && soup.ReachabilitySeeds.Count > 0)
+                    message = "Unreachable filter skipped (seed flood too small vs mesh).";
+                else if (settings.FilterUnreachable && !settings.CullUnseededIslands)
+                    message = "Unreachable filter skipped (no reachability seeds; island cull off).";
+                else if (!settings.FilterUnreachable && !settings.CullUnseededIslands)
+                    message = "Reachability / island filters disabled.";
+                else
+                    message = "No poly filter applied.";
+            }
+            else if (usedSeedFilter)
+            {
+                message = $"Seed filter removed {culled} polys (exclusion={exclusionCulled}, elevatedStrip={elevatedCulled}).";
+            }
+            else if (usedIslandCull)
+            {
+                message = $"Island cull removed {culled} polys (island={islandCulled}, elevatedStrip={elevatedCulled}, exclusion={exclusionCulled}).";
+            }
+            else
+            {
+                message = $"Filter removed {culled} polys (exclusion={exclusionCulled}, elevatedStrip={elevatedCulled}).";
+            }
+            int carvedBarriers = 0;
+            for (int i = 0; i < barrierRecastAreas.Length; i++)
+                if (barrierRecastAreas[i] > 0) carvedBarriers++;
+
+            message += $" Barriers={soup.Barriers?.Count ?? 0} carved={carvedBarriers} stampedPolys={stamped} covered={barriersWithCoverage}."
+                + $" Platforms={soup.WalkablePlatforms?.Count ?? 0} exclusions={soup.ExclusionAreas?.Count ?? 0}."
+                + $" HeightLimited crouch={crouchMarked} deepCrouch={deepCrouchMarked}.";
+
+            int backstagePolys = backstage != null ? backstage.Triangles.Count / 3 : 0;
+            int backstageCons = soup.BackstageNodes?.Count ?? 0;
+            if (soup.BackstageNodes != null && soup.BackstageNodes.Count > 0)
+            {
+                var networkCounts = new SortedDictionary<int, int>();
+                foreach (CollisionNavMeshSoup.BackstageNodeDraft node in soup.BackstageNodes)
+                {
+                    networkCounts.TryGetValue(node.NetworkId, out int n);
+                    networkCounts[node.NetworkId] = n + 1;
+                }
+                var parts = new List<string>();
+                foreach (KeyValuePair<int, int> kv in networkCounts)
+                    parts.Add($"{kv.Key}:x{kv.Value}");
+                message += $" Backstage nodes={soup.BackstageNodes.Count} networks=[{string.Join(" ", parts)}] polys={backstagePolys} cons={backstageCons}.";
+            }
+            if (backstageWarning != null)
+                message += $" BACKSTAGE WARNING: {backstageWarning}.";
+
+            return new BakeResult
+            {
+                BackstagePolys = backstagePolys,
+                BackstageConnections = backstageCons,
+                BackstageWarning = backstageWarning,
+                NavMesh = nav,
+                InputTriangles = soup.TriangleCount,
+                InputVertices = soup.VertexCount,
+                ReachablePolysKept = keep == null ? tile.data.header.polyCount : keep.Length - culled,
+                ReachablePolysCulled = culled,
+                ExclusionPolysCulled = exclusionCulled,
+                BarrierPolysStamped = stamped,
+                BarriersWithCoverage = barriersWithCoverage,
+                PathBarriers = pathBarriers,
+                Message = message
+            };
+        }
+
+        static void AssignBarrierAreaIds(List<CollisionNavMeshSoup.BarrierVolume> barriers)
+        {
+            if (barriers == null)
+                return;
+            for (int i = 0; i < barriers.Count; i++)
+            {
+                if (barriers[i].AreaId <= 0)
+                    barriers[i].AreaId = i + 1;
+                if (barriers[i].AreaId > 511)
+                    throw new InvalidOperationException("Barrier area id exceeds 9-bit dt_area_t limit (511).");
+            }
+        }
+
+        static void AddExclusionConvexVolumes(
+            RcSampleInputGeomProvider geom,
+            List<CollisionNavMeshSoup.AuthoringBoxVolume> exclusions)
+        {
+            if (exclusions == null || exclusions.Count == 0)
+                return;
+
+            var nullArea = new RcAreaModification(RcRecast.RC_NULL_AREA);
+            for (int i = 0; i < exclusions.Count; i++)
+            {
+                CollisionNavMeshSoup.AuthoringBoxVolume box = exclusions[i];
+                CollisionNavMeshSoup.OrientedBoxAabb(box.Centre, box.Rotation, box.HalfExtents, out Vector3 amin, out Vector3 amax);
+                // The rotated footprint, not its axis-aligned bound - a volume turned 45 degrees
+                // would otherwise carve away twice the floor the designer drew.
+                geom.AddConvexVolume(FootprintXZ(box.Centre, box.Rotation, box.HalfExtents), amin.Y, amax.Y, nullArea);
+            }
+        }
+
+        /// <summary>
+        /// DotRecast's own build, with the height classes folded into the area ids before the
+        /// regions are built, so the contour follows the class boundary and a crawl space becomes
+        /// its own polygons instead of being averaged into the room it opens onto.
+        /// </summary>
+        static RcBuilderResult BuildWithHeightClasses(
+            RcSampleInputGeomProvider geom, RcBuilderConfig bcfg, NavMeshBakeSettings settings)
+        {
+            RcConfig cfg = bcfg.cfg;
+            var ctx = new RcContext();
+
+            RcHeightfield solid = RcVoxelizations.BuildSolidHeightfield(ctx, geom, bcfg);
+            if (cfg.FilterLowHangingObstacles)
+                RcFilters.FilterLowHangingWalkableObstacles(ctx, cfg.WalkableClimb, solid);
+            if (cfg.FilterLedgeSpans)
+                RcFilters.FilterLedgeSpans(ctx, cfg.WalkableHeight, cfg.WalkableClimb, solid);
+            if (cfg.FilterWalkableLowHeightSpans)
+                RcFilters.FilterWalkableLowHeightSpans(ctx, cfg.WalkableHeight, solid);
+
+            RcCompactHeightfield chf = RcCompacts.BuildCompactHeightfield(ctx, cfg.WalkableHeight, cfg.WalkableClimb, solid);
+            // Nothing reads the solid heightfield past this point - the bake works from the compact one - and it is
+            // millions of span objects, so it is let go here rather than carried in the result to the end of the bake
+            // (the states bake side by side, and three of them at once were most of the pass's peak memory).
+            solid = null;
+            // Deep-crouch floor erodes by fewer cells than the rest (see
+            // NavMeshBakeSettings.DeepCrouchErodeCells). The full-radius erosion is taken first on
+            // a copy, so standing and crouch floor come out byte-identical to a plain bake; only
+            // spans that end up deep-crouch keep the lighter erosion.
+            int deepErode = settings.DeepCrouchErodeCells;
+            bool splitErode = deepErode > 0 && deepErode < cfg.WalkableRadius;
+            int[] fullErosion = null;
+            if (splitErode)
+            {
+                int[] before = (int[])chf.areas.Clone();
+                RcAreas.ErodeWalkableArea(ctx, cfg.WalkableRadius, chf);
+                fullErosion = (int[])chf.areas.Clone();
+                Array.Copy(before, chf.areas, before.Length);
+            }
+            RcAreas.ErodeWalkableArea(ctx, splitErode ? deepErode : cfg.WalkableRadius, chf);
+            foreach (RcConvexVolume vol in geom.ConvexVolumes())
+                RcAreas.MarkConvexPolyArea(ctx, vol.verts, vol.hmin, vol.hmax, vol.areaMod, chf);
+
+            MarkHeightClassAreas(chf, settings);
+            if (splitErode)
+                for (int s = 0; s < chf.areas.Length; s++)
+                {
+                    int area = chf.areas[s];
+                    if (area == RcRecast.RC_NULL_AREA || fullErosion[s] != RcRecast.RC_NULL_AREA) continue;
+                    if ((area - 1) % HeightClassCount == 2) continue;   // deep crouch keeps the lighter erosion
+                    chf.areas[s] = RcRecast.RC_NULL_AREA;
+                }
+
+            // A crawl space that used to be part of a big standing region is now its own, and a
+            // region below the minimum is DELETED rather than merged when no neighbour shares its
+            // area type - which would punch holes in exactly the floor this is meant to keep.
+            int minRegion = settings.HeightLimitedRegionArea >= 0f
+                ? (int)MathF.Round(settings.HeightLimitedRegionArea / (cfg.Cs * cfg.Cs))
+                : cfg.MinRegionArea;
+
+            RcRegions.BuildDistanceField(ctx, chf);
+            RcRegions.BuildRegions(ctx, chf, minRegion, cfg.MergeRegionArea);
+
+            RcContourSet cset = RcContours.BuildContours(
+                ctx, chf, cfg.MaxSimplificationError, cfg.MaxEdgeLen, RcBuildContoursFlags.RC_CONTOUR_TESS_WALL_EDGES);
+            RcPolyMesh pmesh = RcMeshs.BuildPolyMesh(ctx, cset, cfg.MaxVertsPerPoly);
+            RcPolyMeshDetail dmesh = cfg.BuildMeshDetail
+                ? RcMeshDetails.BuildPolyMeshDetail(ctx, pmesh, chf, cfg.DetailSampleDist, cfg.DetailSampleMaxError)
+                : null;
+
+            return new RcBuilderResult(bcfg.tileX, bcfg.tileZ, null, chf, cset, pmesh, dmesh, ctx);
+        }
+
+        /// <summary>
+        /// Fold each span's height class into its area id, keeping whatever barrier slot the convex
+        /// volumes already put there, and grow each class outwards by the configured spread.
+        /// </summary>
+        static void MarkHeightClassAreas(RcCompactHeightfield chf, NavMeshBakeSettings settings)
+        {
+            int spanCount = chf.spanCount;
+            var cls = new byte[spanCount];   // 0 standing, 1 crouch, 2 deep crouch
+            var slot = new byte[spanCount];
+            var live = new bool[spanCount];
+
+            for (int z = 0; z < chf.height; z++)
+                for (int x = 0; x < chf.width; x++)
+                {
+                    RcCompactCell cell = chf.cells[x + z * chf.width];
+                    for (int s = cell.index; s < cell.index + cell.count; s++)
+                    {
+                        if (chf.areas[s] == RcRecast.RC_NULL_AREA)
+                            continue;
+                        live[s] = true;
+                        int barrier = chf.areas[s] == RcRecast.RC_WALKABLE_AREA ? 0 : chf.areas[s];
+                        slot[s] = (byte)(barrier > LastBarrierSlotWhenClassMarked ? 0 : barrier);
+                        NavigationMesh.AreaHeight h = ClassifyClearance(chf.spans[s].h * chf.ch, settings);
+                        cls[s] = (byte)(h == NavigationMesh.AreaHeight.Standing ? 0
+                                      : h == NavigationMesh.AreaHeight.Crouch ? 1 : 2);
+                    }
+                }
+
+            for (int pass = 0; pass < settings.HeightLimitedAreaModeFilterPasses; pass++)
+                ModeFilterClasses(chf, cls, live);
+
+            // Crouch first, then deep over the top of it, so the deeper class wins any overlap.
+            SpreadClass(chf, cls, live, 1, settings.HeightLimitedAreaSpread + settings.HeightLimitedAreaSpreadExtraForNonDeepCrouch);
+            SpreadClass(chf, cls, live, 2, settings.HeightLimitedAreaSpread);
+
+            for (int s = 0; s < spanCount; s++)
+            {
+                if (!live[s])
+                    continue;
+                NavigationMesh.AreaHeight h = cls[s] == 0 ? NavigationMesh.AreaHeight.Standing
+                                            : cls[s] == 1 ? NavigationMesh.AreaHeight.Crouch
+                                            : NavigationMesh.AreaHeight.DeepCrouch;
+                chf.areas[s] = (byte)ComposeArea(slot[s], h);
+            }
+        }
+
+        /// <summary>
+        /// Grow every span of at least <paramref name="atLeast"/> outwards by
+        /// <paramref name="cells"/> steps along the heightfield's own connectivity, so the class
+        /// follows walkable neighbours rather than a flat XZ disc.
+        /// </summary>
+        /// <summary>
+        /// Erode every span that is NOT deep-crouch by <paramref name="cells"/> more cells: a span
+        /// with a missing or null neighbour on any side goes null, repeated. Deep-crouch spans keep
+        /// the smaller erosion they already had, so a crawl gap survives that a standing character
+        /// could not use anyway.
+        /// </summary>
+        static void ErodeNonDeepSpans(RcCompactHeightfield chf, int cells)
+        {
+            if (cells <= 0) return;
+            var index = BuildSpanIndex(chf);
+            var kill = new List<int>();
+            for (int step = 0; step < cells; step++)
+            {
+                kill.Clear();
+                for (int s = 0; s < chf.spans.Length; s++)
+                {
+                    int area = chf.areas[s];
+                    if (area == RcRecast.RC_NULL_AREA) continue;
+                    if ((area - 1) % HeightClassCount == 2) continue;   // deep crouch keeps its erosion
+                    (int x, int z) = index[s];
+                    RcCompactSpan span = chf.spans[s];
+                    bool edge = false;
+                    for (int dir = 0; dir < 4 && !edge; dir++)
+                    {
+                        int con = RcRecast.GetCon(span, dir);
+                        if (con == RcRecast.RC_NOT_CONNECTED) { edge = true; break; }
+                        int nx = x + RcRecast.GetDirOffsetX(dir);
+                        int nz = z + RcRecast.GetDirOffsetY(dir);
+                        if (nx < 0 || nz < 0 || nx >= chf.width || nz >= chf.height) { edge = true; break; }
+                        int nb = chf.cells[nx + nz * chf.width].index + con;
+                        if (nb < 0 || nb >= chf.areas.Length || chf.areas[nb] == RcRecast.RC_NULL_AREA) edge = true;
+                    }
+                    if (edge) kill.Add(s);
+                }
+                foreach (int s in kill) chf.areas[s] = RcRecast.RC_NULL_AREA;
+                if (kill.Count == 0) break;
+            }
+        }
+
+        static void SpreadClass(RcCompactHeightfield chf, byte[] cls, bool[] live, byte atLeast, int cells)
+        {
+            if (cells <= 0)
+                return;
+
+            var frontier = new List<int>();
+            for (int s = 0; s < cls.Length; s++)
+                if (live[s] && cls[s] >= atLeast)
+                    frontier.Add(s);
+
+            var index = BuildSpanIndex(chf);
+            var next = new List<int>();
+            for (int step = 0; step < cells && frontier.Count > 0; step++)
+            {
+                next.Clear();
+                foreach (int s in frontier)
+                {
+                    (int x, int z) = index[s];
+                    RcCompactSpan span = chf.spans[s];
+                    for (int dir = 0; dir < 4; dir++)
+                    {
+                        int con = RcRecast.GetCon(span, dir);
+                        if (con == RcRecast.RC_NOT_CONNECTED)
+                            continue;
+                        int nx = x + RcRecast.GetDirOffsetX(dir);
+                        int nz = z + RcRecast.GetDirOffsetY(dir);
+                        if (nx < 0 || nz < 0 || nx >= chf.width || nz >= chf.height)
+                            continue;
+                        int n = chf.cells[nx + nz * chf.width].index + con;
+                        if (n < 0 || n >= cls.Length || !live[n] || cls[n] >= atLeast)
+                            continue;
+                        cls[n] = atLeast;
+                        next.Add(n);
+                    }
+                }
+                (frontier, next) = (next, frontier);
+            }
+        }
+
+        /// <summary>Replace each span's class with the most common among itself and its four neighbours.</summary>
+        static void ModeFilterClasses(RcCompactHeightfield chf, byte[] cls, bool[] live)
+        {
+            var updated = (byte[])cls.Clone();
+            (int x, int z)[] index = BuildSpanIndex(chf);
+            for (int s = 0; s < cls.Length; s++)
+            {
+                if (!live[s])
+                    continue;
+                Span<int> votes = stackalloc int[3];
+                votes[cls[s]]++;
+                RcCompactSpan span = chf.spans[s];
+                (int x, int z) = index[s];
+                for (int dir = 0; dir < 4; dir++)
+                {
+                    int con = RcRecast.GetCon(span, dir);
+                    if (con == RcRecast.RC_NOT_CONNECTED)
+                        continue;
+                    int nx = x + RcRecast.GetDirOffsetX(dir);
+                    int nz = z + RcRecast.GetDirOffsetY(dir);
+                    if (nx < 0 || nz < 0 || nx >= chf.width || nz >= chf.height)
+                        continue;
+                    int n = chf.cells[nx + nz * chf.width].index + con;
+                    if (n >= 0 && n < cls.Length && live[n])
+                        votes[cls[n]]++;
+                }
+                byte best = cls[s];
+                int bestVotes = votes[cls[s]];
+                for (byte c = 0; c < 3; c++)
+                    if (votes[c] > bestVotes) { bestVotes = votes[c]; best = c; }
+                updated[s] = best;
+            }
+            Array.Copy(updated, cls, cls.Length);
+        }
+
+        /// <summary>Column coordinates for every span, so a spread can walk connections both ways.</summary>
+        static (int x, int z)[] BuildSpanIndex(RcCompactHeightfield chf)
+        {
+            var index = new (int, int)[chf.spanCount];
+            for (int z = 0; z < chf.height; z++)
+                for (int x = 0; x < chf.width; x++)
+                {
+                    RcCompactCell cell = chf.cells[x + z * chf.width];
+                    for (int s = cell.index; s < cell.index + cell.count; s++)
+                        index[s] = (x, z);
+                }
+            return index;
+        }
+
+        // Recast area ids are 6 bits (RcAreaModification.RC_AREA_FLAGS_MASK). 0 means unwalkable
+        // and RC_WALKABLE_AREA means plain floor, so barriers share what is left.
+        const int FirstBarrierRecastArea = 1;
+        const int LastBarrierRecastArea = RcRecast.RC_WALKABLE_AREA - 1;
+
+        // With HeightLimitedMarkedBeforePolygons the same 6 bits have to carry the height class as
+        // well, as id = 1 + class + 3 * slot, so a barrier gets a SLOT rather than an id and only
+        // twenty of them fit. A barrier that cannot get one falls through to the geometric stamping
+        // path that already exists for uncarved barriers - it just stops cutting the contour.
+        const int LastBarrierSlotWhenClassMarked = 20;
+        const int HeightClassCount = 3;
+
+        static int ComposeArea(int slot, NavigationMesh.AreaHeight height)
+        {
+            int cls = height == NavigationMesh.AreaHeight.Standing ? 0
+                    : height == NavigationMesh.AreaHeight.Crouch ? 1 : 2;
+            return 1 + cls + HeightClassCount * slot;
+        }
+
+        static int SlotFromArea(int area) => (area - 1) / HeightClassCount;
+
+        static NavigationMesh.AreaHeight HeightFromArea(int area) =>
+            ((area - 1) % HeightClassCount) switch
+            {
+                0 => NavigationMesh.AreaHeight.Standing,
+                1 => NavigationMesh.AreaHeight.Crouch,
+                _ => NavigationMesh.AreaHeight.DeepCrouch,
+            };
+
+        /// <summary>
+        /// Give each barrier its own Recast area id and add its footprint to the geometry as a
+        /// convex volume, so the contour builder cuts the navmesh along the barrier's own outline.
+        /// Returns the id chosen per barrier, or -1 for one that could not be given a distinct id.
+        /// </summary>
+        static int[] AddBarrierConvexVolumes(
+            RcSampleInputGeomProvider geom,
+            List<CollisionNavMeshSoup.BarrierVolume> barriers,
+            NavMeshBakeSettings settings)
+        {
+            if (barriers == null || barriers.Count == 0)
+                return Array.Empty<int>();
+
+            int count = barriers.Count;
+            var mins = new Vector3[count];
+            var maxs = new Vector3[count];
+            var padded = new Vector3(Math.Max(0f, settings.BarrierAreaIdSeparation));
+            for (int i = 0; i < count; i++)
+            {
+                CollisionNavMeshSoup.BarrierVolume b = barriers[i];
+                CollisionNavMeshSoup.OrientedBoxAabb(b.Centre, b.Rotation, b.HalfExtents, out mins[i], out maxs[i]);
+                mins[i] -= padded;
+                maxs[i] += padded;
+            }
+
+            var areas = new int[count];
+            var taken = new HashSet<int>();
+            for (int i = 0; i < count; i++)
+            {
+                taken.Clear();
+                for (int j = 0; j < i; j++)
+                {
+                    if (areas[j] <= 0)
+                        continue;
+                    if (maxs[i].X < mins[j].X || mins[i].X > maxs[j].X
+                        || maxs[i].Y < mins[j].Y || mins[i].Y > maxs[j].Y
+                        || maxs[i].Z < mins[j].Z || mins[i].Z > maxs[j].Z)
+                        continue;
+                    taken.Add(areas[j]);
+                }
+
+                areas[i] = -1;
+                int last = settings.HeightLimitedMarkedBeforePolygons
+                    ? LastBarrierSlotWhenClassMarked
+                    : LastBarrierRecastArea;
+                for (int a = FirstBarrierRecastArea; a <= last; a++)
+                {
+                    if (taken.Contains(a))
+                        continue;
+                    areas[i] = a;
+                    break;
+                }
+                if (areas[i] < 0)
+                    continue;
+
+                CollisionNavMeshSoup.BarrierVolume barrier = barriers[i];
+                CollisionNavMeshSoup.OrientedBoxAabb(
+                    barrier.Centre, barrier.Rotation, barrier.HalfExtents, out Vector3 bmin, out Vector3 bmax);
+                // Reach a little below the box: a barrier authored flush with the floor would
+                // otherwise miss the floor span it is meant to cover once heights are quantised.
+                geom.AddConvexVolume(
+                    FootprintXZ(barrier.Centre, barrier.Rotation, barrier.HalfExtents),
+                    bmin.Y - settings.WalkableClimb,
+                    bmax.Y,
+                    new RcAreaModification(areas[i]));
+            }
+            return areas;
+        }
+
+        /// <summary>The oriented box's footprint on the ground, as x/y/z triples with y unused.</summary>
+        static float[] FootprintXZ(Vector3 centre, Quaternion rotation, Vector3 halfExtents)
+        {
+            var corners = new Vector2[8];
+            for (int corner = 0; corner < 8; corner++)
+            {
+                var local = new Vector3(
+                    (corner & 1) == 0 ? -halfExtents.X : halfExtents.X,
+                    (corner & 2) == 0 ? -halfExtents.Y : halfExtents.Y,
+                    (corner & 4) == 0 ? -halfExtents.Z : halfExtents.Z);
+                Vector3 world = centre + Vector3.Transform(local, rotation);
+                corners[corner] = new Vector2(world.X, world.Z);
+            }
+
+            List<Vector2> hull = ConvexHullXZ(corners);
+            var verts = new float[hull.Count * 3];
+            for (int i = 0; i < hull.Count; i++)
+            {
+                verts[i * 3 + 0] = hull[i].X;
+                verts[i * 3 + 1] = 0f;
+                verts[i * 3 + 2] = hull[i].Y;
+            }
+            return verts;
+        }
+
+        /// <summary>Andrew's monotone chain, counter-clockwise, over a handful of points.</summary>
+        static List<Vector2> ConvexHullXZ(Vector2[] points)
+        {
+            Array.Sort(points, (a, b) => a.X != b.X ? a.X.CompareTo(b.X) : a.Y.CompareTo(b.Y));
+
+            var hull = new List<Vector2>(points.Length + 1);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int start = hull.Count;
+                for (int i = 0; i < points.Length; i++)
+                {
+                    Vector2 p = pass == 0 ? points[i] : points[points.Length - 1 - i];
+                    while (hull.Count - start >= 2 && Cross(hull[hull.Count - 2], hull[hull.Count - 1], p) <= 0f)
+                        hull.RemoveAt(hull.Count - 1);
+                    hull.Add(p);
+                }
+                hull.RemoveAt(hull.Count - 1);
+            }
+            return hull;
+
+            float Cross(Vector2 o, Vector2 a, Vector2 b) =>
+                (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X);
+        }
+
+        static int CullPolysInsideExclusions(
+            DtMeshTile tile,
+            List<CollisionNavMeshSoup.AuthoringBoxVolume> exclusions,
+            bool[] keep)
+        {
+            int culled = 0;
+            DtMeshData data = tile.data;
+            for (int i = 0; i < data.header.polyCount; i++)
+            {
+                if (!keep[i])
+                    continue;
+                DtPoly poly = data.polys[i];
+                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
+                    continue;
+
+                Vector3 centroid = PolyCentroid(data, poly);
+                for (int e = 0; e < exclusions.Count; e++)
+                {
+                    CollisionNavMeshSoup.AuthoringBoxVolume box = exclusions[e];
+                    if (CollisionNavMeshSoup.PointInOrientedBox(centroid, box.Centre, box.Rotation, box.HalfExtents))
+                    {
+                        keep[i] = false;
+                        culled++;
+                        break;
+                    }
+                }
+            }
+            return culled;
+        }
+
+        /// <summary>
+        /// Stamp each barrier's id and admittance onto the polygons Recast carved out for it.
+        /// </summary>
+        static NavigationMesh.dt_area_t[] BuildPolyAreas(
+            DtMeshTile tile,
+            List<CollisionNavMeshSoup.BarrierVolume> barriers,
+            int[] barrierRecastAreas,
+            NavMeshBakeSettings settings,
+            bool[] keep,
+            out int stampedCount,
+            out int barriersWithCoverage)
+        {
+            stampedCount = 0;
+            barriersWithCoverage = 0;
+            DtMeshData data = tile.data;
+            int polyCount = data.header.polyCount;
+            var areas = new NavigationMesh.dt_area_t[polyCount];
+            NavigationMesh.dt_area_t ground = NavigationMesh.CreateDefaultGroundArea();
+            for (int i = 0; i < polyCount; i++)
+                areas[i] = ground;
+
+            if (barriers == null || barriers.Count == 0)
+                return areas;
+
+            var byRecastArea = new Dictionary<int, List<int>>();
+            var uncarved = new List<int>();
+            for (int b = 0; b < barriers.Count; b++)
+            {
+                int recastArea = barrierRecastAreas != null && b < barrierRecastAreas.Length ? barrierRecastAreas[b] : -1;
+                if (recastArea <= 0)
+                {
+                    uncarved.Add(b);
+                    continue;
+                }
+                if (!byRecastArea.TryGetValue(recastArea, out List<int> sharing))
+                    byRecastArea[recastArea] = sharing = new List<int>();
+                sharing.Add(b);
+            }
+
+            float inflate = settings.WalkableRadius + settings.CellSize * 2f;
+            var covered = new bool[barriers.Count];
+
+            for (int i = 0; i < polyCount; i++)
+            {
+                if (keep != null && i < keep.Length && !keep[i])
+                    continue;
+                DtPoly poly = data.polys[i];
+                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
+                    continue;
+
+                Vector3 centroid = PolyCentroid(data, poly);
+                int hitBarrier = -1;
+
+                // With the classes folded in, the area id carries the barrier as a slot rather than
+                // being the id itself.
+                int polyBarrierKey = settings.HeightLimitedMarkedBeforePolygons
+                    ? SlotFromArea(poly.GetArea())
+                    : poly.GetArea();
+
+                if (byRecastArea.TryGetValue(polyBarrierKey, out List<int> candidates))
+                {
+                    // One id can be shared by barriers that are far apart, so pick by position.
+                    hitBarrier = candidates[0];
+                    if (candidates.Count > 1)
+                    {
+                        float best = float.MaxValue;
+                        for (int c = 0; c < candidates.Count; c++)
+                        {
+                            CollisionNavMeshSoup.BarrierVolume candidate = barriers[candidates[c]];
+                            float d = Vector3.DistanceSquared(centroid, candidate.Centre);
+                            if (d >= best)
+                                continue;
+                            best = d;
+                            hitBarrier = candidates[c];
+                        }
+                    }
+                }
+                else if (uncarved.Count > 0)
+                {
+                    PolyAabb(data, poly, out Vector3 polyMin, out Vector3 polyMax);
+                    for (int u = 0; u < uncarved.Count; u++)
+                    {
+                        if (!PolyOverlapsBarrier(data, poly, centroid, polyMin, polyMax, barriers[uncarved[u]], inflate))
+                            continue;
+                        hitBarrier = uncarved[u];
+                        break;
+                    }
+                }
+
+                if (hitBarrier < 0)
+                    continue;
+
+                /* The id is all that goes on the polygon. Who may cross the slice is held on the
+                   PATH_BARRIER_RESOURCES row of the same id, which is what the runtime rewrites as
+                   the door opens and shuts - and retail proves the polygon takes no part in it, by
+                   shipping admit=ALL on all 313 of TECH_COMMS's barrier polys whatever their door
+                   allows. Stamping the barrier's initial classes here instead would freeze a shut
+                   door's slice at NONE for the life of the level. */
+                CollisionNavMeshSoup.BarrierVolume hit = barriers[hitBarrier];
+                NavigationMesh.dt_area_t area = NavigationMesh.CreateDefaultGroundArea();
+                area.SetId((ushort)hit.AreaId);
+                areas[i] = area;
+                stampedCount++;
+                covered[hitBarrier] = true;
+            }
+
+            for (int i = 0; i < covered.Length; i++)
+                if (covered[i]) barriersWithCoverage++;
+
+            return areas;
+        }
+
+        /// <summary>
+        /// Classify walkable CHF spans by clearance, dilate on the cell grid
+        /// (a few cells), then stamp the resulting class onto polys.
+        /// Dilation is masked to cells covered by kept nav polys so elevated junk
+        /// spans cannot flood the floor with DeepCrouch.
+        /// </summary>
+        /// <summary>
+        /// Wire each off-mesh connection into the link pool, the way Detour's
+        /// <c>baseOffMeshLinks</c> does and the way retail data ships: four links per connection -
+        /// ground-&gt;offmesh and offmesh-&gt;ground at each of the two endpoints.
+        /// </summary>
+        static void ConnectOffMeshLinks(
+            NavigationMesh.dtPoly[] polys,
+            List<Vector3> verts,
+            NavigationMesh.dtOffMeshConnection[] connections,
+            int groundPolyCount,
+            uint polyRefBase,
+            List<NavigationMesh.dtLink> links)
+        {
+            if (connections == null || connections.Length == 0)
+                return;
+
+            for (int c = 0; c < connections.Length; c++)
+            {
+                NavigationMesh.dtOffMeshConnection con = connections[c];
+                int offPolyIndex = con.poly_index_within_tile;
+                if (offPolyIndex < 0 || offPolyIndex >= polys.Length)
+                    continue;
+
+                var start = new Vector3(con.pos[0], con.pos[1], con.pos[2]);
+                var end = new Vector3(con.pos[3], con.pos[4], con.pos[5]);
+
+                // Endpoint 0 sits on edge 0 of the off-mesh poly, endpoint 1 on edge 1.
+                LinkEndpoint(start, 0);
+                LinkEndpoint(end, 1);
+
+                void LinkEndpoint(Vector3 position, byte edge)
+                {
+                    int ground = FindNearestGroundPoly(polys, verts, groundPolyCount, position, con.rad);
+                    if (ground < 0)
+                        return;
+
+                    // ground -> off-mesh
+                    NavigationMesh.dtPoly gp = polys[ground];
+                    links.Add(new NavigationMesh.dtLink
+                    {
+                        polygonRef = polyRefBase | (uint)offPolyIndex,
+                        next = gp.firstLink,
+                        edge = 0xff,
+                        side = 0xff,
+                        bmin = 0,
+                        bmax = 0
+                    });
+                    gp.firstLink = links.Count - 1;
+                    polys[ground] = gp;
+
+                    // off-mesh -> ground
+                    NavigationMesh.dtPoly op = polys[offPolyIndex];
+                    links.Add(new NavigationMesh.dtLink
+                    {
+                        polygonRef = polyRefBase | (uint)ground,
+                        next = op.firstLink,
+                        edge = edge,
+                        side = 0xff,
+                        bmin = 0,
+                        bmax = 0
+                    });
+                    op.firstLink = links.Count - 1;
+                    polys[offPolyIndex] = op;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ground poly whose polygon contains <paramref name="position"/> in XZ, preferring the
+        /// closest in height; falls back to the nearest vertex within <paramref name="radius"/>.
+        /// </summary>
+        static int FindNearestGroundPoly(
+            NavigationMesh.dtPoly[] polys, List<Vector3> verts, int groundPolyCount, Vector3 position, float radius)
+        {
+            int best = -1;
+            float bestScore = float.MaxValue;
+            float searchSq = Math.Max(radius, 1.0f);
+            searchSq *= searchSq;
+
+            for (int i = 0; i < groundPolyCount && i < polys.Length; i++)
+            {
+                NavigationMesh.dtPoly p = polys[i];
+                if (p.vertCount < 3)
+                    continue;
+
+                bool inside = PointInPolyXZ(position, p, verts);
+                float score;
+                if (inside)
+                {
+                    // Among containing polys pick the one whose surface is nearest in height -
+                    // vertex distance would let the floor 6 m below a large backstage triangle
+                    // beat the triangle whose middle the endpoint actually sits on.
+                    float dy = PolyHeightAtXZ(p, verts, position) - position.Y;
+                    score = dy * dy * 0.001f;
+                }
+                else
+                {
+                    score = float.MaxValue;
+                    for (int v = 0; v < p.vertCount; v++)
+                    {
+                        Vector3 pv = verts[p.verts[v]];
+                        float dx = pv.X - position.X, dz = pv.Z - position.Z, dy = pv.Y - position.Y;
+                        float d = dx * dx + dz * dz + dy * dy;
+                        if (d < score) score = d;
+                    }
+                    if (score > searchSq) continue;
+                }
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            return best;
+        }
+
+        /// <summary>Surface height of a poly at an XZ position, via its triangle fan (average Y fallback).</summary>
+        static float PolyHeightAtXZ(NavigationMesh.dtPoly poly, List<Vector3> verts, Vector3 position)
+        {
+            Vector3 a = verts[poly.verts[0]];
+            for (int v = 1; v + 1 < poly.vertCount; v++)
+            {
+                Vector3 b = verts[poly.verts[v]];
+                Vector3 c = verts[poly.verts[v + 1]];
+                float det = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+                if (Math.Abs(det) < 1e-8f)
+                    continue;
+                float u = ((position.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (position.Z - a.Z)) / det;
+                float w = ((b.X - a.X) * (position.Z - a.Z) - (position.X - a.X) * (b.Z - a.Z)) / det;
+                if (u < -0.01f || w < -0.01f || u + w > 1.01f)
+                    continue;
+                return a.Y + u * (b.Y - a.Y) + w * (c.Y - a.Y);
+            }
+
+            float sum = 0f;
+            for (int v = 0; v < poly.vertCount; v++)
+                sum += verts[poly.verts[v]].Y;
+            return sum / Math.Max(1, (int)poly.vertCount);
+        }
+
+        static bool PointInPolyXZ(Vector3 point, NavigationMesh.dtPoly poly, List<Vector3> verts)
+        {
+            bool inside = false;
+            for (int i = 0, j = poly.vertCount - 1; i < poly.vertCount; j = i++)
+            {
+                Vector3 vi = verts[poly.verts[i]];
+                Vector3 vj = verts[poly.verts[j]];
+                if (((vi.Z > point.Z) != (vj.Z > point.Z)) &&
+                    (point.X < (vj.X - vi.X) * (point.Z - vi.Z) / (vj.Z - vi.Z) + vi.X))
+                    inside = !inside;
+            }
+            return inside;
+        }
+
+        /// <summary>
+        /// Grow the link array to the size Detour would have allocated, leaving the spare entries as a
+        /// free list. Returns the pool size to advertise.
+        /// </summary>
+        static int PadLinkPool(List<NavigationMesh.dtLink> links, NavigationMesh.dtPoly[] polys, int groundPolyCount, int offMeshConCount)
+        {
+            int edges = 0, portals = 0;
+            for (int i = 0; i < groundPolyCount && i < polys.Length; i++)
+            {
+                NavigationMesh.dtPoly poly = polys[i];
+                edges += poly.vertCount;
+                for (int e = 0; e < poly.vertCount && e < poly.neis.Length; e++)
+                    if ((poly.neis[e] & DtDetour.DT_EXT_LINK) != 0)
+                        portals++;
+            }
+
+            int used = links.Count;
+            int target = edges + portals * 2 + offMeshConCount * 4;
+            if (target < used)
+                target = used;
+
+            for (int i = used; i < target; i++)
+            {
+                links.Add(new NavigationMesh.dtLink
+                {
+                    polygonRef = 0,
+                    next = i + 1 < target ? i + 1 : DT_NULL_LINK,
+                    edge = 0,
+                    side = 0,
+                    bmin = 0,
+                    bmax = 0
+                });
+            }
+            return links.Count;
+        }
+
+        static void ApplyHeightLimitedMarkup(
+            DtMeshTile tile,
+            RcCompactHeightfield chf,
+            NavMeshBakeSettings settings,
+            bool[] keep,
+            NavigationMesh.dt_area_t[] areas,
+            out int crouchCount,
+            out int deepCrouchCount)
+        {
+            crouchCount = 0;
+            deepCrouchCount = 0;
+            if (tile?.data == null || areas == null || chf?.spans == null || chf.cells == null)
+                return;
+
+            DtMeshData data = tile.data;
+            int polyCount = data.header.polyCount;
+            var height = new NavigationMesh.AreaHeight[polyCount];
+            var deepShare = new float[polyCount];
+            var live = new bool[polyCount];
+
+            for (int i = 0; i < polyCount; i++)
+            {
+                height[i] = NavigationMesh.AreaHeight.Standing;
+                if (keep != null && i < keep.Length && !keep[i])
+                    continue;
+                DtPoly poly = data.polys[i];
+                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
+                    continue;
+
+                live[i] = true;
+                // When the classes were marked before the polygons were built, the polygon cannot
+                // straddle two of them - the contour was cut along the boundary - so the answer is
+                // already in the area id and re-measuring could only disagree with it.
+                height[i] = settings.HeightLimitedMarkedBeforePolygons
+                    ? HeightFromArea(poly.GetArea())
+                    : settings.HeightLimitedInteriorSampling
+                    ? PolyHeightClass(chf, data, poly, settings, out deepShare[i])
+                    : ClassifyClearance(PolyClearance(chf, data, poly, settings), settings);
+            }
+
+            // Retail's classes are grown by about 4 cells (0.25 m) after marking. We cannot
+            // dilate on the heightfield - the classes are applied
+            // after the polygons are built - but a polygon that is partly low and touches a
+            // deep-crouch neighbour is the same idea one step coarser. Off at zero.
+            if (settings.HeightLimitedDeepNeighbourShare > 0f)
+            {
+                for (int pass = 0; pass < Math.Max(1, settings.HeightLimitedDeepNeighbourPasses); pass++)
+                {
+                    var grown = new List<int>();
+                    for (int i = 0; i < polyCount; i++)
+                    {
+                        if (!live[i] || height[i] == NavigationMesh.AreaHeight.DeepCrouch)
+                            continue;
+                        if (deepShare[i] < settings.HeightLimitedDeepNeighbourShare)
+                            continue;
+                        DtPoly poly = data.polys[i];
+                        for (int k = 0; k < poly.vertCount; k++)
+                        {
+                            int nei = poly.neis[k];
+                            if (nei == 0 || (nei & 0x8000) != 0)
+                                continue;
+                            int n = nei - 1;
+                            if (n < 0 || n >= polyCount || height[n] != NavigationMesh.AreaHeight.DeepCrouch)
+                                continue;
+                            grown.Add(i);
+                            break;
+                        }
+                    }
+                    if (grown.Count == 0)
+                        break;
+                    foreach (int i in grown)
+                        height[i] = NavigationMesh.AreaHeight.DeepCrouch;
+                }
+            }
+
+            for (int i = 0; i < polyCount; i++)
+            {
+                if (!live[i])
+                    continue;
+                NavigationMesh.dt_area_t area = areas[i];
+                area.SetHeightLimitedAmount(height[i]);
+                areas[i] = area;
+
+                if (height[i] == NavigationMesh.AreaHeight.Crouch)
+                    crouchCount++;
+                else if (height[i] == NavigationMesh.AreaHeight.DeepCrouch)
+                    deepCrouchCount++;
+            }
+        }
+
+        /// <summary>
+        /// Height class from the share of a polygon's own SURFACE that is low, rather than from the
+        /// single worst reading anywhere on it.
+        /// </summary>
+        static NavigationMesh.AreaHeight PolyHeightClass(
+            RcCompactHeightfield chf,
+            DtMeshData data,
+            DtPoly poly,
+            NavMeshBakeSettings settings,
+            out float deepShareOut)
+        {
+            deepShareOut = 0f;
+            int n = poly.vertCount;
+            if (n < 3)
+                return ClassifyClearance(PolyClearance(chf, data, poly, settings), settings);
+
+            Span<float> xs = stackalloc float[n];
+            Span<float> ys = stackalloc float[n];
+            Span<float> zs = stackalloc float[n];
+            float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+            for (int v = 0; v < n; v++)
+            {
+                int o = poly.verts[v] * 3;
+                xs[v] = data.verts[o];
+                ys[v] = data.verts[o + 1];
+                zs[v] = data.verts[o + 2];
+                if (xs[v] < minX) minX = xs[v];
+                if (xs[v] > maxX) maxX = xs[v];
+                if (zs[v] < minZ) minZ = zs[v];
+                if (zs[v] > maxZ) maxZ = zs[v];
+            }
+
+            float step = Math.Max(chf.cs, 1e-3f);
+            int deep = 0, crouch = 0, total = 0;
+            float sumY = 0;
+            for (int v = 0; v < n; v++) sumY += ys[v];
+            float planeY = sumY / n;
+
+            for (float x = minX + step * 0.5f; x <= maxX; x += step)
+                for (float z = minZ + step * 0.5f; z <= maxZ; z += step)
+                {
+                    bool inside = false;
+                    for (int a = 0, b = n - 1; a < n; b = a++)
+                        if ((zs[a] > z) != (zs[b] > z) &&
+                            x < (xs[b] - xs[a]) * (z - zs[a]) / (zs[b] - zs[a]) + xs[a])
+                            inside = !inside;
+                    if (!inside)
+                        continue;
+                    float clearance = ColumnClearance(chf, x, planeY, z, settings);
+                    if (float.IsInfinity(clearance))
+                    {
+                        total++;
+                        continue;
+                    }
+                    total++;
+                    NavigationMesh.AreaHeight c = ClassifyClearance(clearance, settings);
+                    if (c == NavigationMesh.AreaHeight.DeepCrouch) deep++;
+                    else if (c == NavigationMesh.AreaHeight.Crouch) crouch++;
+                }
+
+            // A polygon thinner than a cell gets no interior sample; fall back to the centroid.
+            if (total == 0)
+            {
+                Vector3 c = PolyCentroid(data, poly);
+                return ClassifyClearance(ColumnClearance(chf, c.X, c.Y, c.Z, settings), settings);
+            }
+
+            float deepShare = (float)deep / total;
+            float lowShare = (float)(deep + crouch) / total;
+            deepShareOut = deepShare;
+            if (deepShare >= settings.HeightLimitedDeepShare)
+                return NavigationMesh.AreaHeight.DeepCrouch;
+            if (lowShare >= settings.HeightLimitedCrouchShare)
+                return NavigationMesh.AreaHeight.Crouch;
+            return NavigationMesh.AreaHeight.Standing;
+        }
+
+        /// <summary>
+        /// Free height above the walkable span nearest <paramref name="y"/> in one column.
+        /// Positive infinity when nothing resolves, which classifies as Standing.
+        /// </summary>
+        static float ColumnClearance(RcCompactHeightfield chf, float x, float y, float z, NavMeshBakeSettings settings)
+        {
+            int ix = (int)Math.Floor((x - chf.bmin.X) / chf.cs);
+            int iz = (int)Math.Floor((z - chf.bmin.Z) / chf.cs);
+            if (ix < 0 || iz < 0 || ix >= chf.width || iz >= chf.height)
+                return float.PositiveInfinity;
+
+            RcCompactCell cell = chf.cells[ix + iz * chf.width];
+            int nearest = -1;
+            float nearestGap = settings.WalkableClimb + chf.ch * 2f;
+            for (int s = cell.index; s < cell.index + cell.count; s++)
+            {
+                if (chf.areas[s] == RcRecast.RC_NULL_AREA)
+                    continue;
+                float gap = Math.Abs(chf.bmin.Y + chf.spans[s].y * chf.ch - y);
+                if (gap > nearestGap)
+                    continue;
+                nearestGap = gap;
+                nearest = s;
+            }
+            return nearest < 0 ? float.PositiveInfinity : chf.spans[nearest].h * chf.ch;
+        }
+
+        /// <summary>
+        /// Smallest headroom over a polygon: for each compact-heightfield column under it, the
+        /// walkable span nearest the polygon's own surface, and the free height above that span.
+        /// Positive infinity when nothing resolves, which classifies as Standing.
+        /// </summary>
+        static float PolyClearance(
+            RcCompactHeightfield chf,
+            DtMeshData data,
+            DtPoly poly,
+            NavMeshBakeSettings settings)
+        {
+            float worst = float.PositiveInfinity;
+            float reach = settings.WalkableClimb + chf.ch * 2f;
+
+            void Sample(float x, float y, float z)
+            {
+                int ix = (int)Math.Floor((x - chf.bmin.X) / chf.cs);
+                int iz = (int)Math.Floor((z - chf.bmin.Z) / chf.cs);
+                if (ix < 0 || iz < 0 || ix >= chf.width || iz >= chf.height)
+                    return;
+
+                RcCompactCell cell = chf.cells[ix + iz * chf.width];
+                int nearest = -1;
+                float nearestGap = reach;
+                for (int s = cell.index; s < cell.index + cell.count; s++)
+                {
+                    if (chf.areas[s] == RcRecast.RC_NULL_AREA)
+                        continue;
+                    float gap = Math.Abs(chf.bmin.Y + chf.spans[s].y * chf.ch - y);
+                    if (gap > nearestGap)
+                        continue;
+                    nearestGap = gap;
+                    nearest = s;
+                }
+                if (nearest < 0)
+                    return;
+
+                float clearance = chf.spans[nearest].h * chf.ch;
+                if (clearance < worst)
+                    worst = clearance;
+            }
+
+            Vector3 c = PolyCentroid(data, poly);
+            Sample(c.X, c.Y, c.Z);
+            for (int v = 0; v < poly.vertCount; v++)
+            {
+                int o = poly.verts[v] * 3;
+                Sample(data.verts[o], data.verts[o + 1], data.verts[o + 2]);
+            }
+
+            // Walk the edges too, so a long thin polygon is not judged on three points.
+            for (int v = 0; v < poly.vertCount; v++)
+            {
+                int o0 = poly.verts[v] * 3;
+                int o1 = poly.verts[(v + 1) % poly.vertCount] * 3;
+                float x0 = data.verts[o0], y0 = data.verts[o0 + 1], z0 = data.verts[o0 + 2];
+                float x1 = data.verts[o1], y1 = data.verts[o1 + 1], z1 = data.verts[o1 + 2];
+                float len = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
+                int steps = Math.Max(1, (int)MathF.Ceiling(len / chf.cs));
+                for (int s = 0; s <= steps; s++)
+                {
+                    float t = s / (float)steps;
+                    Sample(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t);
+                }
+            }
+            return worst;
+        }
+
+        static NavigationMesh.AreaHeight ClassifyClearance(float clearance, NavMeshBakeSettings settings)
+        {
+            float measured = clearance + settings.HeightLimitedClearanceBias;
+            if (float.IsInfinity(measured) || measured >= settings.CrouchHeight)
+                return NavigationMesh.AreaHeight.Standing;
+            if (measured >= settings.DeepCrouchHeight)
+                return NavigationMesh.AreaHeight.Crouch;
+            return NavigationMesh.AreaHeight.DeepCrouch;
+        }
+
+        static bool PolyOverlapsBarrier(
+            DtMeshData data,
+            DtPoly poly,
+            Vector3 centroid,
+            Vector3 polyMin,
+            Vector3 polyMax,
+            CollisionNavMeshSoup.BarrierVolume barrier,
+            float inflate)
+        {
+            CollisionNavMeshSoup.OrientedBoxAabb(
+                barrier.Centre, barrier.Rotation,
+                barrier.HalfExtents + new Vector3(inflate, inflate, inflate),
+                out Vector3 bmin, out Vector3 bmax);
+            if (polyMax.X < bmin.X || polyMin.X > bmax.X
+                || polyMax.Y < bmin.Y || polyMin.Y > bmax.Y
+                || polyMax.Z < bmin.Z || polyMin.Z > bmax.Z)
+                return false;
+
+            if (CollisionNavMeshSoup.PointInOrientedBox(
+                    centroid, barrier.Centre, barrier.Rotation, barrier.HalfExtents, inflate))
+                return true;
+
+            for (int v = 0; v < poly.vertCount; v++)
+            {
+                int o = poly.verts[v] * 3;
+                var p = new Vector3(data.verts[o], data.verts[o + 1], data.verts[o + 2]);
+                if (CollisionNavMeshSoup.PointInOrientedBox(
+                        p, barrier.Centre, barrier.Rotation, barrier.HalfExtents, inflate))
+                    return true;
+            }
+
+            // Thin vertical door slabs: stamp if poly AABB intersects the inflated barrier AABB
+            // and the poly centroid is within inflate of the barrier OBB on XZ (ignore thin Y miss).
+            Vector3 flat = new Vector3(centroid.X, barrier.Centre.Y, centroid.Z);
+            return CollisionNavMeshSoup.PointInOrientedBox(
+                flat, barrier.Centre, barrier.Rotation, barrier.HalfExtents, inflate);
+        }
+
+        static void PolyAabb(DtMeshData data, DtPoly poly, out Vector3 min, out Vector3 max)
+        {
+            int o0 = poly.verts[0] * 3;
+            min = new Vector3(data.verts[o0], data.verts[o0 + 1], data.verts[o0 + 2]);
+            max = min;
+            for (int v = 1; v < poly.vertCount; v++)
+            {
+                int o = poly.verts[v] * 3;
+                var p = new Vector3(data.verts[o], data.verts[o + 1], data.verts[o + 2]);
+                min = Vector3.Min(min, p);
+                max = Vector3.Max(max, p);
+            }
+        }
+
+        static Vector3 PolyCentroid(DtMeshData data, DtPoly poly)
+        {
+            Vector3 sum = Vector3.Zero;
+            for (int v = 0; v < poly.vertCount; v++)
+            {
+                int o = poly.verts[v] * 3;
+                sum.X += data.verts[o];
+                sum.Y += data.verts[o + 1];
+                sum.Z += data.verts[o + 2];
+            }
+            float inv = 1f / Math.Max(1, poly.vertCount);
+            return sum * inv;
+        }
+
+        static DtNavMeshCreateParams BuildCreateParams(RcConfig cfg, RcBuilderResult rcResult, NavMeshBakeSettings settings)
+        {
+            RcPolyMesh pmesh = rcResult.Mesh;
+            RcPolyMeshDetail dmesh = rcResult.MeshDetail;
+
+            // Ensure poly flags are non-zero (Detour query filters often require them).
+            if (pmesh.flags != null)
+            {
+                for (int i = 0; i < pmesh.npolys; i++)
+                    if (pmesh.flags[i] == 0)
+                        pmesh.flags[i] = 1;
+            }
+
+            var option = new DtNavMeshCreateParams
+            {
+                verts = pmesh.verts,
+                vertCount = pmesh.nverts,
+                polys = pmesh.polys,
+                polyAreas = pmesh.areas,
+                polyFlags = pmesh.flags,
+                polyCount = pmesh.npolys,
+                nvp = pmesh.nvp,
+                walkableHeight = settings.HeaderWalkableHeight,
+                walkableRadius = settings.WalkableRadius,
+                walkableClimb = settings.WalkableClimb,
+                bmin = pmesh.bmin,
+                bmax = pmesh.bmax,
+                cs = cfg.Cs,
+                ch = cfg.Ch,
+                buildBvTree = true
+            };
+
+            if (dmesh != null)
+            {
+                option.detailMeshes = dmesh.meshes;
+                option.detailVerts = dmesh.verts;
+                option.detailVertsCount = dmesh.nverts;
+                option.detailTris = dmesh.tris;
+                option.detailTriCount = dmesh.ntris;
+            }
+
+            return option;
+        }
+
+        /// <summary>What the last reachability flood did with the off-mesh links, for the diagnostics.</summary>
+        public static string LastSeedFloodStats = "";
+
+        static bool[] MarkReachablePolys(
+            DtNavMesh nav,
+            DtMeshTile tile,
+            List<Vector3> seeds,
+            NavMeshBakeSettings settings,
+            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMesh = null,
+            List<CollisionNavMeshSoup.BackstageNodeDraft> backstage = null,
+            SeedFloodDiagnostics diagnostics = null)
+        {
+            int polyCount = tile.data.header.polyCount;
+            var keep = new bool[polyCount];
+            var query = new DtNavMeshQuery(nav);
+            var filter = new DtQueryDefaultFilter();
+
+            float above = settings.ReachabilitySeedHeightToleranceAbove;
+            float below = settings.ReachabilitySeedHeightToleranceBelow;
+            var extents = new RcVec3f(settings.WalkableRadius * 2f, Math.Max(above, below) + settings.WalkableClimb, settings.WalkableRadius * 2f);
+
+            var queue = new Queue<int>();
+            foreach (Vector3 seed in seeds)
+            {
+                var center = new RcVec3f(seed.X, seed.Y, seed.Z);
+                query.FindNearestPoly(center, extents, filter, out long nearestRef, out _, out _);
+                if (nearestRef == 0)
+                    continue;
+                DtDetour.DecodePolyId(nearestRef, out _, out _, out int ip);
+                if (ip < 0 || ip >= polyCount || keep[ip])
+                    continue;
+                keep[ip] = true;
+                queue.Enqueue(ip);
+            }
+
+            void Flood()
+            {
+                while (queue.Count > 0)
+                {
+                    int i = queue.Dequeue();
+                    DtPoly poly = tile.data.polys[i];
+                    for (int link = poly.firstLink; link != DT_NULL_LINK; link = tile.links[link].next)
+                    {
+                        long refs = tile.links[link].refs;
+                        if (refs == 0)
+                            continue;
+                        DtDetour.DecodePolyId(refs, out _, out _, out int ni);
+                        if (ni < 0 || ni >= polyCount || keep[ni])
+                            continue;
+                        keep[ni] = true;
+                        queue.Enqueue(ni);
+                    }
+                }
+            }
+            Flood();
+
+            // Retail reaches an upper room by its ladder, vent or backstage sheet as surely as by
+            // a floor, and this flood runs before those connections are stitched into the tile.
+            // Stopping at the polygon graph culled whole rooms: on TECH_RND_HZDLAB 146 m2 of
+            // retail's standing floor that Recast had generated. Cross every off-mesh link and
+            // every backstage network the flood has reached one end of, then flood again.
+            if (settings.SeedFloodFollowsOffMeshLinks && (offMesh != null || backstage != null))
+            {
+                var linkExtents = new RcVec3f(settings.WalkableRadius * 4f, 1.0f, settings.WalkableRadius * 4f);
+                int PolyAt(Vector3 p)
+                {
+                    var c = new RcVec3f(p.X, p.Y, p.Z);
+                    query.FindNearestPoly(c, linkExtents, filter, out long r, out _, out _);
+                    if (r == 0) return -1;
+                    DtDetour.DecodePolyId(r, out _, out _, out int ip);
+                    return ip < 0 || ip >= polyCount ? -1 : ip;
+                }
+                var ends = new List<(int a, int b)>();
+                if (offMesh != null)
+                    foreach (CollisionNavMeshSoup.OffMeshLinkDraft d in offMesh)
+                    {
+                        int a = PolyAt(d.Start), bb = PolyAt(d.End);
+                        if (a >= 0 && bb >= 0 && a != bb) ends.Add((a, bb));
+                    }
+                if (backstage != null)
+                {
+                    var byNet = new Dictionary<int, List<int>>();
+                    foreach (CollisionNavMeshSoup.BackstageNodeDraft nd in backstage)
+                    {
+                        int p = PolyAt(nd.Bottom);
+                        if (p < 0) continue;
+                        if (!byNet.TryGetValue(nd.NetworkId, out List<int> l)) byNet[nd.NetworkId] = l = new List<int>();
+                        if (!l.Contains(p)) l.Add(p);
+                    }
+                    foreach (List<int> l in byNet.Values)
+                        for (int k = 1; k < l.Count; k++) ends.Add((l[0], l[k]));
+                }
+                int crossed = 0;
+                bool grew = true;
+                while (grew)
+                {
+                    grew = false;
+                    foreach ((int a, int bb) in ends)
+                    {
+                        if (keep[a] == keep[bb]) continue;
+                        int other = keep[a] ? bb : a;
+                        keep[other] = true;
+                        queue.Enqueue(other);
+                        grew = true;
+                        crossed++;
+                    }
+                    if (grew) Flood();
+                }
+                string stats = "off-mesh drafts " + (offMesh?.Count ?? 0) + ", backstage nodes " + (backstage?.Count ?? 0) + ", link ends on polys " + ends.Count + ", crossings " + crossed;
+                if (diagnostics != null)
+                    diagnostics.Stats = stats;
+                else
+                    LastSeedFloodStats = stats;
+            }
+
+            // If no seed hit the mesh, keep everything rather than wiping the tile.
+            bool any = false;
+            for (int i = 0; i < keep.Length; i++)
+                if (keep[i]) { any = true; break; }
+            if (!any)
+            {
+                for (int i = 0; i < keep.Length; i++)
+                    keep[i] = true;
+            }
+            return keep;
+        }
+
+        /// <summary>
+        /// Keep the largest connected component plus any other components whose median
+        /// centroid Y lies within <see cref="NavMeshBakeSettings.IslandFloorYBand"/>
+        /// of that primary median. Drops elevated ceiling/duct islands when no seeds exist.
+        /// </summary>
+        static bool[] MarkPrimaryFloorPolys(DtMeshTile tile, NavMeshBakeSettings settings)
+        {
+            int polyCount = tile.data.header.polyCount;
+            var keep = new bool[polyCount];
+            if (polyCount == 0)
+                return keep;
+
+            var component = new int[polyCount];
+            for (int i = 0; i < polyCount; i++)
+                component[i] = -1;
+
+            var centroidsY = new float[polyCount];
+            for (int i = 0; i < polyCount; i++)
+                centroidsY[i] = PolyCentroid(tile.data, tile.data.polys[i]).Y;
+
+            int nextComp = 0;
+            var sizes = new List<int>();
+            var medians = new List<float>();
+            var queue = new Queue<int>();
+            var yScratch = new List<float>();
+
+            for (int start = 0; start < polyCount; start++)
+            {
+                if (component[start] >= 0)
+                    continue;
+
+                int id = nextComp++;
+                component[start] = id;
+                queue.Enqueue(start);
+                yScratch.Clear();
+                int size = 0;
+
+                while (queue.Count > 0)
+                {
+                    int i = queue.Dequeue();
+                    size++;
+                    yScratch.Add(centroidsY[i]);
+
+                    DtPoly poly = tile.data.polys[i];
+                    for (int link = poly.firstLink; link != DT_NULL_LINK; link = tile.links[link].next)
+                    {
+                        long refs = tile.links[link].refs;
+                        if (refs == 0)
+                            continue;
+                        DtDetour.DecodePolyId(refs, out _, out _, out int ni);
+                        if (ni < 0 || ni >= polyCount || component[ni] >= 0)
+                            continue;
+                        component[ni] = id;
+                        queue.Enqueue(ni);
+                    }
+                }
+
+                yScratch.Sort();
+                float median = yScratch[yScratch.Count / 2];
+                sizes.Add(size);
+                medians.Add(median);
+            }
+
+            int primary = 0;
+            for (int c = 1; c < sizes.Count; c++)
+            {
+                if (sizes[c] > sizes[primary])
+                    primary = c;
+            }
+
+            float primaryMedian = medians[primary];
+            float band = Math.Max(0.05f, settings.IslandFloorYBand);
+            int minSecondary = Math.Max(
+                settings.IslandMinSecondaryPolys,
+                (int)Math.Ceiling(sizes[primary] * Math.Max(0f, settings.IslandMinSecondaryFraction)));
+
+            for (int i = 0; i < polyCount; i++)
+            {
+                int c = component[i];
+                if (c < 0)
+                    continue;
+                if (c == primary)
+                {
+                    keep[i] = true;
+                    continue;
+                }
+                // Same Y band as the floor, but large enough to be a real deck pocket —
+                // tiny exterior speckles at floor height are dropped.
+                if (Math.Abs(medians[c] - primaryMedian) <= band && sizes[c] >= minSecondary)
+                    keep[i] = true;
+            }
+
+            // Safety: never wipe the whole tile.
+            bool any = false;
+            for (int i = 0; i < keep.Length; i++)
+                if (keep[i]) { any = true; break; }
+            if (!any)
+            {
+                for (int i = 0; i < keep.Length; i++)
+                    keep[i] = true;
+            }
+            return keep;
+        }
+
+        /// <summary>
+        /// Drop kept polys that are a prop or duct top rather than floor: walkable surface sits
+        /// directly beneath them, close enough that the two cannot be separate storeys.
+        /// </summary>
+        static int StripElevatedPolys(DtMeshTile tile, NavMeshBakeSettings settings, bool[] keep)
+        {
+            if (keep == null)
+                return 0;
+
+            int polyCount = tile.data.header.polyCount;
+            float minRise = Math.Max(0.05f, settings.ElevatedPolyStripAboveFloor);
+            float storey = Math.Max(minRise + 0.05f, settings.ElevatedPolyStoreySeparation);
+
+            var centroids = new Vector3[polyCount];
+            var mins = new Vector3[polyCount];
+            var maxs = new Vector3[polyCount];
+            var eligible = new bool[polyCount];
+            for (int i = 0; i < polyCount; i++)
+            {
+                DtPoly poly = tile.data.polys[i];
+                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
+                    continue;
+                eligible[i] = keep[i];
+                if (!eligible[i])
+                    continue;
+                centroids[i] = PolyCentroid(tile.data, poly);
+                PolyAabb(tile.data, poly, out mins[i], out maxs[i]);
+            }
+
+            // Test against the set as it stood on entry: culling a crate lid must not promote the
+            // box stacked on it to floor.
+            int culled = 0;
+            for (int i = 0; i < polyCount; i++)
+            {
+                if (!eligible[i])
+                    continue;
+
+                Vector3 c = centroids[i];
+                for (int j = 0; j < polyCount; j++)
+                {
+                    if (j == i || !eligible[j])
+                        continue;
+                    float rise = c.Y - centroids[j].Y;
+                    if (rise <= minRise || rise >= storey)
+                        continue;
+                    // Overlapping in plan is what makes the lower poly the surface underneath.
+                    if (c.X < mins[j].X || c.X > maxs[j].X || c.Z < mins[j].Z || c.Z > maxs[j].Z)
+                        continue;
+                    keep[i] = false;
+                    culled++;
+                    break;
+                }
+            }
+
+            // Safety: never wipe the whole tile.
+            bool any = false;
+            for (int i = 0; i < keep.Length; i++)
+                if (keep[i]) { any = true; break; }
+            if (!any)
+            {
+                for (int i = 0; i < keep.Length; i++)
+                    keep[i] = true;
+                return 0;
+            }
+            return culled;
+        }
+
+        static void AdaptTile(
+            NavigationMesh nav,
+            DtMeshTile tile,
+            NavMeshBakeSettings settings,
+            bool[] keepGroundPolys,
+            NavigationMesh.dt_area_t[] polyAreas,
+            List<CollisionNavMeshSoup.OffMeshLinkDraft> offMeshDrafts,
+            BackstageMeshBuilder.Result backstage = null)
+        {
+            DtMeshData data = tile.data;
+            DtMeshHeader srcHeader = data.header;
+            int srcPolyCount = srcHeader.polyCount;
+
+            // Phase 1: drop off-mesh polys if any slipped in; optionally drop unreachable ground.
+            var keepIndex = new int[srcPolyCount];
+            for (int i = 0; i < srcPolyCount; i++)
+                keepIndex[i] = -1;
+
+            int dstPolyCount = 0;
+            for (int i = 0; i < srcPolyCount; i++)
+            {
+                DtPoly poly = data.polys[i];
+                if (poly.GetPolyType() == DtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION)
+                    continue;
+                if (keepGroundPolys != null && i < keepGroundPolys.Length && !keepGroundPolys[i])
+                    continue;
+                keepIndex[i] = dstPolyCount++;
+            }
+
+            if (dstPolyCount == 0)
+                throw new InvalidOperationException("No ground polygons left after filtering.");
+
+            // Collect used verts.
+            var vertRemap = new int[srcHeader.vertCount];
+            for (int i = 0; i < vertRemap.Length; i++)
+                vertRemap[i] = -1;
+            var dstVerts = new List<Vector3>(srcHeader.vertCount);
+            for (int i = 0; i < srcPolyCount; i++)
+            {
+                if (keepIndex[i] < 0)
+                    continue;
+                DtPoly poly = data.polys[i];
+                for (int v = 0; v < poly.vertCount; v++)
+                {
+                    int vi = poly.verts[v];
+                    if (vertRemap[vi] >= 0)
+                        continue;
+                    vertRemap[vi] = dstVerts.Count;
+                    int o = vi * 3;
+                    dstVerts.Add(new Vector3(data.verts[o], data.verts[o + 1], data.verts[o + 2]));
+                }
+            }
+
+            NavigationMesh.dt_area_t defaultArea = NavigationMesh.CreateDefaultGroundArea();
+            var dstPolys = new NavigationMesh.dtPoly[dstPolyCount];
+            for (int i = 0; i < srcPolyCount; i++)
+            {
+                int di = keepIndex[i];
+                if (di < 0)
+                    continue;
+                DtPoly src = data.polys[i];
+                NavigationMesh.dt_area_t area = defaultArea;
+                if (polyAreas != null && i < polyAreas.Length)
+                    area = polyAreas[i];
+                var dst = new NavigationMesh.dtPoly
+                {
+                    firstLink = DT_NULL_LINK,
+                    verts = new ushort[6],
+                    neis = new ushort[6],
+                    vertCount = (byte)src.vertCount,
+                    area = area
+                };
+                for (int v = 0; v < 6; v++)
+                {
+                    dst.verts[v] = v < src.vertCount ? (ushort)vertRemap[src.verts[v]] : (ushort)0;
+                    // Neighbour indices are 1-based poly indices; remap when both sides kept.
+                    if (v < src.vertCount)
+                    {
+                        int nei = src.neis[v];
+                        if (nei == 0 || (nei & DtDetour.DT_EXT_LINK) != 0)
+                            dst.neis[v] = (ushort)nei;
+                        else
+                        {
+                            int srcNei = nei - 1;
+                            int dstNei = (srcNei >= 0 && srcNei < keepIndex.Length) ? keepIndex[srcNei] : -1;
+                            dst.neis[v] = dstNei >= 0 ? (ushort)(dstNei + 1) : (ushort)0;
+                        }
+                    }
+                }
+                dstPolys[di] = dst;
+            }
+
+            // Detail meshes for kept polys only.
+            var dstDetail = new List<NavigationMesh.dtPolyDetail>(dstPolyCount);
+            var dstDetailVerts = new List<Vector3>();
+            var dstDetailTris = new List<byte>();
+            if (data.detailMeshes != null && data.detailMeshes.Length > 0)
+            {
+                for (int i = 0; i < srcPolyCount; i++)
+                {
+                    int di = keepIndex[i];
+                    if (di < 0)
+                        continue;
+                    // Off-mesh / missing detail: pad with empty so detailMeshCount == polyCount.
+                    if (i >= data.detailMeshes.Length)
+                    {
+                        dstDetail.Add(new NavigationMesh.dtPolyDetail());
+                        continue;
+                    }
+
+                    DtPolyDetail dm = data.detailMeshes[i];
+                    int vertBase = dstDetailVerts.Count;
+                    int triBase = dstDetailTris.Count / 4;
+
+                    // Extra detail verts only (poly verts live in Vertices).
+                    for (int v = 0; v < dm.vertCount; v++)
+                    {
+                        int o = (dm.vertBase + v) * 3;
+                        dstDetailVerts.Add(new Vector3(
+                            data.detailVerts[o],
+                            data.detailVerts[o + 1],
+                            data.detailVerts[o + 2]));
+                    }
+
+                    for (int t = 0; t < dm.triCount; t++)
+                    {
+                        int o = (dm.triBase + t) * 4;
+                        dstDetailTris.Add((byte)data.detailTris[o + 0]);
+                        dstDetailTris.Add((byte)data.detailTris[o + 1]);
+                        dstDetailTris.Add((byte)data.detailTris[o + 2]);
+                        dstDetailTris.Add((byte)data.detailTris[o + 3]);
+                    }
+
+                    dstDetail.Add(new NavigationMesh.dtPolyDetail
+                    {
+                        vertBase = vertBase,
+                        triBase = triBase,
+                        vertCount = (byte)dm.vertCount,
+                        triCount = (byte)dm.triCount
+                    });
+                }
+            }
+            else
+            {
+                for (int i = 0; i < dstPolyCount; i++)
+                    dstDetail.Add(new NavigationMesh.dtPolyDetail());
+            }
+
+            // Backstage sheet: appended after the filtered ground polys and before the off-mesh
+            // connections, matching the retail layout (ground, backstage, off-mesh).
+            if (backstage != null && backstage.Triangles.Count >= 3)
+            {
+                dstPolys = AppendBackstagePolys(
+                    backstage, settings, srcHeader, dstVerts, dstPolys, dstDetail, dstDetailVerts, dstDetailTris);
+                dstPolyCount = dstPolys.Length;
+            }
+
+            int groundPolyCount = dstPolyCount;
+            NavigationMesh.dtOffMeshConnection[] offMeshConnections = Array.Empty<NavigationMesh.dtOffMeshConnection>();
+            if (offMeshDrafts != null && offMeshDrafts.Count > 0)
+            {
+                var polyList = new List<NavigationMesh.dtPoly>(dstPolys);
+                var offList = new List<NavigationMesh.dtOffMeshConnection>(offMeshDrafts.Count);
+                for (int li = 0; li < offMeshDrafts.Count; li++)
+                {
+                    CollisionNavMeshSoup.OffMeshLinkDraft draft = offMeshDrafts[li];
+                    int vertA = dstVerts.Count;
+                    dstVerts.Add(draft.Start);
+                    dstVerts.Add(draft.End);
+                    int polyIndex = polyList.Count;
+
+                    NavigationMesh.dt_area_t area = NavigationMesh.CreateDefaultGroundArea();
+                    area.SetPolyType(NavigationMesh.dtPolyTypes.DT_POLYTYPE_OFFMESH_CONNECTION);
+                    area.SetLinkType(draft.LinkType);
+                    area.SetAdmittanceFlags(draft.CharacterClasses);
+                    area.SetIsEnabled(draft.OpenOnReset);
+                    //Retail marks off-mesh polys Normal while ground stays Backstage.
+                    area.SetMarkupFlags(NavigationMesh.NavMeshAreaType.Normal);
+
+                    var omPoly = new NavigationMesh.dtPoly
+                    {
+                        firstLink = DT_NULL_LINK,
+                        verts = new ushort[6],
+                        neis = new ushort[6],
+                        vertCount = 2,
+                        area = area
+                    };
+                    omPoly.verts[0] = (ushort)vertA;
+                    omPoly.verts[1] = (ushort)(vertA + 1);
+                    //Leave neis at 0. DT_EXT_LINK means "crosses a tile boundary", and Cathode
+                    //levels are a single tile - retail writes 0 here on every off-mesh poly. The
+                    //connection is expressed through the link pool below, not through neis.
+                    //No detail entry either: retail's detailMeshCount covers ground polys only
+                    //(SCI_Hub ships 1134 detail meshes for 1218 polys, 84 of them off-mesh).
+                    polyList.Add(omPoly);
+
+                    offList.Add(new NavigationMesh.dtOffMeshConnection
+                    {
+                        pos = new[]
+                        {
+                            draft.Start.X, draft.Start.Y, draft.Start.Z,
+                            draft.End.X, draft.End.Y, draft.End.Z
+                        },
+                        rad = draft.Radius,
+                        poly_index_within_tile = (ushort)polyIndex,
+                        extra_cost = draft.ExtraCost,
+                        /* Detour rebuilds a tile's off-mesh links when the tile is added, and these two
+                           fields are what that pass reads. `side` is matched against the opposite side
+                           before the far endpoint is connected at all, and DT_OFFMESH_CON_BIDIR decides
+                           whether the far poly gets a link back into the connection. All 37 shipped nav
+                           meshes write side 0xff on every connection, and flags 1 on all 678 Backstage
+                           connections and on none of the 4,786 others - so a backstage vent the alien
+                           climbs is the one kind of connection meant to be travelled in both directions.
+                           Leaving them at 0 is what left it up there with no way down. */
+                        side = 0xff,
+                        flags = draft.LinkType == NavigationMesh.OffMeshLinkType.Backstage ? (byte)1 : (byte)0,
+                        entity = new NavigationMesh.dtOffMeshEntityHandle
+                        {
+                            entity_id = draft.Entity.entity_id,
+                            composite_instance_id = draft.Entity.composite_instance_id
+                        },
+                        min_speed = LOCOMOTION_TARGET_SPEED.SLOWEST,
+                        max_speed = LOCOMOTION_TARGET_SPEED.FASTEST,
+                    });
+                }
+
+                dstPolys = polyList.ToArray();
+                dstPolyCount = dstPolys.Length;
+                offMeshConnections = offList.ToArray();
+            }
+
+            // Build internal links with AI 32-bit polyref encoding.
+            int polyBits = Ilog2(NextPow2(dstPolyCount));
+            if (polyBits < 1) polyBits = 1;
+            uint polyRefBase = 1u << polyBits;
+
+            var links = new List<NavigationMesh.dtLink>(dstPolyCount * 4);
+            for (int i = 0; i < dstPolyCount; i++)
+            {
+                NavigationMesh.dtPoly poly = dstPolys[i];
+                poly.firstLink = DT_NULL_LINK;
+                for (int j = poly.vertCount - 1; j >= 0; --j)
+                {
+                    ushort nei = poly.neis[j];
+                    if (nei == 0 || (nei & DtDetour.DT_EXT_LINK) != 0)
+                        continue;
+                    int idx = links.Count;
+                    links.Add(new NavigationMesh.dtLink
+                    {
+                        polygonRef = polyRefBase | (uint)(nei - 1),
+                        next = poly.firstLink,
+                        edge = (byte)j,
+                        side = 0xff,
+                        bmin = 0,
+                        bmax = 0
+                    });
+                    poly.firstLink = idx;
+                }
+                dstPolys[i] = poly;
+            }
+
+            ConnectOffMeshLinks(dstPolys, dstVerts, offMeshConnections, groundPolyCount, polyRefBase, links);
+
+            // Rebuild BV tree over ground polys only (quantized like Detour CreateBVTree).
+            // Off-mesh polys stay out of it, as in Detour and retail data (SCI_Hub ships
+            // 2268 nodes = 2 x 1134 ground polys for 1218 total).
+            NavigationMesh.dtBVNode[] bvNodes = BuildBvTree(dstPolys, groundPolyCount, dstVerts, srcHeader.bmin, settings.CellSize);
+
+            var header = new NavigationMesh.dtMeshHeader
+            {
+                FourCC = new fourcc { V = new[] { 'V', 'A', 'N', 'D' } },
+                version = 7,
+                x = 0,
+                y = 0,
+                layer = 0,
+                userId = 0,
+                polyCount = dstPolyCount,
+                vertCount = dstVerts.Count,
+                maxLinkCount = PadLinkPool(links, dstPolys, groundPolyCount, offMeshConnections.Length),
+                detailMeshCount = dstDetail.Count,
+                detailVertCount = dstDetailVerts.Count,
+                detailTriCount = dstDetailTris.Count / 4,
+                bvNodeCount = bvNodes.Length,
+                offMeshConCount = offMeshConnections.Length,
+                offMeshBase = groundPolyCount,
+                walkableHeight = settings.HeaderWalkableHeight,
+                walkableRadius = settings.WalkableRadius,
+                walkableClimb = settings.WalkableClimb,
+                bMin = new[] { srcHeader.bmin.X, srcHeader.bmin.Y, srcHeader.bmin.Z },
+                bMax = new[] { srcHeader.bmax.X, srcHeader.bmax.Y, srcHeader.bmax.Z },
+                bvQuantFactor = 1.0f / settings.CellSize
+            };
+
+            nav.SetTileData(
+                header,
+                dstVerts.ToArray(),
+                dstPolys,
+                links.ToArray(),
+                dstDetail.ToArray(),
+                dstDetailVerts.ToArray(),
+                dstDetailTris.ToArray(),
+                bvNodes,
+                offMeshConnections);
+        }
+
+        /// <summary>
+        /// Build one merged backstage sheet from the nodes, triangulating each network id's
+        /// nodes separately (nodes only ever mesh with others on their own network - retail
+        /// ENG_TowPlatform's sheet covers a single network's region while other networks' nodes
+        /// keep their connections but get no sheet). Returns null when nothing triangulated.
+        /// </summary>
+        static BackstageMeshBuilder.Result BuildBackstageSheets(
+            List<CollisionNavMeshSoup.BackstageNodeDraft> nodes,
+            NavMeshBakeSettings settings,
+            out string warning)
+        {
+            warning = null;
+            var byNetwork = new SortedDictionary<int, List<Vector3>>();
+            foreach (CollisionNavMeshSoup.BackstageNodeDraft node in nodes)
+            {
+                if (!byNetwork.TryGetValue(node.NetworkId, out List<Vector3> tops))
+                    byNetwork[node.NetworkId] = tops = new List<Vector3>();
+                tops.Add(node.Bottom + new Vector3(0f, settings.BackstageNodeHeight, 0f));
+            }
+
+            var merged = new BackstageMeshBuilder.Result();
+            var warnings = new List<string>();
+            foreach (KeyValuePair<int, List<Vector3>> network in byNetwork)
+            {
+                BackstageMeshBuilder.Result sheet = BackstageMeshBuilder.Build(
+                    network.Value, settings.BackstageMaxEdgeLength, settings.BackstageColinearStripHalfWidth,
+                    out string sheetWarning);
+                sheetWarning ??= sheet?.Warning;
+                if (sheetWarning != null)
+                    warnings.Add((byNetwork.Count > 1 ? $"network {network.Key}: " : "") + sheetWarning);
+                if (sheet == null)
+                    continue;
+
+                int vertBase = merged.Vertices.Count;
+                merged.Vertices.AddRange(sheet.Vertices);
+                foreach (int index in sheet.Triangles)
+                    merged.Triangles.Add(vertBase + index);
+            }
+
+            if (warnings.Count > 0)
+                warning = string.Join("; ", warnings);
+            return merged.Triangles.Count == 0 ? null : merged;
+        }
+
+        /// <summary>
+        /// Append the backstage sheet's triangles as ground polys flagged Backstage, sharing the
+        /// tile vertex pool. Retail parity: admittance ALL, Standing, enabled, area id 0, detail
+        /// entry [2,0,1] with edge flags 21, and vertices snapped onto the Recast cell grid.
+        /// </summary>
+        static NavigationMesh.dtPoly[] AppendBackstagePolys(
+            BackstageMeshBuilder.Result backstage,
+            NavMeshBakeSettings settings,
+            DtMeshHeader srcHeader,
+            List<Vector3> dstVerts,
+            NavigationMesh.dtPoly[] dstPolys,
+            List<NavigationMesh.dtPolyDetail> dstDetail,
+            List<Vector3> dstDetailVerts,
+            List<byte> dstDetailTris)
+        {
+            float cs = settings.CellSize;
+            float ch = settings.CellHeight;
+            RcVec3f bmin = srcHeader.bmin;
+
+            // Snap onto the tile grid the way Recast quantizes its own vertices; identical
+            // snapped positions collapse to one vertex so triangles share edges properly.
+            var vertRemap = new int[backstage.Vertices.Count];
+            var snappedIndex = new Dictionary<(int, int, int), int>();
+            for (int i = 0; i < backstage.Vertices.Count; i++)
+            {
+                Vector3 v = backstage.Vertices[i];
+                int gx = (int)MathF.Floor((v.X - bmin.X) / cs);
+                int gy = (int)MathF.Floor((v.Y - bmin.Y) / ch);
+                int gz = (int)MathF.Floor((v.Z - bmin.Z) / cs);
+                var key = (gx, gy, gz);
+                if (!snappedIndex.TryGetValue(key, out int vi))
+                {
+                    vi = dstVerts.Count;
+                    dstVerts.Add(new Vector3(bmin.X + gx * cs, bmin.Y + gy * ch, bmin.Z + gz * cs));
+                    snappedIndex[key] = vi;
+                }
+                vertRemap[i] = vi;
+            }
+
+            // Remap to snapped indices, dropping triangles the snap degenerated, and re-fix
+            // winding on the snapped positions (Detour wants positive 2D area).
+            var tris = new List<(int a, int b, int c)>(backstage.Triangles.Count / 3);
+            for (int t = 0; t + 2 < backstage.Triangles.Count; t += 3)
+            {
+                int a = vertRemap[backstage.Triangles[t]];
+                int b = vertRemap[backstage.Triangles[t + 1]];
+                int c = vertRemap[backstage.Triangles[t + 2]];
+                if (a == b || b == c || a == c)
+                    continue;
+                Vector3 pa = dstVerts[a], pb = dstVerts[b], pc = dstVerts[c];
+                float area2 = (pc.X - pa.X) * (pb.Z - pa.Z) - (pb.X - pa.X) * (pc.Z - pa.Z);
+                if (area2 == 0f)
+                    continue;
+                tris.Add(area2 > 0f ? (a, b, c) : (a, c, b));
+            }
+
+            int triCount = tris.Count;
+            int baseIndex = dstPolys.Length;
+            var polys = new List<NavigationMesh.dtPoly>(dstPolys);
+
+            // Adjacency between sheet triangles by shared (snapped) edge.
+            var edgeOwner = new Dictionary<(int, int), int>();
+            var neighbours = new int[triCount, 3];
+            for (int t = 0; t < triCount; t++)
+                for (int e = 0; e < 3; e++)
+                    neighbours[t, e] = -1;
+            for (int t = 0; t < triCount; t++)
+            {
+                var (ta, tb, tc) = tris[t];
+                Span<int> v = stackalloc int[3] { ta, tb, tc };
+                for (int e = 0; e < 3; e++)
+                {
+                    int a = v[e];
+                    int b = v[(e + 1) % 3];
+                    var key = a < b ? (a, b) : (b, a);
+                    if (edgeOwner.TryGetValue(key, out int packed))
+                    {
+                        int otherTri = packed >> 2;
+                        int otherEdge = packed & 3;
+                        neighbours[t, e] = otherTri;
+                        neighbours[otherTri, otherEdge] = t;
+                    }
+                    else
+                    {
+                        edgeOwner[key] = (t << 2) | e;
+                    }
+                }
+            }
+
+            for (int t = 0; t < triCount; t++)
+            {
+                NavigationMesh.dt_area_t area = NavigationMesh.CreateDefaultGroundArea();
+                // Markup is a bitfield here: bit 0 normal, bit 1 backstage, bit 2 expensive.
+                area.SetMarkupFlags((NavigationMesh.NavMeshAreaType)(uint)NavigationMesh.NavMeshAreaTypeFlags.BackstageFlag);
+
+                var poly = new NavigationMesh.dtPoly
+                {
+                    firstLink = DT_NULL_LINK,
+                    verts = new ushort[6],
+                    neis = new ushort[6],
+                    vertCount = 3,
+                    area = area
+                };
+                var (va, vb, vc) = tris[t];
+                Span<int> v = stackalloc int[3] { va, vb, vc };
+                for (int e = 0; e < 3; e++)
+                {
+                    poly.verts[e] = (ushort)v[e];
+                    int nei = neighbours[t, e];
+                    poly.neis[e] = nei >= 0 ? (ushort)(baseIndex + nei + 1) : (ushort)0;
+                }
+                polys.Add(poly);
+
+                // Retail backstage detail: no extra verts, one tri [2,0,1] with edge flags 21.
+                dstDetail.Add(new NavigationMesh.dtPolyDetail
+                {
+                    vertBase = dstDetailVerts.Count,
+                    triBase = dstDetailTris.Count / 4,
+                    vertCount = 0,
+                    triCount = 1
+                });
+                dstDetailTris.Add(2);
+                dstDetailTris.Add(0);
+                dstDetailTris.Add(1);
+                dstDetailTris.Add(21);
+            }
+
+            return polys.ToArray();
+        }
+
+        static NavigationMesh.dtBVNode[] BuildBvTree(
+            NavigationMesh.dtPoly[] polys,
+            int polyCount,
+            List<Vector3> verts,
+            RcVec3f bmin,
+            float cellSize)
+        {
+            int n = Math.Min(polyCount, polys.Length);
+            if (n == 0)
+                return Array.Empty<NavigationMesh.dtBVNode>();
+
+            float quant = 1.0f / cellSize;
+            var items = new BvItem[n];
+            for (int i = 0; i < n; i++)
+            {
+                NavigationMesh.dtPoly p = polys[i];
+                Vector3 amin = verts[p.verts[0]];
+                Vector3 amax = amin;
+                for (int v = 1; v < p.vertCount; v++)
+                {
+                    Vector3 q = verts[p.verts[v]];
+                    amin = Vector3.Min(amin, q);
+                    amax = Vector3.Max(amax, q);
+                }
+                items[i] = new BvItem
+                {
+                    i = i,
+                    bmin = new[]
+                    {
+                        ClampShort((amin.X - bmin.X) * quant),
+                        ClampShort((amin.Y - bmin.Y) * quant),
+                        ClampShort((amin.Z - bmin.Z) * quant)
+                    },
+                    bmax = new[]
+                    {
+                        ClampShort((amax.X - bmin.X) * quant),
+                        ClampShort((amax.Y - bmin.Y) * quant),
+                        ClampShort((amax.Z - bmin.Z) * quant)
+                    }
+                };
+            }
+
+            var nodes = new List<NavigationMesh.dtBVNode>(n * 2);
+            Subdivide(items, 0, n, nodes);
+            return nodes.ToArray();
+        }
+
+        struct BvItem
+        {
+            public int i;
+            public short[] bmin;
+            public short[] bmax;
+        }
+
+        static void Subdivide(BvItem[] items, int imin, int imax, List<NavigationMesh.dtBVNode> nodes)
+        {
+            int inum = imax - imin;
+            int icur = nodes.Count;
+            var node = new NavigationMesh.dtBVNode
+            {
+                bmin = new short[3],
+                bmax = new short[3]
+            };
+
+            node.bmin[0] = items[imin].bmin[0];
+            node.bmin[1] = items[imin].bmin[1];
+            node.bmin[2] = items[imin].bmin[2];
+            node.bmax[0] = items[imin].bmax[0];
+            node.bmax[1] = items[imin].bmax[1];
+            node.bmax[2] = items[imin].bmax[2];
+            for (int i = imin + 1; i < imax; i++)
+            {
+                for (int a = 0; a < 3; a++)
+                {
+                    if (items[i].bmin[a] < node.bmin[a]) node.bmin[a] = items[i].bmin[a];
+                    if (items[i].bmax[a] > node.bmax[a]) node.bmax[a] = items[i].bmax[a];
+                }
+            }
+
+            nodes.Add(node);
+
+            if (inum == 1)
+            {
+                node.i = items[imin].i;
+                nodes[icur] = node;
+                return;
+            }
+
+            int axis = 0;
+            int maxAxis = node.bmax[0] - node.bmin[0];
+            for (int a = 1; a < 3; a++)
+            {
+                int d = node.bmax[a] - node.bmin[a];
+                if (d > maxAxis) { axis = a; maxAxis = d; }
+            }
+
+            Array.Sort(items, imin, inum, Comparer<BvItem>.Create((a, b) =>
+            {
+                int ca = (a.bmin[axis] + a.bmax[axis]) / 2;
+                int cb = (b.bmin[axis] + b.bmax[axis]) / 2;
+                return ca.CompareTo(cb);
+            }));
+
+            int isplit = imin + inum / 2;
+            Subdivide(items, imin, isplit, nodes);
+            Subdivide(items, isplit, imax, nodes);
+            node.i = -(nodes.Count - icur);
+            nodes[icur] = node;
+        }
+
+        static short ClampShort(float v)
+        {
+            int i = (int)v;
+            if (i < short.MinValue) return short.MinValue;
+            if (i > short.MaxValue) return short.MaxValue;
+            return (short)i;
+        }
+
+        static int NextPow2(int v)
+        {
+            v--;
+            v |= v >> 1;
+            v |= v >> 2;
+            v |= v >> 4;
+            v |= v >> 8;
+            v |= v >> 16;
+            v++;
+            return v < 1 ? 1 : v;
+        }
+
+        static int Ilog2(int v)
+        {
+            int r = 0;
+            while ((1 << r) < v) r++;
+            return r;
+        }
+    }
+}
+#endif

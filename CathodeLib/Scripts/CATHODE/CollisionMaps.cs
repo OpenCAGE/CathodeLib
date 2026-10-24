@@ -12,8 +12,6 @@ using static CATHODE.Movers;
 
 namespace CATHODE
 {
-    //This file defines additional info for entities with COLLISION_MAPPING resources.
-
     /// <summary>
     /// DATA/ENV/x/WORLD/COLLISION.MAP
     /// </summary>
@@ -25,16 +23,52 @@ namespace CATHODE
         protected override bool HandlesLoadingManually => true;
         private Materials _materials;
         private MaterialMappings _materialMaps;
+        private HavokPackfile _collisionHKX;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
         private List<COLLISION_MAPPING> _writeList = new List<COLLISION_MAPPING>();
 
-        public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps) : base(path)
+        //Where each row sits in the file. Both Commands writers resolve a row to its index once per
+        //collision resource, and the old Contains-then-IndexOf pair walked the whole table twice for
+        //each. COLLISION_MAPPING's own GetHashCode leans on Material and MaterialMapping, whose
+        //hashes are not consistent with their equality, so RowIdentity hashes only what == compares
+        //directly and lets Equals settle collisions.
+        private Dictionary<COLLISION_MAPPING, int> _writeIndex = null;
+        private int _writeIndexCount = 0;
+        private readonly object _writeIndexLock = new object();
+
+        private sealed class RowIdentity : IEqualityComparer<COLLISION_MAPPING>
+        {
+            public static readonly RowIdentity Instance = new RowIdentity();
+            //A row always equals itself (every field == compares is an exact comparison), and comparing is not free:
+            //CollisionInstanceIndex searches the host compound's whole instance list
+            public bool Equals(COLLISION_MAPPING x, COLLISION_MAPPING y) { return ReferenceEquals(x, y) || x == y; }
+            public int GetHashCode(COLLISION_MAPPING row)
+            {
+                //Not CollisionInstanceIndex, for the same reason - hashing it searched the instance list for every row
+                //indexed and every row looked up (quadratic on a large host). The entity handle, which == also compares,
+                //tells rows apart instead.
+                if (row == null) return 0;
+                int hash = (int)row.Flags;
+                hash = hash * 31 + (int)row.ResourceGUID.AsUInt32;
+                hash = hash * 31 + row.CollisionProxyIndex;
+                hash = hash * 31 + (int)row.ZoneID.AsUInt32;
+                if (row.Entity != null)
+                {
+                    hash = hash * 31 + (int)row.Entity.entity_id.AsUInt32;
+                    hash = hash * 31 + (int)row.Entity.composite_instance_id.AsUInt32;
+                }
+                return hash;
+            }
+        }
+
+        public CollisionMaps(string path, Materials materials, MaterialMappings materialMaps, HavokPackfile collisionHKX = null) : base(path)
         {
             _materials = materials;
             _materialMaps = materialMaps;
+            _collisionHKX = collisionHKX;
 
             _loaded = Load();
         }
@@ -43,13 +77,7 @@ namespace CATHODE
         {
             _materials = null;
             _materialMaps = null;
-        }
-
-        ~CollisionMaps()
-        {
-            ClearReferences();
-            Entries.Clear();
-            _writeList.Clear();
+            _collisionHKX = null;
         }
 
         #region FILE_IO
@@ -59,26 +87,21 @@ namespace CATHODE
 
             using (BinaryReader reader = new BinaryReader(_compressed ? Utilities.GZIPDecompress(stream) : stream))
             {
-                //The way this works:
-                // - First 18 entries are empty
-                // - Next set of entries are all the COLLISION_MAPPING resources referenced by COMMANDS.PAK (hence they have no composite_instance_id, as the composites aren't instanced - but they do have entity_ids)
-                // - There are then a few entries that have composite_instance_ids set but I can't resolve them - perhaps these are things from GLOBAL?
-                // - Then there's all the instanced entities with resolvable composite_instance_ids
-
                 reader.BaseStream.Position = 4;
                 int entryCount = reader.ReadInt32();
                 for (int i = 0; i < entryCount; i++)
                 {
                     COLLISION_MAPPING entry = new COLLISION_MAPPING();
                     entry.Flags = (CollisionFlags)reader.ReadInt32();
-                    entry.Index = reader.ReadInt32();
+                    int instanceIndex = reader.ReadInt32();
                     entry.ResourceGUID = Utilities.Consume<ShortGuid>(reader);
                     entry.Entity = Utilities.Consume<EntityHandle>(reader);
                     entry.Material = _materials.GetAtWriteIndex(reader.ReadInt32());
-                    entry.CollisionProxyIndex = reader.ReadInt16();
+                    int proxyIndex = reader.ReadInt16();
                     entry.MaterialMapping = _materialMaps.GetAtWriteIndex(reader.ReadInt16());
                     entry.ZoneID = Utilities.Consume<ShortGuid>(reader);
                     reader.BaseStream.Position += 16;
+                    BindHavokRefs(entry, proxyIndex, instanceIndex);
                     Entries.Add(entry);
                 }
             }
@@ -93,10 +116,6 @@ namespace CATHODE
                 _filepath += ".gz";
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".gz")
                 _filepath = _filepath.Substring(0, _filepath.Length - 3);
-
-            //composite_instance_id defo has something to do with the ordering as all the zeros are first
-
-            //Entries = Entries.OrderBy(o => o.entity.entity_id.ToUInt32() + o.id.ToUInt32()).ThenBy(o => o.entity.composite_instance_id.ToUInt32()).ThenBy(o => o.zone_id.ToUInt32()).ToList();
 
             byte[][] entryBuffers = new byte[Entries.Count][];
             Parallel.For(0, Entries.Count, i =>
@@ -118,6 +137,7 @@ namespace CATHODE
                 Utilities.GZIPCompress(_filepath);
 
             _writeList.Clear();
+            _writeIndex = null;
             _writeList.AddRange(Entries);
             return true;
         }
@@ -128,7 +148,7 @@ namespace CATHODE
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.Write((int)entry.Flags);
-                writer.Write(entry.Index);
+                writer.Write(entry.CollisionInstanceIndex);
                 Utilities.Write<ShortGuid>(writer, entry.ResourceGUID);
                 Utilities.Write<EntityHandle>(writer, entry.Entity);
                 writer.Write(_materials.GetWriteIndex(entry.Material));
@@ -143,13 +163,52 @@ namespace CATHODE
 
         #region HELPERS
         /// <summary>
+        /// Resolve the two Havok objects a row points at. The proxy is a template compound, but the
+        /// instance lives on a world host — which host is given by the row's WORLD flag.
+        /// </summary>
+        void BindHavokRefs(COLLISION_MAPPING entry, int proxyIndex, int instanceIndex)
+        {
+            entry.CollisionProxy = _collisionHKX?.GetCompound(proxyIndex);
+
+            HavokPackfile.StaticCompoundShape host = _collisionHKX?.WorldHostFor((entry.Flags & CollisionFlags.WORLD) != 0);
+            entry.CollisionInstance = host != null && instanceIndex >= 0 && instanceIndex < host.Instances.Count ? host.Instances[instanceIndex] : null;
+        }
+
+        /// <summary>
         /// Get the write index (useful for cross-ref'ing with compiled binaries)
         /// Note: if the file hasn't been saved for a while, the write index may differ from the index on-disk
         /// </summary>
         public int GetWriteIndex(COLLISION_MAPPING colMap)
         {
-            if (!_writeList.Contains(colMap)) return -1;
-            return _writeList.IndexOf(colMap);
+            if (colMap == null) return -1;
+
+            /* The lookup is built under the lock but read outside it: the Commands writers resolve
+             * rows to indices from a Parallel.For, and holding a lock for every one of those was
+             * slower than the scan it replaced. The dictionary is built complete and then published
+             * in one assignment, so a reader always sees a finished one. */
+            Dictionary<COLLISION_MAPPING, int> index = _writeIndex;
+            if (index == null || _writeIndexCount != _writeList.Count)
+            {
+                lock (_writeIndexLock)
+                {
+                    if (_writeIndex == null || _writeIndexCount != _writeList.Count)
+                    {
+                        Dictionary<COLLISION_MAPPING, int> built = new Dictionary<COLLISION_MAPPING, int>(_writeList.Count, RowIdentity.Instance);
+                        for (int i = 0; i < _writeList.Count; i++)
+                        {
+                            COLLISION_MAPPING entry = _writeList[i];
+                            if (entry != null && !built.ContainsKey(entry))
+                                built[entry] = i;
+                        }
+                        _writeIndexCount = _writeList.Count;
+                        _writeIndex = built;
+                    }
+                    index = _writeIndex;
+                }
+            }
+
+            int found;
+            return index.TryGetValue(colMap, out found) ? found : -1;
         }
 
         /// <summary>
@@ -164,18 +223,19 @@ namespace CATHODE
 
         /// <summary>
         /// Copy an entry into the file, along with all child objects.
+        /// Pass <paramref name="remappedProxy"/> when porting between levels so the Havok compound
+        /// lives in the destination COLLISION.HKX. World instances are cleared (instancing rebuilds them).
         /// </summary>
-        public COLLISION_MAPPING ImportEntry(COLLISION_MAPPING colMap)
+        public COLLISION_MAPPING ImportEntry(COLLISION_MAPPING colMap, HavokPackfile.StaticCompoundShape remappedProxy = null, bool overwriteExisting = false)
         {
             if (colMap == null)
                 return null;
 
             COLLISION_MAPPING newColMap = colMap.Copy();
-
-            newColMap.Material = _materials.ImportEntry(newColMap.Material);
-            newColMap.MaterialMapping = _materialMaps.ImportEntry(newColMap.MaterialMapping);
-
-            //todo: set zone to global?
+            newColMap.CollisionProxy = remappedProxy ?? colMap.CollisionProxy;
+            newColMap.CollisionInstance = null;
+            newColMap.Material = _materials.ImportEntry(newColMap.Material, overwriteExisting);
+            newColMap.MaterialMapping = _materialMaps.ImportEntry(newColMap.MaterialMapping, overwriteExisting);
 
             var existing = Entries.FirstOrDefault(o => o == newColMap);
             if (existing != null)
@@ -190,24 +250,28 @@ namespace CATHODE
         public class COLLISION_MAPPING : IEquatable<COLLISION_MAPPING>
         {
             public CollisionFlags Flags = 0;
-            public int Index = -1; //Compound shape index for static and ballistic collision 
 
-            public ShortGuid ResourceGUID = ShortGuid.Invalid; //This is the name of the entity hashed via ShortGuid
+            public HavokPackfile.CompoundInstance CollisionInstance = null;
+
+            public ShortGuid ResourceGUID = ShortGuid.Invalid; 
             public EntityHandle Entity = new EntityHandle();
 
             public Materials.Material Material = null;
 
-            public int CollisionProxyIndex = -1; // Index in COLLISION.HKX (hkpStaticCompoundShape)
-            public MaterialMappings.MaterialMapping MaterialMapping = null; //This remaps the material to the physics material for Havok
+            public HavokPackfile.StaticCompoundShape CollisionProxy = null;
+            public MaterialMappings.MaterialMapping MaterialMapping = null; 
 
-            public ShortGuid ZoneID = ShortGuid.Invalid; //this maps the entity to a zone ID. interestingly, this seems to be the point of truth for the zone rendering
+            public ShortGuid ZoneID = ShortGuid.Invalid;
+
+            public int CollisionInstanceIndex => CollisionInstance?.Index ?? -1;
+            public int CollisionProxyIndex => CollisionProxy?.ProxyIndex ?? -1;
 
             public static bool operator ==(COLLISION_MAPPING x, COLLISION_MAPPING y)
             {
                 if (ReferenceEquals(x, null)) return ReferenceEquals(y, null);
                 if (ReferenceEquals(y, null)) return ReferenceEquals(x, null);
                 if (x.Flags != y.Flags) return false;
-                if (x.Index != y.Index) return false;
+                if (x.CollisionInstanceIndex != y.CollisionInstanceIndex) return false;
                 if (x.ResourceGUID != y.ResourceGUID) return false;
                 if (x.Entity != y.Entity) return false;
                 if (x.Material != y.Material) return false;
@@ -237,7 +301,7 @@ namespace CATHODE
                 {
                     int hashCode = 1001543423;
                     hashCode = hashCode * -1521134295 + Flags.GetHashCode();
-                    hashCode = hashCode * -1521134295 + Index.GetHashCode();
+                    hashCode = hashCode * -1521134295 + CollisionInstanceIndex.GetHashCode();
                     hashCode = hashCode * -1521134295 + ResourceGUID.GetHashCode();
                     hashCode = hashCode * -1521134295 + (Entity?.GetHashCode() ?? 0);
                     hashCode = hashCode * -1521134295 + (Material?.GetHashCode() ?? 0);
@@ -253,14 +317,14 @@ namespace CATHODE
         public enum CollisionFlags : uint
         {
             //Type of collider
-            STANDARD = 0x00000010,
-            PHANTOM = 0x00000020, //trigger volume
-            DYNAMIC = 0x00000030,
-            PATHFINDING = 0x00000040,
-            CAMERA = 0x00000050,
-            SOUND = 0x00000060,
-            USER_INTERFACE = 0x00000070,
-            PLAYER = 0x00000080,
+            //STANDARD = 0x00000010,
+            //PHANTOM = 0x00000020, 
+            //DYNAMIC = 0x00000030,
+            //PATHFINDING = 0x00000040,
+            //CAMERA = 0x00000050,
+            //SOUND = 0x00000060,
+            //USER_INTERFACE = 0x00000070,
+            //PLAYER = 0x00000080,
             COLLISION_TYPE_MASK = 0x0000001F,
 
             //Way the collider is stored 
@@ -301,6 +365,42 @@ namespace CATHODE
             HIGH_PRIORITY = 0x00080000, //priority ui collision
             STATE_MASK = 0xFFFF0000,
         };
+
+        public enum CollisionType
+        {
+            EVERYTHING,
+            TRIGGERS,
+            CAMERA,
+            STANDARD,
+            TRANSPARENT,
+            REAL_CHAR,
+            AGAINST_DYNAMIC_SIMULATED,
+            DYNAMIC_TRANSPARENT,
+            DEBRIS,
+            BALLISTICS,
+            LINE_OF_SIGHT,
+            BALLISTIC_TEST,
+            PATH_OPEN,
+            PATH_CLOSED,
+            DYNAMIC_SIMULATED,
+            RAGDOLL,
+            WATER,
+            SOUND,
+            NOTHING,
+            GHOSTED,
+            UI,
+            UI_TEST,
+            MATERIAL_TEST,
+            SUPPORT_TEST,
+            SOUND_BARRIER,
+            PLAYER,
+            THROWN,
+            PLAYER_ONLY,
+            HIGH_PRIORITY_UI,
+            HIGH_PRIORITY_UI_TEST,
+            CHARACTER_TRIGGERS,
+            DYNAMIC_KEYFRAMED,
+        }
         #endregion
     }
 }

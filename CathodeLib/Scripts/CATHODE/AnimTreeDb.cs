@@ -8,7 +8,6 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using static CATHODE.SkeleDB;
 
 namespace CATHODE
 {
@@ -43,6 +42,10 @@ namespace CATHODE
         private AnimationStrings _strings;
         private NodeResolver _nodeResolver = new NodeResolver();
 
+        /* The trees aren't stored in the order the lookup table indexes them, so the mapping is
+         * kept from load - without it a save reshuffles the file even when nothing changed. */
+        private int[] _logicalToFile = new int[0];
+
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -60,22 +63,23 @@ namespace CATHODE
                 int usedSize = reader.ReadInt32();
                 if (hashTableSize != usedSize) throw new Exception("");
 
-                //todo: does this index matter? is it some priority order?
                 var treeHashToIndex = new Dictionary<uint, int>();
                 for (int i = 0; i < hashTableSize; i++)
                 {
                     uint treeHash = reader.ReadUInt32();
-                    //string treeHashStr = _strings.Entries[treeHash];
                     int index = reader.ReadInt32();
                     treeHashToIndex[treeHash] = index;
                 }
+
+                _logicalToFile = new int[hashTableSize];
                 for (int i = 0; i < hashTableSize; i++)
-                    reader.ReadUInt32();
+                    _logicalToFile[i] = (int)reader.ReadUInt32();
+                int[] logicalToFile = _logicalToFile;
 
                 int treeCount = reader.ReadInt32();
+                var fileOrderTrees = new AnimationTree[treeCount];
                 for (int i = 0; i < treeCount; i++)
                 {
-                    // Clear resolver for each new tree
                     _nodeResolver.Clear();
                     
                     uint treeVersion = reader.ReadUInt32();
@@ -117,10 +121,16 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfBindings; x++)
                         bindingType.Add(reader.ReadUInt32());
                     for (int x = 0; x < NumberOfBindings; x++)
-                        treeDef.Nodes.Add(new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x] });
+                    {
+                        var param = new ParameterNode() { Name = bindingNames[x], ParameterType = bindingParamTypes[x] };
+                        treeDef.AddNode(param, true);
+                    }
 
                     for (int x = 0; x < NumberOfCallbacks; x++)
-                        treeDef.Nodes.Add(new AnimationNode() { Type = NodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) });
+                    {
+                        var cb = new AnimationNode() { Type = NodeType.ANIM_Callback, Name = _strings.GetString(reader.ReadUInt32()) };
+                        treeDef.AddNode(cb, true);
+                    }
 
                     List<string> metaListNames = new List<string>();
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
@@ -135,11 +145,17 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
                         metaListFilterTimes.Add(reader.ReadSingle());
                     for (int x = 0; x < NumberOfMetadataListeners; x++)
-                        treeDef.Nodes.Add(new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] });
+                    {
+                        var meta = new MetadataListenerNode() { Name = metaListNames[x], EventName = metaListEvents[x], WeightThreshold = metaListWeights[x], FilterTime = metaListFilterTimes[x] };
+                        treeDef.AddNode(meta, true);
+                    }
 
                     uint NumberOfAutoFloatBindings = reader.ReadUInt32();
                     for (int x = 0; x < NumberOfAutoFloatBindings; x++)
-                        treeDef.Nodes.Add(new AnimationNode() { Type = NodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) });
+                    {
+                        var autoFloat = new AnimationNode() { Type = NodeType.ANIM_AutoFloatParameter, Name = _strings.GetString(reader.ReadUInt32()) };
+                        treeDef.AddNode(autoFloat, true);
+                    }
 
                     List<string> propListenerNames = new List<string>();
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
@@ -153,8 +169,8 @@ namespace CATHODE
                     for (int x = 0; x < NumberOfPropertyListeners; x++)
                     {
                         PropertyListenerNode node = new PropertyListenerNode() { Name = propListenerNames[x], AnimProperty = propListenerPropNames[x], LeafNode = null };
-                        treeDef.Nodes.Add(node);
-                        _nodeResolver.RegisterLookup(node, propListenerLeafNodes[x], (n, found) => n.LeafNode = found);
+                        treeDef.AddNode(node, true);
+                        _nodeResolver.RegisterFlowLookup(node, propListenerLeafNodes[x], (n, found) => n.LeafNode = found);
                     }
 
                     List<string> propertyNames = new List<string>();
@@ -162,69 +178,12 @@ namespace CATHODE
                         propertyNames.Add(_strings.GetString(reader.ReadUInt32()));
                     List<AnimationMetadataValue> propertyValues = new List<AnimationMetadataValue>();
                     for (int x = 0; x < NumberOfPropertyValues; x++)
-                    {
-                        ulong valueUnion = reader.ReadUInt64();
-                        uint valueType = reader.ReadUInt32();
-                        ushort flags = reader.ReadUInt16();
-                        byte requiresConvert = reader.ReadByte();
-                        byte canMirror = reader.ReadByte();
-                        byte canModulateByPlayspeed = reader.ReadByte();
-                        reader.BaseStream.Position += 15;
-
-                        //TODO : This is wrong! Doesn't look up in string db either. 
-                        Console.WriteLine(((MetadataValueType)valueType).ToString());
-
-                        AnimationMetadataValue metadataValue;
-                        switch ((MetadataValueType)valueType)
-                        {
-                            case MetadataValueType.UINT32:
-                                metadataValue = new UIntMetadataValue((uint)valueUnion);
-                                break;
-                            case MetadataValueType.INT32:
-                                metadataValue = new IntMetadataValue((int)valueUnion);
-                                break;
-                            case MetadataValueType.UINT64:
-                                metadataValue = new ULongMetadataValue(valueUnion);
-                                break;
-                            case MetadataValueType.INT64:
-                                metadataValue = new LongMetadataValue((long)valueUnion);
-                                break;
-                            case MetadataValueType.FLOAT32:
-                                metadataValue = new FloatMetadataValue(BitConverter.ToSingle(BitConverter.GetBytes(valueUnion), 0));
-                                break;
-                            case MetadataValueType.FLOAT64:
-                                metadataValue = new Float64MetadataValue(BitConverter.ToDouble(BitConverter.GetBytes(valueUnion), 0));
-                                break;
-                            case MetadataValueType.BOOL:
-                                metadataValue = new BoolMetadataValue(valueUnion != 0);
-                                break;
-                            case MetadataValueType.STRING:
-                                metadataValue = new StringMetadataValue();
-                                break;
-                            case MetadataValueType.VECTOR:
-                                metadataValue = new VectorMetadataValue();
-                                break;
-                            case MetadataValueType.AUDIO:
-                                metadataValue = new AudioMetadataValue();
-                                break;
-                            case MetadataValueType.PROPERTY_REFERENCE:
-                                metadataValue = new PropertyReferenceMetadataValue();
-                                break;
-                            case MetadataValueType.SCRIPT_INTERFACE:
-                                metadataValue = new ScriptInterfaceMetadataValue();
-                                break;
-                            default:
-                                metadataValue = new UIntMetadataValue((uint)valueUnion);
-                                break;
-                        }
-                        metadataValue.Flags = flags;
-                        metadataValue.RequiresConvert = requiresConvert != 0;
-                        metadataValue.CanMirror = canMirror != 0;
-                        metadataValue.CanModulateByPlayspeed = canModulateByPlayspeed != 0;
-                        propertyValues.Add(metadataValue);
-                    }
+                        propertyValues.Add(ReadMetadataValue(reader));
                     for (int x = 0; x < NumberOfPropertyValues; x++)
-                        treeDef.Nodes.Add(new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] });
+                    {
+                        var prop = new PropertyNode() { Name = propertyNames[x], Value = propertyValues[x] };
+                        treeDef.AddNode(prop, true);
+                    }
 
                     uint NumberOfFloatInterpolators = reader.ReadUInt32();
                     List<string> floatInterpSources = new List<string>();
@@ -241,27 +200,32 @@ namespace CATHODE
                         floatInterpStartUPS.Add(reader.ReadSingle());
                     for (int x = 0; x < NumberOfFloatInterpolators; x++)
                     {
-                        ParameterNode floatInterpNodeOrig = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Name == floatInterpNames[x]);
+                        ParameterNode floatInterpNodeOrig = treeDef.GetNode<ParameterNode>(floatInterpNames[x], NodeType.ANIM_Parameter);
                         FloatInterpolatorNode floatInterpNode = new FloatInterpolatorNode() { Name = floatInterpNodeOrig.Name, ParameterType = floatInterpNodeOrig.ParameterType, Type = NodeType.ANIM_FloatInterpolator };
-                        floatInterpNode.SourceParameter = (ParameterNode)treeDef.Nodes.FirstOrDefault(o => o.Type == NodeType.ANIM_Parameter && o.Name == floatInterpSources[x]);
+                        ParameterNode source = treeDef.GetNode<ParameterNode>(floatInterpSources[x], NodeType.ANIM_Parameter);
+                        floatInterpNode.SourceParameter = source;
                         floatInterpNode.InitialValue = floatInterpStartVals[x];
                         floatInterpNode.UnitsPerSecond = floatInterpStartUPS[x];
-                        treeDef.Nodes.Add(floatInterpNode);
-                        treeDef.Nodes.Remove(floatInterpNodeOrig);
+                        treeDef.ReplaceNode(floatInterpNodeOrig, floatInterpNode);
                     }
 
                     for (int x = 0; x < numChildren; x++)
                     {
-                        var childNode = ReadNode(reader, treeDef);
-                        treeDef.Nodes.Add(childNode);
+                        var childNode = treeDef.AddNode(ReadNode(reader, treeDef));
                         treeDef.Children.Add(childNode);
                     }
 
                     // Resolve all deferred node lookups
-                    _nodeResolver.ResolveAll(treeDef.Nodes);
+                    _nodeResolver.ResolveAll(treeDef);
 
-                    Entries.Add(treeDef);
+                    fileOrderTrees[i] = treeDef;
                 }
+
+                //Reorder into logical index order
+                Entries = new List<AnimationTree>(treeCount);
+                for (int logicalIdx = 0; logicalIdx < treeCount; logicalIdx++)
+                    Entries.Add(fileOrderTrees[logicalToFile[logicalIdx]]);
+
             }
             return true;
         }
@@ -304,11 +268,11 @@ namespace CATHODE
                         if (hasCallback)
                             _nodeResolver.RegisterLookup((LeafNode)node, callback, (n, found) => n.Callback = found, NodeType.ANIM_Callback);
                         if (optParam != 0)
-                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optParam), (n, found) => n.OptionalContextParam = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((LeafNode)node, _strings.GetString(optParam), (n, found) => n.OptionalContextParam = found as ParameterNode);
                         if (optVector != 0)
-                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optVector), (n, found) => n.OptionalConvergeVector = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((LeafNode)node, _strings.GetString(optVector), (n, found) => n.OptionalConvergeVector = found as ParameterNode);
                         if (optFloat != 0)
-                            _nodeResolver.RegisterLookup((LeafNode)node, _strings.GetString(optFloat), (n, found) => n.OptionalConvergeFloat = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((LeafNode)node, _strings.GetString(optFloat), (n, found) => n.OptionalConvergeFloat = found as ParameterNode);
                     }
                     break;
                 case NodeType.ANIM_Parametric:
@@ -341,12 +305,12 @@ namespace CATHODE
                             _nodeResolver.RegisterStateLookup(paramNode.States[i], bindings[i], (state, found) => state.Node = found);
                         }
                         if (paramBind != 0)
-                            _nodeResolver.RegisterLookup(paramNode, _strings.GetString(paramBind), (n, found) => n.ParameterBinding = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(paramNode, _strings.GetString(paramBind), (n, found) => n.ParameterBinding = found as ParameterNode);
                     }
                     break;
                 case NodeType.ANIM_2DParametric:
                     {
-                        string BlendSet = _strings.GetString(reader.ReadUInt32());
+                        uint blendSetId = reader.ReadUInt32();
 
                         uint XParameter = reader.ReadUInt32();
                         uint YParameter = reader.ReadUInt32();
@@ -358,6 +322,7 @@ namespace CATHODE
                         {
                             node = new Parametric2DNode()
                             {
+                                BlendSet = blendSetId == 0 ? "" : _strings.GetString(blendSetId),
                                 LoopBlendSet = reader.ReadBoolean(),
                                 SyncBlendSet = reader.ReadBoolean()
                             };
@@ -366,17 +331,18 @@ namespace CATHODE
                         {
                             node = new Parametric3DNode
                             {
+                                BlendSet = blendSetId == 0 ? "" : _strings.GetString(blendSetId),
                                 LoopBlendSet = reader.ReadBoolean(),
                                 SyncBlendSet = reader.ReadBoolean()
                             };
                         }
 
                         if (XParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingX = found as ParameterNode);
                         if (YParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingY = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric2DNode)n).ParameterBindingY = found as ParameterNode);
                         if (ZParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric3DNode)n).ParameterBindingZ = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric3DNode)n).ParameterBindingZ = found as ParameterNode);
                         if (Callback != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(Callback), (n, found) => ((Parametric2DNode)n).OverflowCallback = found, NodeType.ANIM_Callback);
                     }
@@ -395,18 +361,20 @@ namespace CATHODE
 
                         node = new Parametric4DNode
                         {
+                            BlendSet = BlendSet == 0 ? "" : _strings.GetString(BlendSet),
+                            ExtraBlendSet = BlendSetExtra == 0 ? "" : _strings.GetString(BlendSetExtra),
                             LoopBlendSet = reader.ReadBoolean(),
                             SyncBlendSet = reader.ReadBoolean()
                         };
 
                         if (XParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(XParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingX = found as ParameterNode);
                         if (YParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingY = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(YParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingY = found as ParameterNode);
                         if (ZParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingZ = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(ZParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingZ = found as ParameterNode);
                         if (WParameter != 0)
-                            _nodeResolver.RegisterLookup(node, _strings.GetString(WParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingW = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(node, _strings.GetString(WParameter), (n, found) => ((Parametric4DNode)n).ParameterBindingW = found as ParameterNode);
                         if (Callback != 0)
                             _nodeResolver.RegisterLookup(node, _strings.GetString(Callback), (n, found) => ((Parametric4DNode)n).OverflowCallback = found, NodeType.ANIM_Callback);
                     }
@@ -433,12 +401,12 @@ namespace CATHODE
                             Target = (IkControlTarget)reader.ReadUInt32(),
                             EffectorFullyEffectiveRadius = reader.ReadSingle(),
                             EffectorLeastEffectiveRadius = reader.ReadSingle(),
-                            FalloffRate = reader.ReadUInt32(),
+                            FalloffRate = reader.ReadSingle(),
                             EnforceTranslation = reader.ReadByte() == 1,
                             EnforceEndBoneRotation = reader.ReadByte() == 1
                         };
                         if (ikEffector != 0)
-                            _nodeResolver.RegisterLookup((IkNode)node, _strings.GetString(ikEffector), (n, found) => n.IkEffector = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((IkNode)node, _strings.GetString(ikEffector), (n, found) => n.IkEffector = found as ParameterNode);
                     }
                     break;
                 case NodeType.ANIM_Randomised_Animation:
@@ -513,11 +481,11 @@ namespace CATHODE
                         if (randomNodeCallbackName != 0)
                             _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(randomNodeCallbackName), (n, found) => n.RandomCallback = found, NodeType.ANIM_Callback);
                         if (optionalContextParam != 0)
-                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalContextParam), (n, found) => n.OptionalAnimationContext = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((RandomisedLeafNode)node, _strings.GetString(optionalContextParam), (n, found) => n.OptionalAnimationContext = found as ParameterNode);
                         if (optionalConvergeVector != 0)
-                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector), (n, found) => n.OptionalConvergeVector = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeVector), (n, found) => n.OptionalConvergeVector = found as ParameterNode);
                         if (optionalConvergeFloat != 0)
-                            _nodeResolver.RegisterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat), (n, found) => n.OptionalConvergeFloat = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((RandomisedLeafNode)node, _strings.GetString(optionalConvergeFloat), (n, found) => n.OptionalConvergeFloat = found as ParameterNode);
                     }
                     break;
                 case NodeType.ANIM_Selector:
@@ -549,7 +517,7 @@ namespace CATHODE
                         }
 
                         if (paramName != 0)
-                            _nodeResolver.RegisterLookup(selector, _strings.GetString(paramName), (n, found) => n.ParameterBinding = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup(selector, _strings.GetString(paramName), (n, found) => n.ParameterBinding = found as ParameterNode);
                         if (stateNodes.Count != 0)
                         {
                             for (int x = 0; x < stateNodes.Count; x++)
@@ -569,9 +537,9 @@ namespace CATHODE
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
                         if (baseNode != 0)
-                            _nodeResolver.RegisterLookup((AdditiveBlendNode)node, _strings.GetString(baseNode), (n, found) => n.BaseNode = found);
+                            _nodeResolver.RegisterFlowLookup((AdditiveBlendNode)node, _strings.GetString(baseNode), (n, found) => n.BaseNode = found);
                         if (additveNode != 0)
-                            _nodeResolver.RegisterLookup((AdditiveBlendNode)node, _strings.GetString(additveNode), (n, found) => n.AdditiveNode = found);
+                            _nodeResolver.RegisterFlowLookup((AdditiveBlendNode)node, _strings.GetString(additveNode), (n, found) => n.AdditiveNode = found);
                     }
                     break;
                 case NodeType.ANIM_Parametric_Additive_Blend:
@@ -589,11 +557,11 @@ namespace CATHODE
                             SyncAdditiveDurationToBase = reader.ReadBoolean()
                         };
                         if (baseNode != 0)
-                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(baseNode), (n, found) => n.BaseNode = found);
+                            _nodeResolver.RegisterFlowLookup((ParametricAdditiveBlendNode)node, _strings.GetString(baseNode), (n, found) => n.BaseNode = found);
                         if (additiveNode != 0)
-                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(additiveNode), (n, found) => n.AdditiveNode = found);
+                            _nodeResolver.RegisterFlowLookup((ParametricAdditiveBlendNode)node, _strings.GetString(additiveNode), (n, found) => n.AdditiveNode = found);
                         if (parameter != 0)
-                            _nodeResolver.RegisterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(parameter), (n, found) => n.WeightControlParameter = found is ParameterNode ? (ParameterNode)found : null);
+                            _nodeResolver.RegisterParameterLookup((ParametricAdditiveBlendNode)node, _strings.GetString(parameter), (n, found) => n.WeightControlParameter = found as ParameterNode);
                     }
                     break;
                 case NodeType.ANIM_Ranged_Selector:
@@ -627,7 +595,7 @@ namespace CATHODE
                             rangedNode.States[i].FootSyncOnSelect = footSyncOnSelect[i];
                             _nodeResolver.RegisterStateLookup(rangedNode.States[i], bindings[i], (state, found) => state.Node = found);
                         }
-                        _nodeResolver.RegisterLookup(rangedNode, parameterName, (n, found) => n.ParameterBinding = found is ParameterNode ? (ParameterNode)found : null);
+                        _nodeResolver.RegisterParameterLookup(rangedNode, parameterName, (n, found) => n.ParameterBinding = found as ParameterNode);
                     }
                     break;
                 case NodeType.ANIM_Foot_Sync_Selector:
@@ -641,7 +609,7 @@ namespace CATHODE
                             StrikeSelectionMethod = (FootStrikeSelectionMethod)reader.ReadUInt32(),
                             GaitSyncTargetOnSelect = reader.ReadBoolean(),
                         };
-                        _nodeResolver.RegisterLookupArray((FootSyncSelectorNode)node, bindings, (n, found) => {
+                        _nodeResolver.RegisterFlowLookupArray((FootSyncSelectorNode)node, bindings, (n, found) => {
                             n.LeftStrikeChild = (LeafNode)found[0];
                             n.RightStrikeChild = (LeafNode)found[1];
                         });
@@ -655,13 +623,16 @@ namespace CATHODE
                             ParameterMin = reader.ReadSingle(),
                             ParameterMax = reader.ReadSingle()
                         };
-                        _nodeResolver.RegisterLookup((WeightedNode)node, _strings.GetString(paramName), (n, found) => n.Parameter = found is ParameterNode ? (ParameterNode)found : null);
+                        _nodeResolver.RegisterParameterLookup((WeightedNode)node, _strings.GetString(paramName), (n, found) => n.Parameter = found as ParameterNode);
                     }
                     break;
                 default:
                     throw new Exception("unknown node type");
             }
             node.Name = NodeName;
+
+            bool alreadyExists = tree.TryGetNode(NodeName, out AnimationNode existing, node.Type)
+                && !ReferenceEquals(existing, node);
 
             if (node.Type == NodeType.ANIM_Weighted && numChildren > 1)
             {
@@ -670,8 +641,11 @@ namespace CATHODE
 
             for (int i = 0; i < numChildren; i++)
             {
-                var childNode = ReadNode(reader, tree);
-                tree.Nodes.Add(childNode);
+                var childNode = tree.AddNode(ReadNode(reader, tree));
+                if (alreadyExists)
+                    continue;
+
+                node.Children.Add(childNode);
 
                 if (node.Type == NodeType.ANIM_Weighted)
                 {
@@ -680,27 +654,53 @@ namespace CATHODE
                 }
             }
 
-            return node;
+            return alreadyExists ? existing : node;
         }
 
         override protected bool SaveInternal()
         {
-            using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
-            {
-                writer.BaseStream.SetLength(0);
+            byte[] content = ToBytes();
+            if (content == null) return false;
+            File.WriteAllBytes(_filepath, content);
+            return true;
+        }
 
+        /// <summary>
+        /// Serialise back to the format stored in ANIMATION.PAK.
+        /// </summary>
+        public byte[] ToBytes()
+        {
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
                 writer.Write(66);
 
+                writer.Write(Entries.Count);
+                writer.Write(Entries.Count);
+
+                var hashEntries = new List<(uint hash, int index)>(Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)
+                    hashEntries.Add((_strings.GetID(Entries[i].Name), i));
+                hashEntries.Sort((a, b) => b.hash.CompareTo(a.hash));
+
+                for (int slot = 0; slot < hashEntries.Count; slot++)
                 {
-                    writer.Write(_strings.GetID(Entries[i].Name));
-                    writer.Write(i);
+                    writer.Write(hashEntries[slot].hash);
+                    writer.Write(hashEntries[slot].index);
                 }
+
+                /* Keep the load order where we can, so an untouched DB saves back byte for byte.
+                 * If entries were added or removed it no longer applies, so fall back to 1:1. */
+                int[] logicalToFile = _logicalToFile.Length == Entries.Count ? _logicalToFile : Enumerable.Range(0, Entries.Count).ToArray();
                 for (int i = 0; i < Entries.Count; i++)
-                    writer.Write(i);
+                    writer.Write(logicalToFile[i]);
+
+                AnimationTree[] fileOrder = new AnimationTree[Entries.Count];
+                for (int i = 0; i < Entries.Count; i++)
+                    fileOrder[logicalToFile[i]] = Entries[i];
 
                 writer.Write(Entries.Count);
-                foreach (var tree in Entries)
+                foreach (var tree in fileOrder)
                 {
                     writer.Write(66);
                     writer.Write(tree.Children.Count);
@@ -717,18 +717,23 @@ namespace CATHODE
                     writer.Write(tree.GaitSyncOnStart);
                     writer.Write(tree.UseLinearBlend);
 
-                    //note to self - these sorting methods are untested
-                    List<AnimationNode> nodes = tree.Nodes.ToList();
-                    List<ParameterNode> parameterNodes = nodes.FindAll(o => o is ParameterNode).Cast<ParameterNode>().ToList();
-                    List<AnimationNode> callbackNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Callback).Cast<AnimationNode>().ToList();
-                    List<MetadataListenerNode> metaListenerNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Metadata_Event_Listener).Cast<MetadataListenerNode>().ToList();
-                    List<AnimationNode> autoFloatNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_AutoFloatParameter).Cast<AnimationNode>().ToList();
-                    List<PropertyListenerNode> propListenerNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Property_Listener).Cast<PropertyListenerNode>().ToList();
-                    List<PropertyNode> propNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_Property).Cast<PropertyNode>().ToList();
-                    List<FloatInterpolatorNode> floatInterpolatorNodes = nodes.FindAll(o => o.Type == NodeType.ANIM_FloatInterpolator).Cast<FloatInterpolatorNode>().ToList();
+                    List<ParameterNode> parameterNodes = tree.Nodes.OfType<ParameterNode>().ToList();
+                    List<AnimationNode> callbackNodes = tree.Nodes.Where(n => n.Type == NodeType.ANIM_Callback).ToList();
+                    List<MetadataListenerNode> metaListenerNodes = tree.Nodes.OfType<MetadataListenerNode>().ToList();
+                    List<AnimationNode> autoFloatNodes = tree.Nodes.Where(n => n.Type == NodeType.ANIM_AutoFloatParameter).ToList();
+                    List<PropertyListenerNode> propListenerNodes = tree.Nodes.OfType<PropertyListenerNode>().ToList();
+                    List<PropertyNode> propNodes = tree.Nodes.OfType<PropertyNode>().ToList();
+                    List<FloatInterpolatorNode> floatInterpolatorNodes = tree.Nodes.OfType<FloatInterpolatorNode>().ToList();
 
                     writer.Write(parameterNodes.Count);
-                    writer.Write(new byte[20]);
+                    int[] typeCounts = new int[5];
+                    foreach (var param in parameterNodes)
+                        typeCounts[(int)param.ParameterType]++;
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.FLOAT]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.STRING]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.MATRIX]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.VECTOR]);
+                    writer.Write(typeCounts[(int)AnimTreeParameterType.CARD32]);
                     writer.Write(callbackNodes.Count);
                     writer.Write(metaListenerNodes.Count);
                     writer.Write(propListenerNodes.Count);
@@ -773,52 +778,7 @@ namespace CATHODE
                     foreach (var prop in propNodes)
                         writer.Write(_strings.GetID(prop.Name));
                     foreach (var prop in propNodes)
-                    {
-                        ulong valueUnion = 0;
-                        switch (prop.Value.ValueType)
-                        {
-                            case MetadataValueType.UINT32:
-                                valueUnion = ((UIntMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.INT32:
-                                valueUnion = (ulong)((IntMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.FLOAT32:
-                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((FloatMetadataValue)prop.Value).Value), 0);
-                                break;
-                            case MetadataValueType.BOOL:
-                                valueUnion = ((BoolMetadataValue)prop.Value).Value ? 1ul : 0ul;
-                                break;
-                            case MetadataValueType.UINT64:
-                                valueUnion = ((ULongMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.INT64:
-                                valueUnion = (ulong)((LongMetadataValue)prop.Value).Value;
-                                break;
-                            case MetadataValueType.FLOAT64:
-                                valueUnion = BitConverter.ToUInt64(BitConverter.GetBytes(((Float64MetadataValue)prop.Value).Value), 0);
-                                break;
-                            case MetadataValueType.STRING:
-                            case MetadataValueType.VECTOR:
-                            case MetadataValueType.AUDIO:
-                            case MetadataValueType.PROPERTY_REFERENCE:
-                            case MetadataValueType.SCRIPT_INTERFACE:
-                                //These types don't store their values in the union, they're stored separately
-                                valueUnion = 0;
-                                break;
-                            default:
-                                valueUnion = 0;
-                                break;
-                        }
-
-                        writer.Write(valueUnion);
-                        writer.Write((uint)prop.Value.ValueType);
-                        writer.Write(prop.Value.Flags);
-                        writer.Write((byte)(prop.Value.RequiresConvert ? 1 : 0));
-                        writer.Write((byte)(prop.Value.CanMirror ? 1 : 0));
-                        writer.Write((byte)(prop.Value.CanModulateByPlayspeed ? 1 : 0));
-                        writer.Write(new byte[15]);
-                    }
+                        WriteMetadataValue(writer, prop.Value);
 
                     writer.Write(floatInterpolatorNodes.Count);
                     foreach (var floatInterp in floatInterpolatorNodes)
@@ -833,14 +793,17 @@ namespace CATHODE
                     foreach (var node in tree.Children)
                         WriteNode(writer, node);
                 }
+
+                return stream.ToArray();
             }
-            return true;
         }
 
         private void WriteNode(BinaryWriter writer, AnimationNode node)
         {
             writer.Write((uint)(node.Type == NodeType.ANIM_3DParametric ? NodeType.ANIM_2DParametric : node.Type));
             writer.Write(_strings.GetID(node.Name));
+
+            writer.Write(node.Children.Count);
 
             switch (node.Type)
             {
@@ -903,9 +866,9 @@ namespace CATHODE
                 case NodeType.ANIM_4DParametric:
                     {
                         Parametric2DNode data = (Parametric2DNode)node;
-                        writer.Write(data.BlendSet == null ? 0 : _strings.GetID(data.BlendSet.Name));
+                        writer.Write(string.IsNullOrEmpty(data.BlendSet) ? 0 : _strings.GetID(data.BlendSet));
                         if (node.Type == NodeType.ANIM_4DParametric)
-                            writer.Write(((Parametric4DNode)node).ExtraBlendSet == null ? 0 : _strings.GetID(((Parametric4DNode)node).ExtraBlendSet.Name));
+                            writer.Write(string.IsNullOrEmpty(((Parametric4DNode)node).ExtraBlendSet) ? 0 : _strings.GetID(((Parametric4DNode)node).ExtraBlendSet));
                         writer.Write(data.ParameterBindingX == null ? 0 : _strings.GetID(data.ParameterBindingX.Name));
                         writer.Write(data.ParameterBindingY == null ? 0 : _strings.GetID(data.ParameterBindingY.Name));
                         writer.Write(node.Type == NodeType.ANIM_3DParametric || node.Type == NodeType.ANIM_4DParametric ? ((Parametric3DNode)node).ParameterBindingZ == null ? 0 : _strings.GetID(((Parametric3DNode)node).ParameterBindingZ.Name) : 0);
@@ -1009,7 +972,7 @@ namespace CATHODE
                         writer.Write(data.RandomCallback == null ? 0 : _strings.GetID(data.RandomCallback.Name));
                         writer.Write(data.Looping);
                         writer.Write(data.NewSelectionOnLoop);
-                        RandomisedLeafNode.Animation[] anims = data.AnimationPool.Where(o => o.AnimationName != "").ToArray();
+                        RandomisedLeafNode.Animation[] anims = data.AnimationPool.Where(o => o != null && o.AnimationName != "").ToArray();
                         writer.Write(anims.Length);
                         foreach (var anim in anims)
                             writer.Write(anim.Mirrored);
@@ -1031,184 +994,276 @@ namespace CATHODE
                     break;
             }
 
-            // Write children count and recursively write child nodes
-            var children = GetChildrenForNode(node);
-            writer.Write(children.Count);
-            foreach (var child in children)
+            foreach (var child in node.Children)
                 WriteNode(writer, child);
         }
 
-        /// <summary>
-        /// Get the children for a given node based on its type
-        /// </summary>
-        private List<AnimationNode> GetChildrenForNode(AnimationNode node)
+        private AnimationMetadataValue ReadMetadataValue(BinaryReader reader)
         {
-            var children = new List<AnimationNode>();
+            reader.BaseStream.Position += 8;
+            byte[] union = reader.ReadBytes(16);
+            MetadataValueType valueType = (MetadataValueType)reader.ReadUInt32();
+            ushort requiresConvert = reader.ReadUInt16();
+            byte canMirror = reader.ReadByte();
+            byte canModulate = reader.ReadByte();
 
-            switch (node.Type)
+            AnimationMetadataValue metadataValue;
+            if (AnimationMetadataValue.Is64BitType(valueType))
             {
-                case NodeType.ANIM_Selector:
-                case NodeType.ANIM_Enumerated_Selector:
-                    {
-                        SelectorNode selector = (SelectorNode)node;
-                        foreach (var state in selector.States)
-                        {
-                            if (state.Node != null)
-                                children.Add(state.Node);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_Parametric:
-                    {
-                        ParametricNode parametric = (ParametricNode)node;
-                        foreach (var state in parametric.States)
-                        {
-                            if (state.Node != null)
-                                children.Add(state.Node);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_2DParametric:
-                case NodeType.ANIM_3DParametric:
-                case NodeType.ANIM_4DParametric:
-                    {
-                        Parametric2DNode parametric2D = (Parametric2DNode)node;
-                        if (parametric2D.BlendSet != null)
-                            children.Add(parametric2D.BlendSet);
-                        
-                        if (node.Type == NodeType.ANIM_4DParametric)
-                        {
-                            Parametric4DNode parametric4D = (Parametric4DNode)node;
-                            if (parametric4D.ExtraBlendSet != null)
-                                children.Add(parametric4D.ExtraBlendSet);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_Additive_Blend:
-                    {
-                        AdditiveBlendNode additive = (AdditiveBlendNode)node;
-                        if (additive.BaseNode != null)
-                            children.Add(additive.BaseNode);
-                        if (additive.AdditiveNode != null)
-                            children.Add(additive.AdditiveNode);
-                    }
-                    break;
-                case NodeType.ANIM_Parametric_Additive_Blend:
-                    {
-                        ParametricAdditiveBlendNode parametricAdditive = (ParametricAdditiveBlendNode)node;
-                        if (parametricAdditive.BaseNode != null)
-                            children.Add(parametricAdditive.BaseNode);
-                        if (parametricAdditive.AdditiveNode != null)
-                            children.Add(parametricAdditive.AdditiveNode);
-                    }
-                    break;
-                case NodeType.ANIM_Ranged_Selector:
-                    {
-                        RangedSelectorNode ranged = (RangedSelectorNode)node;
-                        foreach (var state in ranged.States)
-                        {
-                            if (state.Node != null)
-                                children.Add(state.Node);
-                        }
-                    }
-                    break;
-                case NodeType.ANIM_Foot_Sync_Selector:
-                    {
-                        FootSyncSelectorNode footSync = (FootSyncSelectorNode)node;
-                        if (footSync.LeftStrikeChild != null)
-                            children.Add(footSync.LeftStrikeChild);
-                        if (footSync.RightStrikeChild != null)
-                            children.Add(footSync.RightStrikeChild);
-                    }
-                    break;
-                case NodeType.ANIM_Weighted:
-                    {
-                        WeightedNode weighted = (WeightedNode)node;
-                        if (weighted.Child != null)
-                            children.Add(weighted.Child);
-                    }
-                    break;
+                ulong as64 = BitConverter.ToUInt64(union, 0);
+                switch (valueType)
+                {
+                    case MetadataValueType.UINT64:
+                        metadataValue = new ULongMetadataValue(as64);
+                        break;
+                    case MetadataValueType.INT64:
+                        metadataValue = new LongMetadataValue((long)as64);
+                        break;
+                    case MetadataValueType.FLOAT64:
+                        metadataValue = new Float64MetadataValue(BitConverter.ToDouble(union, 0));
+                        break;
+                    default:
+                        metadataValue = new ULongMetadataValue(as64);
+                        break;
+                }
+            }
+            else if (AnimationMetadataValue.IsVectorType(valueType))
+            {
+                metadataValue = new VectorMetadataValue(new Vector3(
+                    BitConverter.ToSingle(union, 0),
+                    BitConverter.ToSingle(union, 4),
+                    BitConverter.ToSingle(union, 8)));
+            }
+            else
+            {
+                uint as32 = BitConverter.ToUInt32(union, 0);
+                switch (valueType)
+                {
+                    case MetadataValueType.UINT32:
+                        metadataValue = new UIntMetadataValue(as32);
+                        break;
+                    case MetadataValueType.INT32:
+                        metadataValue = new IntMetadataValue((int)as32);
+                        break;
+                    case MetadataValueType.FLOAT32:
+                        metadataValue = new FloatMetadataValue(BitConverter.ToSingle(union, 0));
+                        break;
+                    case MetadataValueType.BOOL:
+                        metadataValue = new BoolMetadataValue(as32 != 0);
+                        break;
+                    case MetadataValueType.STRING:
+                        metadataValue = new StringMetadataValue(_strings.GetString(as32));
+                        break;
+                    case MetadataValueType.AUDIO:
+                        metadataValue = new AudioMetadataValue(_strings.GetString(as32));
+                        break;
+                    case MetadataValueType.PROPERTY_REFERENCE:
+                        metadataValue = new PropertyReferenceMetadataValue(_strings.GetString(as32));
+                        break;
+                    case MetadataValueType.SCRIPT_INTERFACE:
+                        metadataValue = new ScriptInterfaceMetadataValue(_strings.GetString(as32));
+                        break;
+                    default:
+                        metadataValue = new UIntMetadataValue(as32);
+                        break;
+                }
             }
 
-            return children;
+            metadataValue.RequiresConvert = requiresConvert != 0;
+            metadataValue.CanMirror = canMirror != 0;
+            metadataValue.CanModulateByPlayspeed = canModulate != 0;
+            return metadataValue;
+        }
+
+        private void WriteMetadataValue(BinaryWriter writer, AnimationMetadataValue value)
+        {
+            writer.Write((ulong)0); 
+
+            if (AnimationMetadataValue.Is64BitType(value.ValueType))
+            {
+                ulong as64 = 0;
+                switch (value.ValueType)
+                {
+                    case MetadataValueType.UINT64:
+                        as64 = ((ULongMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.INT64:
+                        as64 = (ulong)((LongMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.FLOAT64:
+                        as64 = BitConverter.ToUInt64(BitConverter.GetBytes(((Float64MetadataValue)value).Value), 0);
+                        break;
+                }
+                writer.Write(as64);
+                writer.Write((ulong)0);
+            }
+            else if (AnimationMetadataValue.IsVectorType(value.ValueType))
+            {
+                Vector3 v = ((VectorMetadataValue)value).Value;
+                writer.Write(v.X);
+                writer.Write(v.Y);
+                writer.Write(v.Z);
+                writer.Write((uint)0);
+            }
+            else
+            {
+                uint as32 = 0;
+                switch (value.ValueType)
+                {
+                    case MetadataValueType.UINT32:
+                        as32 = ((UIntMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.INT32:
+                        as32 = (uint)((IntMetadataValue)value).Value;
+                        break;
+                    case MetadataValueType.FLOAT32:
+                        as32 = BitConverter.ToUInt32(BitConverter.GetBytes(((FloatMetadataValue)value).Value), 0);
+                        break;
+                    case MetadataValueType.BOOL:
+                        as32 = ((BoolMetadataValue)value).Value ? 1u : 0u;
+                        break;
+                    case MetadataValueType.STRING:
+                        as32 = string.IsNullOrEmpty(((StringMetadataValue)value).Value) ? 0 : _strings.GetID(((StringMetadataValue)value).Value);
+                        break;
+                    case MetadataValueType.AUDIO:
+                        as32 = string.IsNullOrEmpty(((AudioMetadataValue)value).Value) ? 0 : _strings.GetID(((AudioMetadataValue)value).Value);
+                        break;
+                    case MetadataValueType.PROPERTY_REFERENCE:
+                        as32 = string.IsNullOrEmpty(((PropertyReferenceMetadataValue)value).Value) ? 0 : _strings.GetID(((PropertyReferenceMetadataValue)value).Value);
+                        break;
+                    case MetadataValueType.SCRIPT_INTERFACE:
+                        as32 = string.IsNullOrEmpty(((ScriptInterfaceMetadataValue)value).Value) ? 0 : _strings.GetID(((ScriptInterfaceMetadataValue)value).Value);
+                        break;
+                }
+                writer.Write(as32);
+                writer.Write((uint)0);
+                writer.Write((ulong)0);
+            }
+
+            writer.Write((uint)value.ValueType);
+            writer.Write((ushort)(value.RequiresConvert ? 1 : 0));
+            writer.Write((byte)(value.CanMirror ? 1 : 0));
+            writer.Write((byte)(value.CanModulateByPlayspeed ? 1 : 0));
         }
         #endregion
 
         private class NodeResolver
         {
-            private HashSet<Action<HashSet<AnimationNode>>> _deferredLookups = new HashSet<Action<HashSet<AnimationNode>>>();
+            private List<Action<AnimationTree>> _deferredLookups = new List<Action<AnimationTree>>();
 
-            /// <summary>
-            /// Register a deferred lookup that will be resolved later
-            /// </summary>
+            // Name collisions are common (e.g. a Parameter and a Leaf both named "Idle").
+            // _byName keeps the first registration (usually a Parameter), so untyped Find
+            // must prefer the kind of node the caller actually needs.
+            private enum NodeFindKind
+            {
+                Any,
+                Flow,
+                Parameter
+            }
+
+            private static bool IsFlowCapable(AnimationNode n) =>
+                !(n is ParameterNode)
+                && !(n is PropertyNode)
+                && !(n is PropertyListenerNode)
+                && n.Type != NodeType.ANIM_Callback
+                && n.Type != NodeType.ANIM_Event_Callback
+                && n.Type != NodeType.ANIM_Tree_Top_Level;
+
+            private static AnimationNode Find(AnimationTree tree, string nodeName, NodeType? nodeType, NodeFindKind kind = NodeFindKind.Any)
+            {
+                if (string.IsNullOrEmpty(nodeName))
+                    return null;
+
+                if (nodeType.HasValue)
+                {
+                    if (tree.TryGetNode(nodeName, out AnimationNode typed, nodeType))
+                        return typed;
+                    return null;
+                }
+
+                if (kind == NodeFindKind.Any)
+                {
+                    tree.TryGetNode(nodeName, out AnimationNode found);
+                    return found;
+                }
+
+                foreach (AnimationNode n in tree.Nodes)
+                {
+                    if (n.Name != nodeName)
+                        continue;
+                    if (kind == NodeFindKind.Parameter)
+                    {
+                        if (n is ParameterNode)
+                            return n;
+                    }
+                    else if (IsFlowCapable(n))
+                    {
+                        return n;
+                    }
+                }
+                return null;
+            }
+
             public void RegisterLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
-                {
-                    var foundNode = nodeType.HasValue
-                        ? nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == nodeName)
-                        : nodes.FirstOrDefault(o => o.Name == nodeName);
-                    setter(target, foundNode);
-                });
+                _deferredLookups.Add(tree => setter(target, Find(tree, nodeName, nodeType)));
             }
 
-            /// <summary>
-            /// Register a deferred lookup for a list of node names
-            /// </summary>
+            public void RegisterFlowLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter) where T : class
+            {
+                _deferredLookups.Add(tree => setter(target, Find(tree, nodeName, null, NodeFindKind.Flow)));
+            }
+
+            public void RegisterParameterLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter) where T : class
+            {
+                _deferredLookups.Add(tree => setter(target, Find(tree, nodeName, null, NodeFindKind.Parameter)));
+            }
+
             public void RegisterLookupList<T>(T target, List<string> nodeNames, Action<T, List<AnimationNode>> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
+                _deferredLookups.Add(tree =>
                 {
-                    var foundNodes = nodeType.HasValue
-                        ? nodeNames.Select(name => nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == name)).Where(o => o != null).ToList()
-                        : nodeNames.Select(name => nodes.FirstOrDefault(o => o.Name == name)).Where(o => o != null).ToList();
-                    setter(target, foundNodes);
+                    setter(target, nodeNames
+                        .Select(name => Find(tree, name, nodeType))
+                        .Where(o => o != null)
+                        .ToList());
                 });
             }
 
-            /// <summary>
-            /// Register a deferred lookup for an array of node names
-            /// </summary>
             public void RegisterLookupArray<T>(T target, string[] nodeNames, Action<T, AnimationNode[]> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
+                _deferredLookups.Add(tree =>
                 {
-                    var foundNodes = nodeType.HasValue
-                        ? nodeNames.Select(name => nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == name)).Where(o => o != null).ToArray()
-                        : nodeNames.Select(name => nodes.FirstOrDefault(o => o.Name == name)).Where(o => o != null).ToArray();
-                    setter(target, foundNodes);
+                    setter(target, nodeNames
+                        .Select(name => Find(tree, name, nodeType))
+                        .Where(o => o != null)
+                        .ToArray());
                 });
             }
 
-            /// <summary>
-            /// Register a deferred lookup for a specific state object
-            /// </summary>
+            public void RegisterFlowLookupArray<T>(T target, string[] nodeNames, Action<T, AnimationNode[]> setter) where T : class
+            {
+                _deferredLookups.Add(tree =>
+                {
+                    setter(target, nodeNames
+                        .Select(name => Find(tree, name, null, NodeFindKind.Flow))
+                        .Where(o => o != null)
+                        .ToArray());
+                });
+            }
+
             public void RegisterStateLookup<T>(T target, string nodeName, Action<T, AnimationNode> setter, NodeType? nodeType = null) where T : class
             {
-                _deferredLookups.Add(nodes =>
-                {
-                    var foundNode = nodeType.HasValue
-                        ? nodes.FirstOrDefault(o => o.Type == nodeType.Value && o.Name == nodeName)
-                        : nodes.FirstOrDefault(o => o.Name == nodeName);
-                    setter(target, foundNode);
-                });
+                _deferredLookups.Add(tree => setter(target, Find(tree, nodeName, nodeType, NodeFindKind.Flow)));
             }
 
-            /// <summary>
-            /// Resolve all deferred lookups using the provided node list
-            /// </summary>
-            public void ResolveAll(HashSet<AnimationNode> nodes)
+            public void ResolveAll(AnimationTree tree)
             {
                 foreach (var lookup in _deferredLookups)
-                {
-                    lookup(nodes);
-                }
+                    lookup(tree);
                 _deferredLookups.Clear();
             }
 
-            /// <summary>
-            /// Clear all pending lookups
-            /// </summary>
             public void Clear()
             {
                 _deferredLookups.Clear();

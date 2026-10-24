@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -8,6 +8,7 @@ namespace CATHODE.Animations
     {
         public NodeType Type; // ANIM_Base
         public string Name = "";
+        public List<AnimationNode> Children = new List<AnimationNode>();
 
         public override bool Equals(object obj)
         {
@@ -41,12 +42,229 @@ namespace CATHODE.Animations
         public float MinInitialPlayspeed = 1.0f;
         public float MaxInitialPlayspeed = 1.0f;
 
-        public HashSet<AnimationNode> Nodes = new HashSet<AnimationNode>(); //All nodes contained within this tree
-        public HashSet<AnimationNode> Children = new HashSet<AnimationNode>(); //Direct children of this top level node
+        public List<AnimationNode> Nodes { get; } = new List<AnimationNode>();
+
+        private readonly Dictionary<string, AnimationNode> _byName = new Dictionary<string, AnimationNode>();
+        private readonly Dictionary<(string Name, NodeType Type), AnimationNode> _byNameAndType = new Dictionary<(string, NodeType), AnimationNode>();
 
         public AnimationTree()
         {
             Type = NodeType.ANIM_Tree_Top_Level;
+        }
+
+        /// <summary>
+        /// Add a node. A node with the same name and type is normally reused rather than added twice.
+        /// Set <paramref name="allowDuplicates"/> to keep the extra copy in <see cref="Nodes"/> - the
+        /// game's own trees do list some names more than once, and lookups still find the first.
+        /// </summary>
+        public AnimationNode AddNode(AnimationNode node, bool allowDuplicates = false)
+        {
+            if (node == null || string.IsNullOrEmpty(node.Name))
+                return node;
+
+            var key = (node.Name, node.Type);
+            if (_byNameAndType.TryGetValue(key, out AnimationNode existing))
+            {
+                if (!allowDuplicates) return existing;
+                Nodes.Add(node);
+                return existing;
+            }
+
+            Nodes.Add(node);
+            if (!_byName.ContainsKey(node.Name))
+                _byName[node.Name] = node;
+            _byNameAndType[key] = node;
+            return node;
+        }
+
+        public void ReplaceNode(AnimationNode oldNode, AnimationNode newNode)
+        {
+            if (oldNode == null || newNode == null || string.IsNullOrEmpty(newNode.Name))
+                return;
+            int idx = Nodes.FindIndex(o => ReferenceEquals(o, oldNode)); //by reference: Equals is name and type, which trees repeat
+            if (idx >= 0)
+                Nodes[idx] = newNode;
+            else
+                Nodes.Add(newNode);
+
+            _byNameAndType.Remove((oldNode.Name, oldNode.Type));
+            _byNameAndType[(newNode.Name, newNode.Type)] = newNode;
+
+            if (_byName.TryGetValue(oldNode.Name, out AnimationNode mapped) && ReferenceEquals(mapped, oldNode))
+                _byName.Remove(oldNode.Name);
+            if (!_byName.ContainsKey(newNode.Name))
+                _byName[newNode.Name] = newNode;
+            else if (ReferenceEquals(_byName[newNode.Name], oldNode))
+                _byName[newNode.Name] = newNode;
+        }
+
+        public void RemoveNode(AnimationNode node)
+        {
+            if (node == null)
+                return;
+
+            //By reference: Equals is name and type, which trees repeat - removing by it can take out another node
+            int at = Nodes.FindIndex(o => ReferenceEquals(o, node));
+            if (at >= 0)
+                Nodes.RemoveAt(at);
+            Children.RemoveAll(o => ReferenceEquals(o, node));
+
+            if (!string.IsNullOrEmpty(node.Name))
+                Unlist(node, node.Name);
+
+            foreach (AnimationNode other in Nodes)
+                ClearReferencesTo(other, node);
+            ClearReferencesTo(this, node);
+        }
+
+        /* Take a node out of the name lookups under a name it no longer goes by (renamed, or out of the tree): another node of
+           that name - and of that name and type - takes its place there, so it can still be found */
+        private void Unlist(AnimationNode node, string name)
+        {
+            if (_byName.TryGetValue(name, out AnimationNode mapped) && ReferenceEquals(mapped, node))
+            {
+                _byName.Remove(name);
+                AnimationNode other = Nodes.Find(o => o != null && !ReferenceEquals(o, node) && o.Name == name);
+                if (other != null)
+                    _byName[name] = other;
+            }
+            if (_byNameAndType.TryGetValue((name, node.Type), out AnimationNode typed) && ReferenceEquals(typed, node))
+            {
+                _byNameAndType.Remove((name, node.Type));
+                AnimationNode other = Nodes.Find(o => o != null && !ReferenceEquals(o, node) && o.Name == name && o.Type == node.Type);
+                if (other != null)
+                    _byNameAndType[(name, node.Type)] = other;
+            }
+        }
+
+        private static void ClearReferencesTo(AnimationNode owner, AnimationNode target)
+        {
+            if (owner == null || target == null)
+                return;
+
+            owner.Children.RemoveAll(o => ReferenceEquals(o, target));
+
+            switch (owner)
+            {
+                case LeafNode leaf:
+                    if (ReferenceEquals(leaf.Callback, target)) leaf.Callback = null;
+                    if (ReferenceEquals(leaf.OptionalContextParam, target)) leaf.OptionalContextParam = null;
+                    if (ReferenceEquals(leaf.OptionalConvergeVector, target)) leaf.OptionalConvergeVector = null;
+                    if (ReferenceEquals(leaf.OptionalConvergeFloat, target)) leaf.OptionalConvergeFloat = null;
+                    break;
+                case FloatInterpolatorNode interp:
+                    if (ReferenceEquals(interp.SourceParameter, target)) interp.SourceParameter = null;
+                    break;
+                case PropertyListenerNode listener:
+                    if (ReferenceEquals(listener.LeafNode, target)) listener.LeafNode = null;
+                    break;
+                case SelectorNode selector:
+                    if (ReferenceEquals(selector.ParameterBinding, target)) selector.ParameterBinding = null;
+                    if (selector.States != null)
+                    {
+                        foreach (var state in selector.States)
+                        {
+                            if (state != null && ReferenceEquals(state.Node, target))
+                                state.Node = null;
+                        }
+                    }
+                    break;
+                case ParametricNode parametric:
+                    if (ReferenceEquals(parametric.ParameterBinding, target)) parametric.ParameterBinding = null;
+                    if (parametric.States != null)
+                    {
+                        foreach (var state in parametric.States)
+                        {
+                            if (state != null && ReferenceEquals(state.Node, target))
+                                state.Node = null;
+                        }
+                    }
+                    break;
+                case Parametric2DNode parametric2D:
+                    if (ReferenceEquals(parametric2D.ParameterBindingX, target)) parametric2D.ParameterBindingX = null;
+                    if (ReferenceEquals(parametric2D.ParameterBindingY, target)) parametric2D.ParameterBindingY = null;
+                    if (ReferenceEquals(parametric2D.OverflowCallback, target)) parametric2D.OverflowCallback = null;
+                    if (parametric2D is Parametric3DNode parametric3D)
+                    {
+                        if (ReferenceEquals(parametric3D.ParameterBindingZ, target)) parametric3D.ParameterBindingZ = null;
+                        if (parametric3D is Parametric4DNode parametric4D)
+                        {
+                            if (ReferenceEquals(parametric4D.ParameterBindingW, target)) parametric4D.ParameterBindingW = null;
+                        }
+                    }
+                    break;
+                case AdditiveBlendNode additive:
+                    if (ReferenceEquals(additive.BaseNode, target)) additive.BaseNode = null;
+                    if (ReferenceEquals(additive.AdditiveNode, target)) additive.AdditiveNode = null;
+                    if (additive is ParametricAdditiveBlendNode parametricAdditive
+                        && ReferenceEquals(parametricAdditive.WeightControlParameter, target))
+                        parametricAdditive.WeightControlParameter = null;
+                    break;
+                case RangedSelectorNode ranged:
+                    if (ReferenceEquals(ranged.ParameterBinding, target)) ranged.ParameterBinding = null;
+                    if (ranged.States != null)
+                    {
+                        foreach (var state in ranged.States)
+                        {
+                            if (state != null && ReferenceEquals(state.Node, target))
+                                state.Node = null;
+                        }
+                    }
+                    break;
+                case FootSyncSelectorNode footSync:
+                    if (ReferenceEquals(footSync.LeftStrikeChild, target)) footSync.LeftStrikeChild = null;
+                    if (ReferenceEquals(footSync.RightStrikeChild, target)) footSync.RightStrikeChild = null;
+                    break;
+                case IkNode ik:
+                    if (ReferenceEquals(ik.IkEffector, target)) ik.IkEffector = null;
+                    break;
+                case WeightedNode weighted:
+                    if (ReferenceEquals(weighted.Parameter, target)) weighted.Parameter = null;
+                    if (ReferenceEquals(weighted.Child, target)) weighted.Child = null;
+                    break;
+                case RandomisedLeafNode randomised:
+                    if (ReferenceEquals(randomised.Callback, target)) randomised.Callback = null;
+                    if (ReferenceEquals(randomised.RandomCallback, target)) randomised.RandomCallback = null;
+                    if (ReferenceEquals(randomised.OptionalAnimationContext, target)) randomised.OptionalAnimationContext = null;
+                    if (ReferenceEquals(randomised.OptionalConvergeVector, target)) randomised.OptionalConvergeVector = null;
+                    if (ReferenceEquals(randomised.OptionalConvergeFloat, target)) randomised.OptionalConvergeFloat = null;
+                    break;
+            }
+        }
+
+        public void RenameNode(AnimationNode node, string newName)
+        {
+            if (node == null || string.IsNullOrEmpty(newName) || node.Name == newName)
+                return;
+
+            if (TryGetNode(newName, out AnimationNode existing) && !ReferenceEquals(existing, node))
+                throw new InvalidOperationException($"A node named '{newName}' already exists in this tree.");
+
+            string oldName = node.Name;
+            if (!string.IsNullOrEmpty(oldName))
+                Unlist(node, oldName);
+
+            node.Name = newName;
+            if (!_byName.ContainsKey(newName))
+                _byName[newName] = node;
+            _byNameAndType[(newName, node.Type)] = node;
+        }
+
+        public bool TryGetNode(string name, out AnimationNode node, NodeType? type = null)
+        {
+            node = null;
+            if (string.IsNullOrEmpty(name))
+                return false;
+            if (type.HasValue)
+                return _byNameAndType.TryGetValue((name, type.Value), out node);
+            return _byName.TryGetValue(name, out node);
+        }
+
+        public T GetNode<T>(string name, NodeType? type = null) where T : AnimationNode
+        {
+            if (TryGetNode(name, out AnimationNode node, type) && node is T typed)
+                return typed;
+            return null;
         }
     }
 
@@ -193,7 +411,7 @@ namespace CATHODE.Animations
         public bool SyncBlendSet = true;
         public bool LoopBlendSet = true;
 
-        public AnimationNode BlendSet = null; // is this right type? i think it mgiht be string
+        public string BlendSet = "";
         public AnimationNode OverflowCallback = null;
 
         public Parametric2DNode()
@@ -216,7 +434,7 @@ namespace CATHODE.Animations
     {
         public ParameterNode ParameterBindingW = null;
 
-        public AnimationNode ExtraBlendSet = null; // is this right type? i think it mgiht be string
+        public string ExtraBlendSet = "";
 
         public Parametric4DNode()
         {
@@ -361,6 +579,9 @@ namespace CATHODE.Animations
         public RandomisedLeafNode()
         {
             Type = NodeType.ANIM_Randomised_Animation;
+            AnimationPool = new Animation[8];
+            for (int i = 0; i < AnimationPool.Length; i++)
+                AnimationPool[i] = new Animation();
         }
 
         public class Animation

@@ -43,30 +43,33 @@ namespace CATHODE
         private EnvironmentAnimations _envAnims;
         private CollisionMaps _colMaps;
         private RenderableElements _reds;
+        private HavokPackfile _physicsHKX;
+        private Textures _textures;
+        private Textures _globalTextures;
 
         public bool Compressed { get { return _compressed; } set { _compressed = value; } }
         private bool _compressed = false;
 
-        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds) : base(path)
+        public Commands(string path, EnvironmentAnimations envAnims, CollisionMaps colMaps, RenderableElements reds, HavokPackfile physicsHKX = null, Textures textures = null, Textures globalTextures = null) : base(path)
         {
             _envAnims = envAnims;
             _colMaps = colMaps;
             _reds = reds;
+            _physicsHKX = physicsHKX;
+            _textures = textures;
+            _globalTextures = globalTextures;
 
             Utils = new CommandsUtils(this);
 
             _loaded = Load();
 
-            //Overwrite loaded data with the data from BIN
+            //Double check to ensure any new guids loaded in are stored - can definitely handle this nicer.
             switch  (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".BIN":
                 case ".GZ":
-                    foreach (var composites in CommandsBIN.EntityNames)
-                        foreach (var entities in composites.Value)
-                            Utils.SetEntityName(composites.Key, entities.Key, entities.Value);
                     foreach (var others in CommandsBIN.ParameterNames)
-                        ShortGuidUtils.Generate(others.Value); // do we even need to do this?
+                        ShortGuidUtils.Generate(others.Value);
                     break;
             }
         }
@@ -76,12 +79,9 @@ namespace CATHODE
             _envAnims = null;
             _colMaps = null;
             _reds = null;
-        }
-
-        ~Commands()
-        {
-            ClearReferences();
-            Entries.Clear();
+            _physicsHKX = null;
+            _textures = null;
+            _globalTextures = null;
         }
 
         // This is always size of 3, in the order:
@@ -105,11 +105,11 @@ namespace CATHODE
             switch (Path.GetExtension(_filepath).ToUpper())
             {
                 case ".PAK":
-                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsPAK.Read(stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds, _physicsHKX);
                     break;
                 case ".GZ":
                 case ".BIN":
-                    CommandsBIN.Read(_compressed ? Utilities.GZIPDecompress(stream) : stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds);
+                    CommandsBIN.Read(_compressed ? Utilities.GZIPDecompress(stream) : stream, out _entryPoints, out Entries, _envAnims, _colMaps, _reds, _physicsHKX);
                     break;
                 default:
                     return false;
@@ -158,6 +158,8 @@ namespace CATHODE
                 Console.WriteLine("WARNING: Entry point was not set! Defaulting to composite at index zero.");
                 _entryPoints[0] = Entries[0].shortGUID;
             }
+
+            SyncDerivedResourceParameters();
             RefreshEntryPointObjects();
 
             //Fix (& verify) entity-attached resource info
@@ -166,6 +168,13 @@ namespace CATHODE
                 var functions = Entries[i].functions_dictionary.Values;
                 Parallel.ForEach(functions, function =>
                 {
+                    if (function.resources != null)
+                        function.resources.RemoveAll(r => r.resource_type == ResourceType.RENDERABLE_INSTANCE && (r.RenderableInstance == null || r.RenderableInstance.Count == 0));
+                    if (function.parameters != null)
+                        foreach (Parameter param in function.parameters)
+                            if (param?.content is cResource paramResource && paramResource.value != null)
+                                paramResource.value.RemoveAll(r => r.resource_type == ResourceType.RENDERABLE_INSTANCE && (r.RenderableInstance == null || r.RenderableInstance.Count == 0));
+                    
                     if (function.function.IsFunctionType)
                     {
                         switch (function.function.AsFunctionType)
@@ -195,14 +204,19 @@ namespace CATHODE
 
                             //NOTE: Really, DYNAMIC_PHYSICS_SYSTEM isn't actually on the entity, it's on the composite
                             case FunctionType.PhysicsSystem:
-                                Parameter dps_index = function.GetParameter("system_index");
-                                if (dps_index == null)
-                                {
-                                    dps_index = new Parameter("system_index", new cInteger(0));
-                                    function.parameters.Add(dps_index);
-                                }
                                 ResourceReference physSystem = function.AddResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
-                                physSystem.PhysicsSystemIndex = ((cInteger)dps_index.content).value;
+                                if (physSystem.PhysicsSystem != null)
+                                {
+                                    physSystem.PhysicsSystemIndex = physSystem.PhysicsSystem.SystemIndex;
+                                }
+                                else
+                                {
+                                    Parameter dps_index = function.GetParameter(ShortGuids.system_index);
+                                    int systemIndex = (dps_index?.content is cInteger idx) ? idx.value : 0;
+                                    physSystem.PhysicsSystem = _physicsHKX?.GetPhysicsSystem(systemIndex);
+                                    physSystem.PhysicsSystemIndex = systemIndex;
+                                }
+                                SyncPhysicsSystemIndexParameter(function);
                                 Parameter position = function.GetParameter("position");
                                 if (position?.content?.dataType == DataType.TRANSFORM)
                                 {
@@ -241,31 +255,121 @@ namespace CATHODE
             });
             #endregion
 
-            byte[] content = null;
-            switch (Path.GetExtension(_filepath).ToUpper())
-            {
-                case ".PAK":
-                    CommandsPAK.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
-                    break;
-                case ".GZ":
-                case ".BIN":
-                    CommandsBIN.Write(_entryPoints, Entries, out content, _envAnims, _colMaps, _reds);
-                    break;
-                default:
-                    return false;
-            }
+            string extension = Path.GetExtension(_filepath).ToUpper();
+            if (extension != ".PAK" && extension != ".GZ" && extension != ".BIN")
+                return false;
 
-            using (Stream stream = File.OpenWrite(_filepath))
+            byte[] content = null;
+            byte[] siblingContent = null;
+            Parallel.Invoke(
+                () =>
+                {
+                    byte[] written;
+                    if (extension == ".PAK")
+                        CommandsPAK.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                    else
+                        CommandsBIN.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                    content = written;
+                },
+                () =>
+                {
+                    if (!_compressed)
+                    {
+                        byte[] written;
+                        if (extension == ".PAK")
+                            CommandsBIN.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                        else
+                            CommandsPAK.Write(_entryPoints, Entries, out written, _envAnims, _colMaps, _reds);
+                        siblingContent = written;
+                    }
+                }
+            );
+
+            WriteToDisk(_filepath, content);
+
+            if (_compressed)
+                Utilities.GZIPCompress(_filepath);
+            else if (siblingContent != null)
+                WriteToDisk(Path.ChangeExtension(_filepath, extension == ".PAK" ? ".BIN" : ".PAK"), siblingContent);
+
+            return true;
+        }
+
+        private static void WriteToDisk(string path, byte[] content)
+        {
+            using (Stream stream = File.OpenWrite(path))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 writer.BaseStream.SetLength(0);
                 writer.Write(content);
             }
+        }
 
-            if (_compressed)
-                Utilities.GZIPCompress(_filepath);
+        /// <summary>
+        /// One composite and the parameters it uses, written as a standalone COMMANDS.PAK image - the layout the game holds
+        /// in memory - for patching that composite into a running game (live link). Offsets in the image count from its
+        /// start, in 4-byte words, as they do from the start of a real COMMANDS.PAK; relocations lists the index (in words)
+        /// of every word that is such an offset, so the image can be rebased wherever it lands. String offsets keep their
+        /// high bit set.
+        /// </summary>
+        public byte[] WriteLiveLinkImage(Composite composite, out List<int> relocations)
+        {
+            List<Composite> single = new List<Composite>() { composite };
+            ShortGuid[] entryPoints = _entryPoints ?? new ShortGuid[3];
 
-            return true;
+            //Links get new random ids every time a flowgraph is compiled, which would make every image of the same content
+            //different (and so re-sent and re-applied): in the image each link's id comes from what it joins instead. The
+            //composite's own ids are put back afterwards.
+            List<(Entity, List<EntityConnector>)> linkIds = new List<(Entity, List<EntityConnector>)>();
+            byte[] image, shifted;
+            try
+            {
+                foreach (Entity entity in composite.GetEntities())
+                {
+                    if (entity.childLinks.Count == 0)
+                        continue;
+                    linkIds.Add((entity, entity.childLinks));
+                    List<EntityConnector> stable = new List<EntityConnector>(entity.childLinks.Count);
+                    Dictionary<uint, int> seen = new Dictionary<uint, int>();
+                    foreach (EntityConnector link in entity.childLinks)
+                    {
+                        uint id = 2166136261;
+                        foreach (uint word in new uint[] { entity.shortGUID.AsUInt32, link.thisParamID.AsUInt32, link.linkedEntityID.AsUInt32, link.linkedParamID.AsUInt32 })
+                            id = (id ^ word) * 16777619;
+                        seen.TryGetValue(id, out int repeat); //the same link twice still gets two ids
+                        seen[id] = repeat + 1;
+                        EntityConnector copy = link;
+                        copy.ID = new ShortGuid((id ^ (uint)repeat) * 16777619);
+                        stable.Add(copy);
+                    }
+                    entity.childLinks = stable;
+                }
+
+                //The same content written twice, the second one word later: the words that differ are the offsets. A word
+                //that differs by anything but one word means the writer is not deterministic, and no relocation can be trusted.
+                CommandsPAK.Write(entryPoints, single, out image, _envAnims, _colMaps, _reds, 0);
+                CommandsPAK.Write(entryPoints, single, out shifted, _envAnims, _colMaps, _reds, 4);
+            }
+            finally
+            {
+                foreach ((Entity entity, List<EntityConnector> links) in linkIds)
+                    entity.childLinks = links;
+            }
+            if (image.Length % 4 != 0 || shifted.Length != image.Length + 4)
+                throw new InvalidDataException("The Live Link image of " + composite.name + " did not write consistently (" + image.Length + " / " + shifted.Length + " bytes)");
+
+            relocations = new List<int>();
+            for (int i = 0; i < image.Length / 4; i++)
+            {
+                uint word = BitConverter.ToUInt32(image, i * 4);
+                uint shiftedWord = BitConverter.ToUInt32(shifted, 4 + i * 4);
+                if (word == shiftedWord)
+                    continue;
+                if (shiftedWord != word + 1)
+                    throw new InvalidDataException("The Live Link image of " + composite.name + " did not write consistently at word " + i);
+                relocations.Add(i);
+            }
+            return image;
         }
         #endregion
 
@@ -300,7 +404,48 @@ namespace CATHODE
         }
         public Composite GetComposite(ShortGuid id)
         {
-            return Entries.FirstOrDefault(o => o != null && o.shortGUID == id);
+            List<Composite> entries = Entries;
+            Dictionary<ShortGuid, int> index = _compositeIndex;
+            if (index != null && index.TryGetValue(id, out int at) && at < entries.Count)
+            {
+                Composite candidate = entries[at];
+                if (candidate != null && candidate.shortGUID == id)
+                    return candidate;
+            }
+
+            Composite found = null;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                Composite composite = entries[i];
+                if (composite != null && composite.shortGUID == id)
+                {
+                    found = composite;
+                    break;
+                }
+            }
+            //The index did not know one that is there: something was added, removed or reordered since it was built
+            if (found != null)
+                RebuildCompositeIndex(entries);
+            return found;
+        }
+
+        /* Where each composite sits in Entries, for GetComposite(ShortGuid). The scan it replaced ran for every composite
+           instance a caller met - once per instance entity in a viewport populate, or a walk of the tree - over thousands of
+           composites each time. Entries is a public list anyone may change, so a position is checked before it is trusted
+           and whatever the index cannot answer falls back to the scan. It is replaced whole, never changed in place, so a
+           reader on another thread always has a complete one. */
+        private Dictionary<ShortGuid, int> _compositeIndex;
+
+        private void RebuildCompositeIndex(List<Composite> entries)
+        {
+            Dictionary<ShortGuid, int> index = new Dictionary<ShortGuid, int>(entries.Count);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                Composite composite = entries[i];
+                if (composite != null && !index.ContainsKey(composite.shortGUID))
+                    index[composite.shortGUID] = i;
+            }
+            _compositeIndex = index;
         }
 
         /// <summary>
@@ -332,6 +477,38 @@ namespace CATHODE
             _entryPoints[0] = compositeID;
             _entryPointObjects = null;
         }
+
+        /// <summary>
+        /// Set all three entry points at once: the level root, the GLOBAL composite and the PAUSEMENU
+        /// composite. A Commands built from nothing has no entry points until this (or
+        /// <see cref="SetRootComposite(Composite)"/>) is called. The save-time fix-ups look GLOBAL and
+        /// PAUSEMENU up by their upper-case names only, which the shipped composites (Global, PauseMenu)
+        /// do not carry, so seed them explicitly rather than letting the save create blank placeholders.
+        /// </summary>
+        public void SetEntryPoints(Composite root, Composite global, Composite pauseMenu)
+        {
+            _entryPoints = new ShortGuid[3]
+            {
+                root == null ? ShortGuid.Invalid : root.shortGUID,
+                global == null ? ShortGuid.Invalid : global.shortGUID,
+                pauseMenu == null ? ShortGuid.Invalid : pauseMenu.shortGUID,
+            };
+            _entryPointObjects = null;
+        }
+
+        /// <summary>
+        /// List the composites (ID and name only) in a COMMANDS.PAK without parsing it. Milliseconds
+        /// rather than seconds, and no level data needs loading, so a picker can browse every level.
+        /// Returns null for anything that is not a PAK (the BIN carries no cheap table).
+        /// </summary>
+        public static List<CompositeIndexEntry> ReadCompositeIndex(string filepath)
+        {
+            if (string.IsNullOrEmpty(filepath) || !File.Exists(filepath))
+                return null;
+            if (Path.GetExtension(filepath).ToUpper() != ".PAK")
+                return null;
+            return CommandsIndex.Read(File.ReadAllBytes(filepath));
+        }
         #endregion
 
         #region HELPERS
@@ -361,6 +538,221 @@ namespace CATHODE
                     });
                 });
             });
+        }
+
+        /// <summary>
+        /// Write entity parameters that mirror resource/object bindings (e.g. PhysicsSystem.system_index from the Havok system).
+        /// </summary>
+        private void SyncDerivedResourceParameters()
+        {
+            if (Entries == null) return;
+            Dictionary<FunctionEntity, int> envMapIndices = ComputeEnvironmentMapIndices(out _);
+            Parallel.ForEach(Entries, comp =>
+            {
+                if (comp?.functions == null) return;
+                foreach (FunctionEntity function in comp.functions)
+                {
+                    SyncPhysicsSystemIndexParameter(function);
+                    SyncEnvironmentMapIndexParameters(function, _textures, _globalTextures, envMapIndices);
+                    SyncColourLutIndexParameters(function, _textures);
+                }
+            });
+        }
+
+        /// <summary>
+        /// The engine's environment-map index space, shared by every EnvironmentMap entity's
+        /// <c>environmentmap_index</c> parameter and by the rows of WORLD/ENVIRONMENTMAP.BIN:
+        /// the level's EnvironmentMap entities, in order, with the cubemap each resolves to and
+        /// whether its Entities pin links anything.
+        /// </summary>
+        public List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> RankEnvironmentMaps()
+        {
+            List<(int texture, int composite, int function, FunctionEntity entity, Textures.TEX4 tex)> ranked = new List<(int, int, int, FunctionEntity, Textures.TEX4)>();
+            if (Entries != null)
+            {
+                for (int c = 0; c < Entries.Count; c++)
+                {
+                    Composite comp = Entries[c];
+                    if (comp?.functions == null) continue;
+                    List<(int texture, int function, FunctionEntity entity, Textures.TEX4 tex)> maps = new List<(int, int, FunctionEntity, Textures.TEX4)>();
+                    //Copied out once (each read of comp.functions copies them all): it was two copies for each function
+                    ReadOnlyEntityCollection<FunctionEntity> functions = comp.functions;
+                    for (int f = 0; f < functions.Count; f++)
+                    {
+                        FunctionEntity function = functions[f];
+                        if (function == null || function.function != FunctionType.EnvironmentMap)
+                            continue;
+                        ResolveEnvironmentMapTexture(function, _textures, _globalTextures, out Textures.TEX4 tex, out Textures db);
+                        int textureIndex = -1;
+                        if (tex != null && db != null)
+                        {
+                            textureIndex = db.GetWriteIndex(tex);
+                            //A cubemap only the GLOBAL table holds sorts after every level-local one
+                            if (!ReferenceEquals(db, _textures))
+                                textureIndex += 1 << 24;
+                        }
+                        else
+                            tex = null;
+                        maps.Add((textureIndex, f, function, tex));
+                    }
+                    //An entity without a cubemap sorts with the one before it in function order (the
+                    //function index then puts it straight after), or before the next if it is first
+                    for (int m = 0; m < maps.Count; m++)
+                    {
+                        int key = maps[m].texture;
+                        for (int back = m - 1; key < 0 && back >= 0; back--)
+                            key = maps[back].texture;
+                        for (int ahead = m + 1; key < 0 && ahead < maps.Count; ahead++)
+                            key = maps[ahead].texture;
+                        if (key < 0)
+                            key = int.MaxValue;
+                        ranked.Add((key, c, maps[m].function, maps[m].entity, maps[m].tex));
+                    }
+                }
+            }
+            ranked.Sort((a, b) =>
+            {
+                int cmp = a.texture.CompareTo(b.texture);
+                if (cmp == 0) cmp = a.composite.CompareTo(b.composite);
+                if (cmp == 0) cmp = a.function.CompareTo(b.function);
+                return cmp;
+            });
+            List<(FunctionEntity, Textures.TEX4, bool)> result = new List<(FunctionEntity, Textures.TEX4, bool)>(ranked.Count);
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                bool linked = false;
+                if (ranked[i].entity.childLinks != null)
+                    foreach (EntityConnector link in ranked[i].entity.childLinks)
+                        if (link.thisParamID == ShortGuids.Entities) { linked = true; break; }
+                result.Add((ranked[i].entity, ranked[i].tex, linked));
+            }
+            return result;
+        }
+
+        /// <summary>Each EnvironmentMap entity's index in the space described on <see cref="RankEnvironmentMaps"/>.</summary>
+        public Dictionary<FunctionEntity, int> ComputeEnvironmentMapIndices(out int count)
+        {
+            List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> ranking = RankEnvironmentMaps();
+            Dictionary<FunctionEntity, int> result = new Dictionary<FunctionEntity, int>(ranking.Count);
+            for (int i = 0; i < ranking.Count; i++)
+                result[ranking[i].Entity] = i;
+            count = ranking.Count;
+            return result;
+        }
+
+        /// <summary>
+        /// The same index space as two lookups for Movers, which knows each mover's cubemap but not
+        /// the script: index to cubemap for resolving loaded rows, cubemap to index for writing them.
+        /// A cubemap two entities share maps to the one whose Entities pin links something - the
+        /// one that lights movers - so retail's rows come back exactly (Tech_Hub's Server_Hub pair
+        /// is indices 2 and 3; its movers carry 3).
+        /// </summary>
+        public void BuildEnvironmentMapIndexing(out List<Textures.TEX4> indexToTexture, out Dictionary<Textures.TEX4, int> textureToIndex)
+        {
+            List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> ranking = RankEnvironmentMaps();
+            indexToTexture = new List<Textures.TEX4>(ranking.Count);
+            textureToIndex = new Dictionary<Textures.TEX4, int>();
+            for (int i = 0; i < ranking.Count; i++)
+                indexToTexture.Add(ranking[i].Texture);
+            for (int pass = 0; pass < 2; pass++)
+                for (int i = 0; i < ranking.Count; i++)
+                {
+                    if ((pass == 0) != ranking[i].Linked || ranking[i].Texture == null)
+                        continue;
+                    if (!textureToIndex.ContainsKey(ranking[i].Texture))
+                        textureToIndex[ranking[i].Texture] = i;
+                }
+        }
+
+        private static void ResolveEnvironmentMapTexture(FunctionEntity function, Textures levelTextures, Textures globalTextures, out Textures.TEX4 tex, out Textures db)
+        {
+            tex = null;
+            db = null;
+            string path = (function.GetParameter(ShortGuids.Texture)?.content as cString)?.value;
+            if (string.IsNullOrEmpty(path))
+                return;
+            tex = levelTextures?.GetEnvironmentMapByPath(path);
+            if (tex != null)
+            {
+                db = levelTextures;
+                return;
+            }
+            tex = globalTextures?.GetEnvironmentMapByPath(path);
+            if (tex != null)
+                db = globalTextures;
+        }
+
+        /// <summary>
+        /// Sets PhysicsSystem.system_index from the bound DYNAMIC_PHYSICS_SYSTEM resource's Havok system index.
+        /// </summary>
+        private static void SyncPhysicsSystemIndexParameter(FunctionEntity function)
+        {
+            if (function == null || function.function != FunctionType.PhysicsSystem)
+                return;
+
+            ResourceReference resource = function.GetResource(ResourceType.DYNAMIC_PHYSICS_SYSTEM);
+            if (resource == null)
+                return;
+
+            int index = resource.PhysicsSystem?.SystemIndex ?? resource.PhysicsSystemIndex;
+            if (index < 0)
+                return;
+
+            SetIntegerParameter(function, ShortGuids.system_index, index);
+        }
+
+        /// <summary>
+        /// Sets EnvironmentMap Texture_Index / environmentmap_index from the Texture path string.
+        /// </summary>
+        private static void SyncEnvironmentMapIndexParameters(FunctionEntity function, Textures levelTextures, Textures globalTextures, Dictionary<FunctionEntity, int> envMapIndices)
+        {
+            if (function == null || function.function != FunctionType.EnvironmentMap)
+                return;
+
+            ResolveEnvironmentMapTexture(function, levelTextures, globalTextures, out Textures.TEX4 tex, out Textures db);
+
+            int textureIndex = tex != null && db != null ? db.GetWriteIndex(tex) : -1;
+            //Every entity has an index, with or without a cubemap (see RankEnvironmentMaps); retail
+            //leaves Texture_Index off the ones without
+            if (envMapIndices == null || !envMapIndices.TryGetValue(function, out int envMapIndex))
+                envMapIndex = -1;
+
+            if (textureIndex >= 0 || function.GetParameter(ShortGuids.Texture_Index) != null)
+                SetIntegerParameter(function, ShortGuids.Texture_Index, textureIndex);
+            SetIntegerParameter(function, ShortGuids.environmentmap_index, envMapIndex);
+        }
+
+        /// <summary>
+        /// Sets ColourCorrectionTransition colour_lut_a_index / colour_lut_b_index from the colour_lut_a / colour_lut_b paths.
+        /// </summary>
+        private static void SyncColourLutIndexParameters(FunctionEntity function, Textures levelTextures)
+        {
+            if (function == null || levelTextures == null || function.function != FunctionType.ColourCorrectionTransition)
+                return;
+
+            SyncColourLutIndexParameter(function, levelTextures, ShortGuids.colour_lut_a, ShortGuids.colour_lut_a_index);
+            SyncColourLutIndexParameter(function, levelTextures, ShortGuids.colour_lut_b, ShortGuids.colour_lut_b_index);
+        }
+
+        private static void SyncColourLutIndexParameter(FunctionEntity function, Textures levelTextures, ShortGuid pathParameter, ShortGuid indexParameter)
+        {
+            string path = (function.GetParameter(pathParameter)?.content as cString)?.value;
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            Textures.TEX4 lut = levelTextures.GetEnvironmentMapByPath(path);
+            int index = lut == null ? -1 : levelTextures.GetWriteIndex(lut);
+            if (index >= 0)
+                SetIntegerParameter(function, indexParameter, index);
+        }
+
+        private static void SetIntegerParameter(FunctionEntity function, ShortGuid id, int value)
+        {
+            Parameter param = function.GetParameter(id);
+            if (param?.content is cInteger integer)
+                integer.value = value;
+            else
+                function.AddParameter(id, new cInteger(value));
         }
         #endregion
     }

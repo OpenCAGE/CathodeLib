@@ -31,12 +31,6 @@ namespace CATHODE
             _resources = null;
         }
 
-        ~PathBarrierResources()
-        {
-            ClearReferences();
-            Entries.Clear();
-        }
-
         #region FILE_IO
         override protected bool LoadInternal(MemoryStream stream)
         {
@@ -91,8 +85,7 @@ namespace CATHODE
         public class NAV_MESH_BARRIER_RESOURCE
         {
             public Resources.Resource Resource;
-
-            public int area_id; //dt_area_id_t
+            public int area_id; 
             public NAVIGATION_CHARACTER_CLASS_COMBINATION allowed_character_classes;
         }
         #endregion

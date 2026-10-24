@@ -72,6 +72,7 @@ namespace CATHODE.Scripting
                    EqualityComparer<ShortGuid>.Default.Equals(resource_id, reference.resource_id) &&
                    resource_type == reference.resource_type &&
                    PhysicsSystemIndex == reference.PhysicsSystemIndex &&
+                   ReferenceEquals(PhysicsSystem, reference.PhysicsSystem) &&
                    AnimatedModel == reference.AnimatedModel &&
                    CollisionMapping == reference.CollisionMapping &&
                    RenderableInstance == reference.RenderableInstance &&
@@ -86,6 +87,7 @@ namespace CATHODE.Scripting
             hashCode = hashCode * -1521134295 + resource_id.GetHashCode();
             hashCode = hashCode * -1521134295 + resource_type.GetHashCode();
             hashCode = hashCode * -1521134295 + entityID.GetHashCode();
+            hashCode = hashCode * -1521134295 + PhysicsSystemIndex.GetHashCode();
             return hashCode;
         }
 
@@ -95,7 +97,18 @@ namespace CATHODE.Scripting
         public ShortGuid resource_id; //this can be translated to a string sometimes, like DYNAMIC_PHYSICS_SYSTEM
         public ResourceType resource_type;
 
-        public int PhysicsSystemIndex = 0; //DYNAMIC_PHYSICS_SYSTEM: maps to the Havok index
+        public HavokPackfile.PhysicsSystem PhysicsSystem = null; //DYNAMIC_PHYSICS_SYSTEM
+        public int PhysicsSystemIndex
+        {
+            get => PhysicsSystem?.SystemIndex ?? _physicsSystemIndex;
+            set
+            {
+                _physicsSystemIndex = value;
+                if (PhysicsSystem != null && PhysicsSystem.SystemIndex != value)
+                    PhysicsSystem = null;
+            }
+        }
+        private int _physicsSystemIndex = 0;
 
         public EnvironmentAnimations.EnvironmentAnimation AnimatedModel = null; //ANIMATED_MODEL
         public CollisionMaps.COLLISION_MAPPING CollisionMapping = null; //COLLISION_MAPPING
