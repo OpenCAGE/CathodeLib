@@ -2341,14 +2341,6 @@ namespace CATHODE
 
         /// <summary>
         /// Extend the proxy list until a child exists at every compound ordinal.
-        /// <para>
-        /// Retail satisfies this exactly, but an imported compound lands at the end of the payload -
-        /// past the three rigid-body-owned hosts - so its ordinal falls outside the list, and a ported
-        /// row then names a shape past the end of the array the engine looks it up in.
-        /// </para>
-        /// Ordinals are rank in the payload and cannot simply be renumbered: models store
-        /// <c>Submesh.CollisionProxyIndex</c> against them. Padding the list keeps every existing
-        /// ordinal where it is, and the extra slots cost nothing on a list that never collides.
         /// </summary>
         public void EnsureProxyListCoversCompounds()
         {
@@ -2586,15 +2578,6 @@ namespace CATHODE
 
         /// <summary>
         /// Resize every compound's child shape key field to fit what it now holds.
-        /// <para>
-        /// hkpStaticCompoundShape packs a hit as <c>(instanceIndex &lt;&lt; m_numBitsForChildShapeKey)
-        /// | childKey</c>, so that field has to cover the largest key space any child can produce.
-        /// Retail sizes it as the maximum over instances of the child's own bits plus the bits its
-        /// instance index needs.
-        /// </para>
-        /// Placing a level's geometry onto a host without updating it lets a hit inside a bigger child
-        /// overflow into the instance index, and hkpStaticCompoundShape::getCollisionFilterInfo then
-        /// reads past m_instances.
         /// </summary>
         public void RefreshCompoundShapeKeyBits()
         {

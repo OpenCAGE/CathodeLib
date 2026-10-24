@@ -126,18 +126,6 @@ namespace CathodeLib.Sound
         /// Under <see cref="BarrierBoundaryTest"/> 3, also require a barrier pivot within
         /// <see cref="BarrierSearchRadius"/> of the kept crossing for a NAMED-to-named boundary.
         /// </summary>
-        /// <para><b>Measured over the whole campaign and left OFF (7 Sep 2026, run `c16`).</b> On a
-        /// seven-level sweep it looked free - CorporatePent +0.71, Solace +0.38, ChallengeMap9 +0.43,
-        /// zero on the other four - but those levels were all ones we OVER-link, where removing any
-        /// boundary flatters the count ratio. Over 32 levels it is a net loss, and the reason is not
-        /// the metric: it removes TRUE boundaries. BSP_LV426_PT02 -5.93 with boundary RECALL 83% ->
-        /// 67% (precision stays 100%), ChallengeMap4 -0.35 with recall 97% -> 94%, TECH_RnD_HzdLab
-        /// -0.32 with recall 85% -> 81%, plus CM1, ENG_ReactorCore and TECH_RnD.
-        /// Retail's own files do say every one of its 3,050 boundaries carries a barrier
-        /// (`diag barrshare`), so the rule is right and our BARRIER COLLECTION is what is short -
-        /// `CollectBarriers` only sees SoundBarrier and NavMeshBarrier entities, and retail's
-        /// BarrierInstanceGuid indexes something we have never decoded (`diag barrguid` matches it
-        /// on 0% of boundaries). Do not turn this on until that is solved.</para>
         public bool OpeningRequiresBarrier = false;
 
         /// <summary>
@@ -145,12 +133,6 @@ namespace CathodeLib.Sound
         /// sealed network's crossing must also have a barrier pivot within
         /// <see cref="BarrierSearchRadius"/>. A door node has a door.
         /// </summary>
-        /// <para><b>false -> true (2 Sep 2026).</b> Once sealed networks of up to three authored nodes may hold a
-        /// boundary (<see cref="SealedNetworkLinking"/> 4), the ones they gain without a barrier are all
-        /// false: BSP_TORRENS 26 -> 30 links and 78 -> 92 paths against retail's exact 26 / 78, back to exact
-        /// with this on; ChallengeMap9 loses 8 links and 48 paths that were every one of them wrong (boundary
-        /// true positives unchanged at 12), which the harness's count ratios reward and the boundary set does
-        /// not. Retail's 3,050 boundaries all carry a barrier. Measured with `diag sounditer`.</para>
         public bool SealedRequiresBarrier = true;
 
         /// <summary>
@@ -165,11 +147,6 @@ namespace CathodeLib.Sound
         /// <see cref="SealedLinkMaxNodes"/> nodes, 2 always, 3 only when a barrier sits at the
         /// crossing, 4 only when it is that small AND made entirely of AUTHORED nodes.
         /// </summary>
-        /// <para><b>1 -> 4 with <see cref="SealedLinkMaxNodes"/> 3 (2 Sep 2026).</b> A lift's door nodes are
-        /// authored and come in twos and threes (a shaft pair, a front group with the door package beyond), and
-        /// retail links them to the car at each stop. Bake-free: ChallengeMap9 links 50 -> 56 (retail 56) and
-        /// paths 232 -> 301 (304), SCI_HospitalLower paths 820 -> 947 (947); with <see cref="SealedRequiresBarrier"/>
-        /// on so the door is real. Mode 4 = authored-only sealed networks, fill pockets stay unlinked.</para>
         public int SealedNetworkLinking = 4;
 
         /// <summary>
@@ -253,12 +230,6 @@ namespace CathodeLib.Sound
         /// Drop an authored node that can see no other node AND has no navmesh beneath it - see
         /// <c>SoundNodeNetworkGenerator.DiscardOrphanedManualNodes</c>.
         /// </summary>
-        /// <para><b>false -> true (2 Sep 2026)</b>, with <see cref="OrphanSightRange"/> 12 and
-        /// <see cref="OrphanSightThroughDoors"/>. The rule that did not generalise judged sight against the full
-        /// soup with no range: a void node forty metres from anything counted as seeing another void node, and a
-        /// lift's door node counted as blind because the car it links to is behind the lift door. Campaign census
-        /// (`diag authfeat`, six levels, 4,351 authored nodes): floorless nodes with a visible node within 12 m,
-        /// doors transparent, are kept 653 of 655; with none, dropped 62 of 73.</para>
         public bool DiscardOrphanNodes = true;
 
         /// <summary>
@@ -336,7 +307,6 @@ namespace CathodeLib.Sound
         public bool SealedSeesThroughHullsAtDoor = true;
 
         /// <summary>
-        /// <summary>
         /// Furthest a node link may reach when its two nodes ended up in DIFFERENT networks. A link
         /// that leaves its room is a doorway crossing in retail's files and is short; ours ran the
         /// length of the level, because links are built before anything knows which room a node is
@@ -356,20 +326,6 @@ namespace CathodeLib.Sound
         /// reached from nowhere else. Nearest crossing first, and only ever enough of them to make
         /// the named graph connected.
         /// </summary>
-        /// <para><b>OFF until 7 Sep 2026, because on its own it is a WASH.</b> It lifts the levels whose
-        /// graph really had fallen apart - TECH_COMMS sound 82.7 -> 87.4, SCI_HospitalUpper 86.9 -> 90.1 -
-        /// and costs the levels whose connectivity was already AHEAD of retail's: Solace -1.2 (we wrote
-        /// 303 paths against retail's 279 before it), CHALLENGEMAP11 -1.7, HospitalLower -0.7. Five up,
-        /// five down. Restricting it to networks with no boundary at all
-        /// (<see cref="ReconnectIsolatedOnly"/>) throws the gains away and keeps the losses.</para>
-        /// <para><b>What made it pay is <see cref="ReconnectMinComponent"/>.</b> A level's rooms are NOT
-        /// simply one connected space - retail ships a dominant piece and a tail of tiny ones, and the
-        /// losses above were all this rule joining a two- or three-network piece retail keeps apart. With
-        /// a size floor of 4 it only ever joins pieces too big to be genuinely cut off, and with
-        /// <see cref="ReconnectSearchDistance"/> it can reach the ones no refused candidate covers.
-        /// Together with <see cref="OpeningRequiresBarrier"/>, over seven levels: TECH_COMMS 82.7 -> 88.7,
-        /// HospitalUpper 86.9 -> 88.7, CorporatePent 87.1 -> 87.8, Solace 91.1 -> 91.5, CM9 90.6 -> 91.0,
-        /// CM16 and Tech_Hub unmoved - mean +1.33 and **no level regresses**.</para>
         public bool ReconnectNetworkGraph = true;
 
         /// <summary>
@@ -382,15 +338,6 @@ namespace CathodeLib.Sound
         /// How far <see cref="ReconnectNetworkGraph"/> may look for a crossing of its own when no
         /// refused candidate exists between two parts of the graph. 0 uses refused candidates only.
         /// </summary>
-        /// <para><b>Measured over twelve balanced levels and left OFF (7 Sep 2026).</b> At 15 m with a
-        /// component floor of 4 it is the best thing that has happened to TECH_COMMS - paths 737 ->
-        /// 1892, sound 86.97 -> 88.68 - and it pays every point of it straight back on
-        /// ENG_TowPlatform, where the boundary it adds is CORRECT (recall 96% -> 100%) but the path
-        /// count goes 247 -> 436 against retail's 304, because our other boundaries there are wrong.
-        /// Mean over the twelve is identical with it on at 15/4 and off (+0.55 either way), and a
-        /// floor of 6 or more simply stops it firing at all. It is off because it earns nothing, not
-        /// because it is wrong: it should pay once the network PARTITION improves - see rule 75's
-        /// ceiling, where six levels are negative for want of networks we never paired.</para>
         public float ReconnectSearchDistance = 0f;
 
         /// <summary>
@@ -400,6 +347,7 @@ namespace CathodeLib.Sound
         /// </summary>
         public int ReconnectMinComponent = 4;
 
+        /// <summary>
         /// Two MARKER networks whose closest crossing pierces a door barrier box, with the two nodes
         /// within <see cref="DoorCrossingMaxDistance"/>, adjoin at that door whatever the opening
         /// sight test says - the closed leaf is what it cannot see through. Retail's boundary node
@@ -418,14 +366,6 @@ namespace CathodeLib.Sound
         /// Two MARKER networks whose nearest nodes are within this distance adjoin whatever the
         /// opening sight test says. 0 disables it.
         /// </summary>
-        /// <para><b>Measured and left OFF (7 Sep 2026).</b> Over six levels at 1.50, 1.75, 2.00 and
-        /// 2.50 m, with and without the barrier: mean +0.02 at best, and negative above 2 m (Solace
-        /// -1.56 at 2.00). The reason is in `diag bridges`: the boundaries we WRONGLY HOLD and the
-        /// ones we WRONGLY REFUSE have the same distance distribution - both p50 1.5 m, both ~84%
-        /// under 2 m - so no threshold separates them. Retail's 1.5 m pairs are 95% joined because
-        /// retail's node-to-network assignment is right; ours is not, and distance is a property of
-        /// that assignment rather than a signal independent of it. The rule that DID pay is
-        /// <see cref="ReconnectMinComponent"/>, which reads the shape of the graph instead.</para>
         public float NearCrossingDistance = 0f;
 
         /// <summary>

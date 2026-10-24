@@ -398,8 +398,7 @@ namespace CathodeLib.Alphalight
         /// Fill the probe grid. Node (i,j) is the surface at UV <c>(i/(W-1), j/(H-1))</c>: the
         /// closest point on the nearest triangle in texel space, if one is within
         /// <see cref="AlphalightBakeSettings.CoverageTexels"/>. Nodes with nothing that close are
-        /// dilated in afterwards from their neighbours - see the class remarks for why that, and
-        /// not the nearest point, is what retail does.
+        /// dilated in afterwards from their neighbours.
         /// </summary>
         private static void Rasterise(Sample sample, List<Triangle> triangles, double worldArea, AlphalightBakeSettings settings)
         {

@@ -4,7 +4,7 @@ namespace CathodeLib.NavMesh
     /// <summary>
     /// Constants for <see cref="JobPositionBaker"/>. The offsets are not guesses: every one of
     /// them was read back off retail's own files and holds to three decimal places on
-    /// BSP_TORRENS, Solace, SCI_Hub and Tech_Hub. See the remarks on the baker.
+    /// BSP_TORRENS, Solace, SCI_Hub and Tech_Hub.
     /// </summary>
     public sealed class JobPositionBakeSettings
     {
@@ -168,7 +168,7 @@ namespace CathodeLib.NavMesh
 
         /// <summary>
         /// Reject a whole RUN whose mean obstacle height is below this, rather than testing each
-        /// position separately. OFF by default - see the remarks.
+        /// position separately. OFF by default.
         /// </summary>
         public bool AssaultRequireRunObstacle = false;
         /// <summary>
@@ -256,7 +256,7 @@ namespace CathodeLib.NavMesh
         /// </summary>
         public float CrawlMinDistanceInsideDeepCrouchForSpotPosition = 0.25f;
 
-        /// <summary>Spot and path have to end up further apart than this. See the remarks above.</summary>
+        /// <summary>Spot and path have to end up further apart than this.</summary>
         public float CrawlMinSpotToPathDistance = 0.5f;
 
         /// <summary>

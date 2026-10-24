@@ -1118,10 +1118,6 @@ namespace CATHODE
         /// Point an array member at <paramref name="count"/> elements starting at
         /// <paramref name="elementOffset"/>. The item the member names is what carries both, so this
         /// moves that item rather than writing anything into the array header.
-        /// <para>
-        /// Only for a word that owns its item. On a word copied from another object it moves the
-        /// other object's array - use <see cref="NewArray"/> there.
-        /// </para>
         /// </summary>
         public bool SetArray(int fieldOffset, int elementOffset, int count, int patchGroup)
         {
@@ -1728,11 +1724,6 @@ namespace CATHODE
         /// Register a copy of an existing object that has already been written into the data. An object
         /// only exists as far as a tagfile is concerned if an item claims it, and any pointer inside it
         /// has to be listed again at its new address - otherwise the copy loads with null members.
-        /// <para>
-        /// The copy's pointer words still hold the template's item indices. Object pointers may share,
-        /// but an array or string item has one owner: point the copy's at fresh ones with
-        /// <see cref="NewArray"/>, never <see cref="SetArray"/>, which would move the template's.
-        /// </para>
         /// </summary>
         public bool CloneObject(uint sourceOffset, uint destOffset, int size)
         {

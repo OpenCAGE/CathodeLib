@@ -9,7 +9,7 @@ namespace CathodeLib.Alphalight
         /// <summary>
         /// Reuse the probe grid size already recorded on a ModelReference's
         /// <c>alpha_light_scale_*</c> parameters instead of deriving one. Retail's choice is
-        /// deterministic but not yet reproduced (see the remarks on <see cref="AlphalightBaker"/>),
+        /// deterministic but not yet reproduced,
         /// so this is the only way to match it exactly; entities with no existing parameters fall
         /// back to <see cref="TargetTexelSize"/> either way.
         /// </summary>

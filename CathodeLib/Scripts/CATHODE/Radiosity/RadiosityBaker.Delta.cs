@@ -784,7 +784,7 @@ namespace CathodeLib.Radiosity
         /// </summary>
         /// <param name="allMovers">Every mover of the WHOLE lightmap delta when the patcher appends it in more than one
         /// chunk; null for a single chunk (<paramref name="deltaMovers"/> stands in). Each call only sees its own chunk, so
-        /// without it another chunk's delta geometry scores as donor material (see the donor-shell remark below).</param>
+        /// without it another chunk's delta geometry scores as donor material.</param>
         internal static int AppendDeltaSlices(
             Level level,
             DeltaBakeState state,
@@ -928,7 +928,7 @@ namespace CathodeLib.Radiosity
             foreach (RadiosityGeometry.Instance inst in geometry.Instances)
             {
                 if (deltaSet.Contains(inst)) continue;
-                // Another chunk's delta geometry is not a donor - see the remark above.
+                // Another chunk's delta geometry is not a donor.
                 bool isDelta = false;
                 foreach (int mv in inst.Movers)
                     if (excluded.Contains(mv)) { isDelta = true; break; }
@@ -1313,7 +1313,7 @@ namespace CathodeLib.Radiosity
             }
             if (demand.Count == 0) return null;
 
-            int budget = RadiosityTuning.DeltaChunkTexelBudget;   // 75% atlas occupancy (see remarks)
+            int budget = RadiosityTuning.DeltaChunkTexelBudget;   // 75% atlas occupancy
             int chunkCount = Math.Max(1, (int)Math.Ceiling(total / (double)budget));
 
             // Worst-fit: each island goes to the emptiest chunk, so the fills stay level instead

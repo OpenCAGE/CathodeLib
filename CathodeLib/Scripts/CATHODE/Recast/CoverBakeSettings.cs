@@ -262,12 +262,6 @@ namespace CathodeLib.NavMesh
         /// Walkable floor (m2) that must lie within <see cref="OpenAreaRadius"/> of the spot an NPC
         /// would stand. A corridor wall is not cover; the same wall facing a room is.
         /// </summary>
-        /// <para>2.0 -&gt; 3.0 (29 Aug 2026), jointly with <see cref="SpanGapTolerance"/>. The
-        /// feature search wanted 5.2, and 5.2 is indeed best on SCI_Hub and Tech_MuthrCore, but it
-        /// costs BSP_Torrens 6.8 points - an open-floor gate is hostile to a corridor level - and
-        /// comes out net negative across five levels. 3.0 is the value that gains everywhere it
-        /// gains and loses nothing; the top six combinations span only 0.16 F1, so this is a broad
-        /// optimum rather than a fitted point.</para>
         public float MinOpenFloorArea = 0f;
 
         /// <summary>See <see cref="MinOpenFloorArea"/>.</summary>
@@ -298,26 +292,6 @@ namespace CathodeLib.NavMesh
         /// How thick the obstacle behind a rim point has to be when it is waist-high. Zero disables
         /// the test, which is the default: a crate or a desk is legitimately thin.
         /// </summary>
-        /// <para>**0.3 m (29 Aug 2026), was 0.0 = off.** "Width of cover" is one of Matt's criteria
-        /// and it is the one that both separates cross-level in the rim table (covered obstacles are
-        /// deeper than uncovered rim on 12 of 13 levels, ratio 1.09-4.60) and survives in the real
-        /// generator. `diag coveriter &lt;level&gt; depth2` sweeps the low and tall axes together;
-        /// 0.3/0.3 is best or near-best on all three levels tested and negative on none:</para>
-        /// <para>SCI_Hub 58.2 -> 58.8, Tech_MuthrCore 41.0 -> 44.7, BSP_TORRENS 25.6 -> 29.7. It is
-        /// the right SHAPE of gain too - recall barely moves while precision rises (MuthrCore 50.3
-        /// -> 48.4 recall against 34.6 -> 41.6 precision), so it cuts the surplus rather than the
-        /// cover. 0.5 is better on Torrens alone and worse on SCI_Hub; 0.8 is worse everywhere.</para>
-        /// <para><b>0.3 -&gt; 0.0 (29 Aug 2026).</b> The thickness gate existed to cut F1
-        /// over-production. Scored on USABLE cover instead it is purely harmful, and removing it
-        /// wins on all six levels measured: ENG_TowPlatform 96.3 -&gt; 97.5, SCI_Hub 98.5 -&gt;
-        /// 99.1, HAB_Airport 98.3 -&gt; 98.8, Tech_MuthrCore 96.0 -&gt; 96.5, BSP_Torrens 88.8 -&gt;
-        /// 90.1, Tech_Hub 98.9 -&gt; 99.0.</para>
-        /// <para>Matt spotted the symptom by eye first - the main platform on ENG_TowPlatform is
-        /// thick with retail cover where we placed fragments. `diag covermiss` attributed it: we
-        /// produced 31.6% of retail's cover length there and **41.4% of the shortfall died on this
-        /// one gate**, against 3.5% that had no navmesh rim at all. A railing or a thin panel on an
-        /// exterior platform is real cover; demanding 0.3 m of obstacle behind it threw the level
-        /// away. Segments 142 -&gt; 192 and slots 201 -&gt; 348 against retail's 227 / 382.</para>
         public float MinObstacleDepth = 0.0f;
 
         /// <summary>
@@ -325,8 +299,6 @@ namespace CathodeLib.NavMesh
         /// high. A waist-high crate may be thin and still be cover; a tall thin thing with open
         /// space behind it is a panel or a railing, and retail does not cover those.
         /// </summary>
-        /// <para>Also 0.3 -&gt; 0.0 - see <see cref="MinObstacleDepth"/>. The tall-thin case is a
-        /// railing or a wall, and retail covers both.</para>
         public float MinObstacleDepthHighCover = 0.0f;
 
         /// <summary>
@@ -339,19 +311,6 @@ namespace CathodeLib.NavMesh
         /// Reject rim further than this along a wall from where the wall stops. 0 disables it.
         /// See <see cref="RimCoverGenerator.DepthProbe.WallEndDistance"/> for the measurement.
         /// </summary>
-        /// <para><b>1.0 -&gt; 1.5 (29 Aug 2026).</b> Scored on usable cover this is the single
-        /// biggest remaining gain, and it is what Matt saw by eye: the gate says cover belongs near
-        /// where a wall ENDS, so on a long run it keeps the ends and rejects the middle, leaving
-        /// the fragments he spotted along the catwalk structures on ENG_TowPlatform. `diag
-        /// covermiss` attributed 16.9% of the remaining shortfall there to this gate.</para>
-        /// <para>Quality score, ours against retail: ENG_TowPlatform 97.5 -&gt; 97.8 (94.8),
-        /// Tech_Hub 99.2 -&gt; 99.4 (98.4), SCI_Hub 99.2 -&gt; 99.4 (98.2), HAB_Airport 98.7 -&gt;
-        /// 99.1 (90.0), Tech_MuthrCore 96.7 -&gt; 99.0 (94.9), BSP_Torrens 89.4 -&gt; 94.2 (92.7).
-        /// Mean 96.8 -&gt; 98.2 against retail's 94.8 - we now beat retail on ALL SIX. Torrens is
-        /// the one that mattered most: its severe coverage gap goes 3.4% -&gt; 0.0%, so the
-        /// stranded-NPC case is gone. 2.0 and 3.0 were also tested and 1.5 is best on the mean.</para>
-        /// <para>Watch the `room` column if pushing this further - at 2.0 Torrens drops to 75%
-        /// room, meaning cover in cramped places, which is the other failure mode.</para>
         public float MaxWallEndDistance = 1.5f;
 
         /// <summary>

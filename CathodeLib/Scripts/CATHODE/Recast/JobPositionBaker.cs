@@ -113,8 +113,6 @@ namespace CathodeLib.NavMesh
         }
 
         /// <summary>
-
-        /// <summary>
         /// How tall the thing in front of a job position is. Retail's assault positions all have
         /// something to fight from behind - 0 of 46 on SCI_Hub face open floor, and their tenth
         /// percentile obstacle stands 1.5 m - while ours face nothing 31% of the time.
@@ -194,6 +192,8 @@ namespace CathodeLib.NavMesh
             }
 
         }
+
+        /// <summary>
         /// Fill in the three job-position files on every state that has a navmesh. Nothing is
         /// written to disk - <see cref="Level.Save"/> persists them with the rest of the level.
         /// </summary>
