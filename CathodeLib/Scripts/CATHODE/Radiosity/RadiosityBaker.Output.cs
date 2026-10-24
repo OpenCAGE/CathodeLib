@@ -13,13 +13,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Write the lightmap atlas transform as <c>(width - 0.5, height - 0.5, x, y)</c>.
         /// </summary>
-        /// <remarks>
-        /// The half-texel bias is what makes the shader's <c>x + 0.5 + uv * (param - 0.5)</c> land
-        /// on the centre of the first and last texel of the rect. Confirmed against retail by
-        /// packing: reading the rects back as <c>param + 0.5</c> texels covers 12989 of slice 0's
-        /// atlas, against 12891 populated cluster texels and a 12565-probe surface tree, whereas
-        /// <c>param - 0.5</c> covers only 7242.
-        /// </remarks>
         private static void WriteModelParams(Movers.MOVER_DESCRIPTOR mover, RadiosityGeometry.Instance instance)
         {
             // Only the first four floats of the 84-byte block are the lightmap transform; the rest
@@ -37,11 +30,6 @@ namespace CathodeLib.Radiosity
         /// bake. Without this they keep the rect from whatever bake produced the level last, which
         /// points into an atlas that no longer exists.
         /// </summary>
-        /// <remarks>
-        /// Only renderable types whose RENDER_CONSTANTS really are MODEL_PARAMS are touched. On a
-        /// LIGHT the same bytes are DEFERRED_PARAMS (visibility, flare scale, radiosity fraction,
-        /// light type) and zeroing them would silently break the light.
-        /// </remarks>
         private static int ClearStaleModelParams(Level level, HashSet<int> taggedMovers)
         {
             int cleared = 0;
@@ -113,11 +101,6 @@ namespace CathodeLib.Radiosity
         /// Emit each slice's door transfer set: the probe pairs whose light path passes through a
         /// NavMeshBarrier, so the runtime can switch that transfer on and off with the door.
         /// </summary>
-        /// <remarks>
-        /// A transfer pairs an emitting input probe with a receiving surface probe on the far side
-        /// of the barrier. Retail writes -1 into every transfer's Weight on every level, so it is
-        /// not a weight and we match it rather than inventing a value.
-        /// </remarks>
         private static int BuildDoors(
             Level level, RadiosityGeometry geometry, SliceBake[] slices, Action<string> log)
         {
@@ -234,11 +217,6 @@ namespace CathodeLib.Radiosity
         /// Emit empty fixup ranges, one per neighbour entry, and no fixups: the full path's ranges until
         /// <see cref="RebuildLinksRetailCut"/> writes the cross-slice fixups with the rest of each probe's links.
         /// </summary>
-        /// <remarks>
-        /// <see cref="RadiosityRuntime.FlattenedFixupRanges"/> is indexed in lockstep with
-        /// <see cref="RadiosityRuntime.FlattenedOtherSliceIndices"/>: one range per ordered (slice, neighbour) pair, not one
-        /// per slice (Solace ships 3 slices x 2 neighbours = 6 ranges). The cut rewrites each range in place.
-        /// </remarks>
         private static void ClearCrossSliceFixups(RadiosityRuntime runtime)
         {
             runtime.InfluenceFixups.Clear();

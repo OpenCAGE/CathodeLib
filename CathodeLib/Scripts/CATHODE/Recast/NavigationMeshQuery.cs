@@ -13,13 +13,6 @@ namespace CathodeLib.NavMesh
     /// Questions about a level's SAVED navigation mesh (a STATE's NAV_MESH tile, as the last Save &amp; Build wrote it):
     /// the nearest point on it, whether one point can reach another and by what path, and points sampled over it.
     /// </summary>
-    /// <remarks>
-    /// The CATHODE tile is Detour's own layout (the baker writes it from a DtMeshData, NavMeshBaker.AdaptTile), so it is
-    /// read back into a DtMeshData and queried with DotRecast. Only reads: nothing here changes the mesh or what a bake
-    /// writes. Each polygon's DotRecast flags carry the classes the CATHODE area admits (bit per
-    /// NAVIGATION_CHARACTER_CLASS) and <see cref="DisabledFlag"/> for an area that starts disabled (a closed door's
-    /// barrier, opened by script), so a filter can ask for one class, or leave disabled areas out.
-    /// </remarks>
     public sealed class NavigationMeshQuery
     {
         /// <summary>Flag on polygons whose area starts disabled.</summary>

@@ -58,11 +58,6 @@ namespace CathodeLib.Havok
         /// in <c>hkpPhysicsData.systems[]</c> so its <see cref="HavokPackfile.PhysicsSystem.SystemIndex"/> is the new highest.
         /// The system, body and shape are modelled on a one-body convex system already in this file.
         /// </summary>
-        /// <remarks>
-        /// Both packfiles of a level (32 and 64-bit) need the system at the same index; call this on each with the same
-        /// shape and settings and compare the results, restoring a <see cref="CollisionProxyWriter.CreateCheckpoint"/> on either side if they
-        /// disagree. A mobile/Switch level has only the 64-bit file, a Havok 2018 tagfile, and gets the same system in that layout.
-        /// </remarks>
         public static PhysicsSystem AddConvexPhysicsSystem(this HavokPackfile packfile, string systemName, ConvexBody shape, PhysicsBodySettings body)
         {
             if (shape == null || body == null)

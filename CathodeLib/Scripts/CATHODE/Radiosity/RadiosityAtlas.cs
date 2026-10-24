@@ -7,10 +7,6 @@ namespace CathodeLib.Radiosity
     /// <summary>
     /// Skyline packer for one slice's 128x128 lightmap atlas.
     /// </summary>
-    /// <remarks>
-    /// Each radiosity instance owns a disjoint rect here, and a mover's MODEL_PARAMS carries that rect so the shader can
-    /// map the mesh's UV1 into it. The packer only has to be disjoint and reasonably dense, not optimal.
-    /// </remarks>
     internal sealed class RadiosityAtlas
     {
         private struct Shelf
@@ -140,10 +136,6 @@ namespace CathodeLib.Radiosity
         /// unit UV square its triangles use, in the shape of that use
         /// (<see cref="RadiosityGeometry.Instance.UvAspect"/>).
         /// </summary>
-        /// <remarks>
-        /// The rect covers the whole 0..1 UV square, so the area is divided by the coverage: a chart using a third of the
-        /// square would otherwise get a third of the probes its surface area calls for.
-        /// </remarks>
         public static void RectSizeForBounds(float surfaceArea, float uvCoverage, out int width, out int height, float uvAspect)
         {
             float coverage = uvCoverage > 0.0f ? Math.Min(1.0f, uvCoverage) : 1.0f;

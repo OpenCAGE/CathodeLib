@@ -35,18 +35,6 @@ namespace CATHODE
         /// <summary>
         /// True when this radiosity was generated from scratch rather than shipped with the game.
         /// </summary>
-        /// <remarks>
-        /// The delta bake exists to protect CA's shipped lighting, which we cannot reproduce at
-        /// parity: it keeps every retail slice verbatim and lights only what an edit invalidated.
-        /// None of that applies to data we generated ourselves - there is no retail bake left
-        /// underneath to protect, and patching our own output just compounds the delta path's
-        /// approximations with every save. <see cref="Radiosity.RadiosityBaker.BakeLevel"/>
-        /// therefore regenerates the whole level whenever this is set.
-        ///
-        /// Persisted as a small text marker beside the BIN rather than inside it: the file opens
-        /// with a fixed 8-byte header (magic + 44, constant across every retail level) that the
-        /// engine reads, and there is no spare field to claim.
-        /// </remarks>
         public bool FullyRegenerated = false;
 
         private Resources _resources;
@@ -177,11 +165,6 @@ namespace CATHODE
         /// .BIN.GZ) lives. Nothing in the game reads it; deleting it only costs the next bake its
         /// knowledge that the data is ours, and it will patch instead of regenerating.
         /// </summary>
-        /// <remarks>
-        /// Named to match the sidecar convention the Commands custom tables already use - the
-        /// original path with .META appended - so all of OpenCAGE's out-of-band level data reads
-        /// the same way on disk. See <see cref="CathodeLib.CustomTable"/>.
-        /// </remarks>
         public static string GetOwnershipMarkerPath(string runtimePath)
         {
             return string.IsNullOrEmpty(runtimePath) ? null : runtimePath + ".META";
@@ -595,12 +578,6 @@ namespace CATHODE
         /// A slice's volume probe hash: the grid that maps a world position to its nearest input probes, read by
         /// CA_RADIOSITY_OBJECT_PROBE_INTERP to light dynamic objects.
         /// </summary>
-        /// <remarks>
-        /// An ABSENT hash is <see cref="NumSubdivsPerLevel"/> 0 with a zero AABB and zero dims, never 3 (BSP_LV426_PT01
-        /// slice 0, the one retail slice of 128 with no volume probes); every populated hash uses 3. Subdivisions 3 with no
-        /// items, nodes or offsets occurs in no retail level: it hands the object probe pass an empty hash, which is where
-        /// render_object_probes faults.
-        /// </remarks>
         public class VolumeProbeHash
         {
             public uint NumSubdivsPerLevel;

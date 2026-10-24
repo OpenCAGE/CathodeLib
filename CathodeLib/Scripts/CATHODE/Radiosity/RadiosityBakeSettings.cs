@@ -14,12 +14,6 @@ namespace CathodeLib.Radiosity
         /// whole level on every save. Default on since 29 Aug 2026; older library versions cleared the level's radiosity
         /// on every instanced save without radiosity settings.
         /// </summary>
-        /// <remarks>
-        /// Even when this is on, the bake regenerates the whole level when there is no retail bake worth preserving: when
-        /// RADIOSITY_RUNTIME.BIN carries no slices (missing, empty, or wiped by one of those older saves), and when it is
-        /// data we generated ourselves (<see cref="CATHODE.RadiosityRuntime.FullyRegenerated"/>). So this flag chooses the
-        /// behaviour for retail lighting; it never leaves a level unlit.
-        /// </remarks>
         public bool PatchRetailRuntime = true;
 
         /// <summary>

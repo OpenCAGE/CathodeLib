@@ -13,26 +13,6 @@ namespace CATHODE.Scripting.Refactor
     /// <summary>
     /// Pulling a composite instance's contents out into the composite that holds it.
     /// </summary>
-    /// <remarks>
-    /// Instance I of composite C sits in P. De-instancing I copies C's entities into P, placed where I put
-    /// them, and removes I. C itself is left alone (other instances still use it).
-    ///
-    /// <para>What makes this more than a copy is everything that talked to C through I:</para>
-    /// <list type="bullet">
-    /// <item>C's pins (its VariableEntities) are relays. A record that ends at a pin, from inside C or
-    /// from P through I, is joined with every record that starts from it, into a direct record from the
-    /// first owner to the final target. A data pin nothing feeds becomes the value I (or the pin) held.</item>
-    /// <item>Aliases in P on <c>[I, x]</c> become overrides written straight onto x's copy; deeper ones
-    /// lose the I step. Aliases further up that pass through I lose that step too.</item>
-    /// <item>Aliases that override I itself (its position, a pin value, a link into a pin) are spread
-    /// onto the copies, as aliases on each copy at that level.</item>
-    /// <item>Links to I's own interface (show, hide, deleted and so on) are spread onto the copies that
-    /// have that method or flag, which is how the engine applies them to an instance's contents anyway.</item>
-    /// <item>Stored paths (proxies, trigger sequences, animations) that step through I lose that step.</item>
-    /// </list>
-    /// <para>Anything that cannot be carried over is reported by <see cref="Plan"/> before anything is
-    /// changed: a blocking issue refuses the refactor, a note describes where the result will differ.</para>
-    /// </remarks>
     public sealed class DeinstancePlan
     {
         public Composite Parent { get; }

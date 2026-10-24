@@ -37,8 +37,6 @@ namespace CathodeLib.NavMesh
         /// positions both describe rim stations off this BVH; building it twice cost a second a
         /// level and gained nothing, the soup being immutable once collected.
         /// </summary>
-        /// <remarks>Not thread-safe to ask for first from several threads - take it before any
-        /// parallel region, which is what both bakers do.</remarks>
         public RimCoverGenerator.DepthProbe RayProbe => _rayProbe ??= new RimCoverGenerator.DepthProbe(this);
 
         /// <summary>Oriented box used for NavMeshBarrier PATH_CLOSED volumes.</summary>
@@ -301,13 +299,6 @@ namespace CathodeLib.NavMesh
         /// Omit sound barriers. They occlude sound and nothing else - a character walks straight
         /// through one - so they must not carve holes in the navmesh.
         /// </summary>
-        /// <remarks>
-        /// A SoundBarrier entity is written as collision type SOUND or SOUND_BARRIER depending on
-        /// its band_aid flag, and both mean the same thing here. Small-prop skipping used to be the
-        /// only thing removing them, which left two gaps: it is gated on SkipSmallPropCollision, and
-        /// it only drops boxes below crate scale, so a barrier spanning a doorway or window - the
-        /// normal case - always survived into the soup.
-        /// </remarks>
         static void CollectSoundBarrierSkip(Level level, HashSet<HavokPackfile.CompoundInstance> skip, NavMeshBakeSettings settings)
         {
             if (level?.CollisionMaps?.Entries == null || skip == null)
@@ -589,23 +580,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// What a door blocker lets through when the level starts.
         /// </summary>
-        /// <remarks>
-        /// Three things this has to get right, all read off the shipped data by BackstageNavTest
-        /// `barrierrule` over the 16 levels whose PATH_BARRIER_RESOURCES is still retail's (~990 rows,
-        /// every authoring signature unanimous):
-        ///
-        /// A barrier with no <c>open_on_reset</c> parameter starts CLOSED. Defaulting it open put 61 of
-        /// TECH_COMMS's 160 barriers on ALL where retail has NONE - most of the level's doors standing
-        /// open to the alien, which is the bug this was found from. Retail's split is exact: 197 rows
-        /// carrying open_on_reset=True ship ALL, 590 without it ship NONE.
-        ///
-        /// The classes are authored in the game's ten-class CHARACTER_CLASS_COMBINATION and stored in
-        /// navigation's five-class one, so they go through <see cref="NavigationCharacterClasses"/>
-        /// rather than being cast across.
-        ///
-        /// And the values are read per INSTANCE where the instancing pass is available, because one door
-        /// composite's instances do not all agree - see the note at the call site.
-        /// </remarks>
         static NAVIGATION_CHARACTER_CLASS_COMBINATION ResolveInitialClasses(
             FunctionEntity barrierEnt,
             InstancedEntity barrierInstance,
@@ -657,10 +631,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// NavMeshBarrier entities by the (composite instance, entity) pair a COLLISION.MAP row names.
         /// </summary>
-        /// <remarks>
-        /// Only the barriers - a level carries over a million instanced entities and this needs the
-        /// couple of hundred that are doors.
-        /// </remarks>
         static Dictionary<ulong, InstancedEntity> IndexBarrierInstances(Instancing placement)
         {
             var map = new Dictionary<ulong, InstancedEntity>();

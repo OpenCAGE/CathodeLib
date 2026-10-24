@@ -270,11 +270,6 @@ namespace CATHODE
             /// Which top-level instance each triangle came from, in ascending triangle order, as
             /// (first triangle, instance) pairs. Only filled when the caller asks for it.
             /// </summary>
-            /// <remarks>
-            /// A top-level instance of a world host is what COLLISION.MAP addresses, so this is the
-            /// hook from a ray hit back to the collider's flags. Nested instances are not recorded:
-            /// everything under a root belongs to the same mapping.
-            /// </remarks>
             public List<KeyValuePair<int, CompoundInstance>> InstanceRanges;
 
             /// <summary>The instance that produced a triangle, or null if not tracked.</summary>
@@ -2059,13 +2054,6 @@ namespace CATHODE
         /// <summary>
         /// Take back the box shapes the instances of a compound being rebuilt were the only users of.
         /// </summary>
-        /// <remarks>
-        /// Every box collider is emitted as a fresh <c>hkpBoxShape</c> object appended to the payload,
-        /// and clearing the compound leaves the previous one behind with nothing pointing at it. Over
-        /// repeated saves that is 231 dead objects a pass on TECH_COMMS, each with its own virtual
-        /// fixup and classname entry. They are the same shapes about to be emitted again, so hand them
-        /// back to <see cref="AppendBoxShape"/> instead of growing the file.
-        /// </remarks>
         void ReclaimBoxShapes(StaticCompoundShape compound)
         {
             if (compound?.Instances == null || compound.Instances.Count == 0)
@@ -3277,14 +3265,6 @@ namespace CATHODE
         /// <summary>
         /// A source packfile's objects, fixups and compounds, sorted and keyed for <see cref="CollectReachable"/>.
         /// </summary>
-        /// <remarks>
-        /// The walk asks, for every object it reaches and every array in one, which fixups start inside a range, where
-        /// the next object starts and whether a field is a compound's instance array - and answered each by a scan of
-        /// the whole file, so a walk cost the reachable objects times everything in the source. A package's scratch
-        /// level holds every compound it carries: importing the 436 in one (into BSP_TORRENS) spent 40 s in the walk
-        /// alone. Fixups are visited in source-offset order rather than list order, which changes the order the walk
-        /// finds things in but not what it finds - the copy is laid out from the sets, sorted.
-        /// </remarks>
         sealed class GraphIndex
         {
             public readonly Dictionary<uint, PackfileObject> ObjectsByOffset = new Dictionary<uint, PackfileObject>();
@@ -5870,11 +5850,6 @@ namespace CATHODE
         /// <summary>
         /// Where an hkArray field's data currently lives and how many bytes it has room for.
         /// </summary>
-        /// <remarks>
-        /// The count is read from the array's own size word rather than its capacity word: retail
-        /// writes capacity as <c>count | 0x80000000</c>, so the two agree, and trusting the size is
-        /// the safer of the pair if a file ever disagrees.
-        /// </remarks>
         bool TryGetArrayRegion(uint arrayField, int stride, out uint dataOffset, out int byteCount)
         {
             dataOffset = 0;
@@ -6183,16 +6158,6 @@ namespace CATHODE
         /// hugs the parent bounds and coarse resolution in the middle. A collapsed axis stores
         /// 255, which decodes back to the (zero-width) parent range.
         /// </summary>
-        /// <remarks>
-        /// The divisor is 226, not the 225 that "(n/15)^2" would suggest, and the difference is not
-        /// cosmetic. Every child is encoded against the box the runtime decodes for its parent, so a
-        /// divisor that is 0.44% off makes each level's box a few centimetres off, and over a chain of
-        /// twenty nodes that compounds into a metre: leaves whose geometry pokes out of their own box,
-        /// which in game is a floor the mid-phase never offers the narrow phase. With 226, retail's own
-        /// trees decode to contain every one of their 20,187 leaves with 1-2 mm of slack; with 225,
-        /// 0.1% of them. The constant comes from SoulsFormats' decode of the same hkcdStaticTree codec
-        /// in Dark Souls 3 collision, which was the first independent reading of these bytes we had.
-        /// </remarks>
         internal static byte EncodeCodec3Axis(float parentMin, float parentMax, float childMin, float childMax)
         {
             float extent = parentMax - parentMin;
@@ -6209,12 +6174,6 @@ namespace CATHODE
         /// <summary>
         /// Largest nibble whose decoded edge still stays outside the child bound.
         /// </summary>
-        /// <remarks>
-        /// The check is done by decoding the candidate exactly as <see cref="DecodeCodec3AxisComponent"/>
-        /// will - same float arithmetic, same order - rather than by comparing fractions, so that a
-        /// nibble accepted here can never round the other way when read back. <paramref name="dir"/>
-        /// is +1 for the min edge (inset grows from the parent's min) and -1 for the max edge.
-        /// </remarks>
         static int Codec3AxisNibble(float parentEdge, float extent, float childEdge, float dir)
         {
             float inset = (childEdge - parentEdge) * dir / extent;

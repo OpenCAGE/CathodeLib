@@ -26,15 +26,6 @@ namespace CATHODE.Scripting.Refactor
     /// data connections (a top pin to a bottom pin) sits right above or below the node it serves - where the
     /// shipped pages put them. Separate groups of connected nodes are packed side by side, unconnected nodes last.
     /// </summary>
-    /// <remarks>
-    /// A layered (Sugiyama) layout: cycles are broken by turning the fewest connections round, every node gets a
-    /// column by the longest chain of logic connections into it (then pulled towards whichever side it has more
-    /// connections on), connections that skip columns are routed through placeholders, columns are reordered by
-    /// the average height of what each node connects to until crossings stop falling, and heights are settled so
-    /// connected pins line up as far as the columns allow. Only positions change: no node is added or removed.
-    /// <para>Where the nodes are now plays no part - only their sizes, their order and their connections do - so a
-    /// page comes out the same however tangled it was, and arranging an arranged page leaves it as it is.</para>
-    /// </remarks>
     public static class PageArranger
     {
         /// <summary>A node to place.</summary>

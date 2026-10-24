@@ -10,16 +10,6 @@ namespace CathodeLib.Radiosity
     /// Locates the NavMeshBarrier volumes that gate light between slices, so the bake can emit the
     /// door transfer sets the runtime opens and closes as doors move.
     /// </summary>
-    /// <remarks>
-    /// <para>A Door entity in Commands drives a NavMeshBarrier entity, which <see cref="Instancing"/> registers both as a
-    /// resource and as a COLLISION.MAP row flagged <c>PATH_CLOSED</c>. That row stores the index of its instance inside
-    /// the Havok world host picked by the row's <c>WORLD</c> flag, and it is <i>that</i> index the radiosity data holds in
-    /// <c>DoorInfo.NavmeshBarrierCathodeInstanceIndex</c> (every RADIOSITY_COLLISION_MAPPING value on three retail levels
-    /// is a PATH_CLOSED instance index).</para>
-    /// <para>That table only patches stale indices forward because retail's bake predates its final collision build. We
-    /// generate both in one pass, so we write the final index directly and leave RADIOSITY_COLLISION_MAPPING empty, as
-    /// BSP_TORRENS ships it.</para>
-    /// </remarks>
     internal sealed class RadiosityDoors
     {
         public sealed class Barrier

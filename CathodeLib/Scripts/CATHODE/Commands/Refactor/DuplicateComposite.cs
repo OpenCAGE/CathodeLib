@@ -13,15 +13,6 @@ namespace CATHODE.Scripting.Refactor
     /// A copy of a composite, under a new name, that can stand in for it - and, optionally, some of the original's
     /// instances switched over to the copy, so it can be changed for just those.
     /// </summary>
-    /// <remarks>
-    /// The copy holds the same entities under the same ids, so anything that reaches into an instance by path (an
-    /// alias overriding something inside it, a proxy, a trigger sequence, an animation track) reaches the same things in
-    /// an instance of the copy, and an instance can be switched from one to the other with nothing else changing. Ids
-    /// only have to be unique within a composite: the game tells placements apart by the path of instances to them, and
-    /// a composite's resources by their id within it. The copy's resources point at the level's own renderables,
-    /// collision and physics, as two placements of one composite share them; the pins keep their types; the script
-    /// pages are the original's, under the copy. Its entities are in the original's order - the order instancing walks.
-    /// </remarks>
     public sealed class DuplicateCompositePlan
     {
         public Composite Source { get; }

@@ -17,10 +17,6 @@ namespace CathodeLib.Radiosity
         /// translated here are REMOVED from <paramref name="deltaMovers"/>; islands that rotate, scale, split their deltas
         /// or cannot be identified fall through to the append-slice path.
         /// </summary>
-        /// <remarks>
-        /// Limits: probe tree bounds and the volume probe hash stay stale (loose by the move distance), and the ~10% of
-        /// retail input probes that are not texel-coincident stay at the old spot.
-        /// </remarks>
         private static void TranslateMovedIslands(
             Level level, RadiosityRuntime runtime, DeltaBakeState state,
             HashSet<int> deltaMovers, Action<string> log)
@@ -285,12 +281,6 @@ namespace CathodeLib.Radiosity
         /// patcher to append after the lightmap delta. Movers whose pivot lies INSIDE the retail volume field are skipped.
         /// MUST run BEFORE <see cref="DynamicRadiosityConverter"/>: geometry collection excludes dynamic-class movers.
         /// </summary>
-        /// <remarks>
-        /// Proven in game (24 Aug 2026, the shifted-level experiment): with the whole level moved outside its original
-        /// probe volumes and every mapped mover forced dynamic, the appended probe slices light probe-dependent rooms (cam4
-        /// luma 14.7 with them, 0.0 without). A slice whose only energy is unpowered entity-gated lights stays dark on any
-        /// path.
-        /// </remarks>
         internal static int AppendProbeOnlySlice(
             Level level,
             DeltaBakeState state,
@@ -792,19 +782,6 @@ namespace CathodeLib.Radiosity
         /// rendering black (architecture) or fullbright (props). Returns the islands grafted
         /// plus the islands baked into the new slice.
         /// </summary>
-        /// <remarks>
-        /// <para>The delta unit is the geometry INSTANCE: any instance containing a delta mover is rebaked whole (retail
-        /// islands never span composites, and a moved mover's island-mates would otherwise keep a rect that lights them
-        /// where they were).</para>
-        /// <para>In order: purely translated retail islands slide their retail data in place
-        /// (<see cref="TranslateMovedIslands"/>) and retail-bound islands are grafted into their own retail slices
-        /// (<see cref="GraftDeltaIslands"/>); their movers leave <paramref name="deltaMovers"/>. The rest is baked, with a
-        /// donor shell of nearby retail islands, into one appended slice with a volume probe hash (vis grids folded into
-        /// the shared palette), surface lights including the unbaked-emitter rescue, cross-slice fixups from every earlier
-        /// slice with symmetric neighbour entries (<see cref="AppendDeltaFixups"/>) and per-probe energy calibration
-        /// (<see cref="CalibrateDeltaEnergy"/>), but no door transfers. Its islands take in-range ids while any are left,
-        /// and every mover given a rect joins <paramref name="deltaMovers"/>.</para>
-        /// </remarks>
         /// <param name="allMovers">Every mover of the WHOLE lightmap delta when the patcher appends it in more than one
         /// chunk; null for a single chunk (<paramref name="deltaMovers"/> stands in). Each call only sees its own chunk, so
         /// without it another chunk's delta geometry scores as donor material (see the donor-shell remark below).</param>
@@ -1313,15 +1290,6 @@ namespace CathodeLib.Radiosity
         /// collect fails or no island owns a delta mover; the patcher then falls back to its
         /// mover-count zone chunking.
         /// </summary>
-        /// <remarks>
-        /// <para>Chunks target 75% atlas occupancy (<see cref="RadiosityTuning.DeltaChunkTexelBudget"/>). Mover count is a
-        /// poor proxy for texel demand (about 2x per zone): a mover-count cap filled five chunks 95/95/88/54/26%, and at
-        /// 95% the skyline packer shrinks real islands one texel at a time (a duplicated reception room went from 24x24 to
-        /// 7x7 and rendered black).</para>
-        /// <para>Balancing scatters a room's islands across chunks, and a slice cannot be lit by another slice's lights,
-        /// which is why <see cref="RadiosityTuning.UnbakedEmitterReach"/> spans a whole room. A zone-coherent variant was
-        /// built and left off.</para>
-        /// </remarks>
         internal static List<HashSet<int>> ChunkDeltaByAtlasDemand(
             Level level, HashSet<int> lightmapMovers, Action<string> log)
         {
@@ -1374,13 +1342,6 @@ namespace CathodeLib.Radiosity
         /// <paramref name="emitter"/>'s clusters, at most <paramref name="perProbeCap"/> per probe (the delta path: a
         /// delta slice gathering from a retail slice).
         /// </summary>
-        /// <remarks>
-        /// Each fixup rewrites one influence slot of one receiving probe so it references a cluster in the other
-        /// slice, which is how a room lit through a doorway picks up bounce from the far side. Verified against
-        /// retail: a fixup's ClusterTex is a live cluster in the neighbour slice 100% of the time (10909/10909 on
-        /// Solace slice 0) but only sometimes in its own, and WeightTexOffset always lands inside the owning slice's
-        /// weight map.
-        /// </remarks>
         private static void EmitPairFixups(
             SliceBake receiver, SliceBake emitter, RadiosityRuntime runtime, RadiosityGeometry geometry,
             float maxDist, float maxDistSq, int perProbeCap, HashSet<int> skipProbeSlots)
@@ -1536,12 +1497,6 @@ namespace CathodeLib.Radiosity
         /// Neighbour entries and cross-slice fixups for a freshly appended delta slice, so its
         /// probes can gather bounce from the retail clusters around them.
         /// </summary>
-        /// <remarks>
-        /// The surrounding room's bounce lives in the clusters of whichever retail slice owns it, and influences cannot
-        /// cross slices except through fixups: without these, geometry moved or added inside an existing room renders with
-        /// direct light only (near-black on the CM3 moved vent wall). Only the delta slice receives; its neighbour table
-        /// goes at the tail of the flattened arrays, so nothing retail shipped moves.
-        /// </remarks>
         private static int AppendDeltaFixups(
             RadiosityRuntime runtime, SliceBake bake, int newSliceIndex,
             RadiosityGeometry geometry, Action<string> log)
@@ -1647,12 +1602,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Wrap a shipped slice's clusters as an emitter <see cref="EmitPairFixups"/> can read.
         /// </summary>
-        /// <remarks>
-        /// Cluster world positions decode from the half4 ClusterPositions array, which is indexed
-        /// by atlas texel exactly as a fixup's ClusterTex expects. Cluster normals are not stored;
-        /// each takes the normal of the nearest live input probe - input probes sit on the same
-        /// surfaces, but their tiled layout makes a direct texel join impossible.
-        /// </remarks>
         private static SliceBake RetailEmitterBake(RadiosityRuntime.RuntimeDataSlice retail)
         {
             if (retail?.ClusterPositions == null || retail.ClusterPositions.Count < AtlasTexels)
@@ -1759,22 +1708,6 @@ namespace CathodeLib.Radiosity
         /// other byte of the slice stays retail's. Grafted islands leave <paramref name="deltaInstances"/>
         /// and their movers leave <paramref name="deltaMovers"/>; returns how many were grafted.
         /// </summary>
-        /// <remarks>
-        /// <para>The finding this rests on (the slicedup control): an appended slice carrying retail's bytes relights at
-        /// 0.96x retail, while every slice we bake ourselves delivers about half of retail's field however the diets reach
-        /// it (CM9 rack: cloned fixups 0.38x, native donor diets 0.35x). So retail's field is kept and only the edited
-        /// island's own rect is replaced inside it.</para>
-        /// <para>The island keeps its retail id (in range of every per-island state table), rect, instance-map rows and
-        /// InstanceSliceIndices entry; its movers leave the delta census, so the patcher restores their retail
-        /// MODEL_PARAMS. Within the slice, the rect's clusters and probe slots are re-fed from a fresh rasterisation of the
-        /// CURRENT geometry, texel-coincident input probes follow their texels (untouched mates keep retail bytes), and
-        /// the island's surface probes get fresh in-slice diets, each calibrated to the exp mass its slot carried in
-        /// retail. Purely translated movers keep their retail diets (<see cref="MoverPurelyTranslated"/>).</para>
-        /// <para>An island falls through to the appended-slice path when its movers do not cover the whole retail island,
-        /// a mover moved more than 2 m, or it rasterises no live texels. Limits: retail's light injection onto the
-        /// island's probes describes the pre-move position (fine for nudges); texels newly live where retail was dead get
-        /// no scatter self-pairs.</para>
-        /// </remarks>
         private static int GraftDeltaIslands(
             Level level, RadiosityRuntime runtime, RadiosityGeometry geometry,
             List<RadiosityGeometry.Instance> deltaInstances, DeltaBakeState state,

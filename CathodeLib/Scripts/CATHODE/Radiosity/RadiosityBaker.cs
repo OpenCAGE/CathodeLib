@@ -14,38 +14,6 @@ namespace CathodeLib.Radiosity
     /// instanced level geometry, and writes the matching lightmap atlas transform into every
     /// participating mover's MODEL_PARAMS.
     /// </summary>
-    /// <remarks>
-    /// <para>How the runtime data is laid out, as far as it has been decoded:</para>
-    /// <list type="bullet">
-    /// <item>The level is split into <b>slices</b>. Each owns a set of fixed-size textures: a
-    /// 128x128 lightmap atlas, a 256x64 probe texture, a 512x512 influence index map and a 512x256
-    /// influence weight map. All the 16384-element arrays hold the same number of entries but are
-    /// <i>not</i> in the same space - the cluster array and mangle map are indexed by atlas texel
-    /// (<c>y * 128 + x</c>), while surface probes and input probes are compacted lists addressed
-    /// <c>y * 256 + x</c>. Byte-pair references to any of them split the index as
-    /// <c>(index % 256, index / 256)</c>.</item>
-    /// <item>A <b>radiosity instance</b> is one lightmap island, keyed by a RESOURCES.BIN index.
-    /// It owns a disjoint rect of its slice's atlas. RADIOSITY_INSTANCE_MAP.TXT lists
-    /// <c>instanceIndex resourceIndex</c> once per mover in the island, and
-    /// <c>InstanceSliceIndices[instanceIndex]</c> says which slice it lives in.</item>
-    /// <item>A mover's MODEL_PARAMS holds <c>(rectWidth - 0.5, rectHeight - 0.5, rectX, rectY)</c>
-    /// so the shader can map the mesh's lightmap UVs into that rect. Verified against retail:
-    /// slice 1 of BSP_TORRENS packs 174 instances with zero overlapping texels.</item>
-    /// <item><b>Clusters</b> are the emitters, one per atlas texel.</item>
-    /// <item><b>Surface probes</b> are the receivers: the live atlas texels compacted into 16x16
-    /// tiles. Each gathers from up to 32 clusters, stored as 32 (clusterXY, weight) pairs keyed by
-    /// the probe's <i>slot</i> - two bytes per influence in the index map, one in the weight map.
-    /// The surface probe tree's leaves are exactly those tiles.</item>
-    /// <item><b>Input probes</b> are a second, smaller compacted list in the same tiled space. They
-    /// are where direct light is injected (surface lights address input probe texels) and where the
-    /// scatter pass accumulates. The <b>mangle map</b> is two tables in one: indexed by atlas texel,
-    /// (R,G) is the surface probe slot the texel reads (the engine's CA_RADIOSITY_UNMANGLE pass);
-    /// indexed by input probe slot, (B,A) is the atlas texel whose lightmap feeds back into that probe.</item>
-    /// <item>The <b>scatter list</b> is a point list: one entry per (input probe, cluster) pair,
-    /// grouped by probe, at most eight per group, and covering every live cluster.</item>
-    /// </list>
-    /// <para>Not decoded, and written empty: the tiled variants of scatter, surface lights and doors.</para>
-    /// </remarks>
     public static partial class RadiosityBaker
     {
         /// <summary>Atlas / probe textures are a fixed 128x128 per slice.</summary>
@@ -468,13 +436,6 @@ namespace CathodeLib.Radiosity
         /// retail island id. Returns null when there is not enough retail data to do it, so the
         /// caller falls back to the spatial split.
         /// </summary>
-        /// <remarks>
-        /// The runtime picks an object's slice from its island, not from where it stands (InstanceSliceIndices is keyed by
-        /// the island id the instance map assigns), and retail's slices are not a spatial partition: ChallengeMap4's three
-        /// each span most of the level and overlap. A median split put islands in a slice whose atlas page their
-        /// MODEL_PARAMS rect did not index, and the objects they light rendered black (a lightmap effect: stripping the
-        /// volume section from retail's runtime is near-noise).
-        /// </remarks>
         private static List<List<RadiosityGeometry.Instance>> PartitionByRetailSlices(
             RadiosityGeometry geometry, RadiosityRuntime retail, Action<string> log)
         {

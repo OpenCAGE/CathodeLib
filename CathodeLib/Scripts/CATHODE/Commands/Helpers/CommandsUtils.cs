@@ -1937,10 +1937,6 @@ namespace CATHODE.Scripting
 
             return GetEntityNameFromTables(composite.shortGUID, entity.shortGUID);
         }
-        /// <remarks>
-        /// Prefer the (Composite, Entity) overload where you have the objects: this one has to find the
-        /// composite by ID, which is a linear search.
-        /// </remarks>
         public string GetEntityName(ShortGuid compositeID, ShortGuid entityID)
         {
             //Resolve the entity so we can read its 'name' parameter (and alias/proxy fallbacks)

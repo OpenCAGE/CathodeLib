@@ -360,15 +360,6 @@ namespace CathodeLib.NavMesh
     /// What a SECOND-stage cover selector reads: the first stage's probability at this station, the
     /// profile of probabilities either side of it along the run, and summaries of the whole run.
     /// </summary>
-    /// <remarks>
-    /// A first-stage model describes one station and cannot see the wall it stands on, but retail
-    /// takes a wall whole or leaves it alone. Aggregating the probabilities by hand - run mean, run
-    /// maximum, share of stations over the threshold - is worth about a point of held-out F1 over
-    /// deciding each station alone, measured over twelve levels; this lets a model read the whole
-    /// profile instead of one hand-picked statistic. The baker has every one of these to hand: it
-    /// already computes the first-stage probability at every station of a run before it decides any
-    /// of them.
-    /// </remarks>
     public static class LearnedCoverStage2
     {
         /// <summary>Station offsets along the run whose probability is read, clamped at the ends.</summary>

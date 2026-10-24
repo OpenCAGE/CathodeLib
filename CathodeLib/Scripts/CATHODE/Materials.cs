@@ -534,15 +534,6 @@ namespace CATHODE
             /// Copy this material. Its own data (name, constants, flags, texture slots) is copied;
             /// the textures and the shader it points at are SHARED with the original.
             /// </summary>
-            /// <remarks>
-            /// Shadows ObjectExtensions.Copy(), which cloned the whole reachable graph - every TEX4
-            /// with its persistent and streamed pixel data, and the shader with all six bytecode
-            /// blobs - only for ImportEntry to throw the clones away and rebind the slots to this
-            /// level's own textures and shader on the next two lines.
-            ///
-            /// The TexturePtr records themselves ARE new objects, because that rebinding writes
-            /// through them and must not reach back into the source material's slots.
-            /// </remarks>
             public Material Copy()
             {
                 Material copy = new Material()

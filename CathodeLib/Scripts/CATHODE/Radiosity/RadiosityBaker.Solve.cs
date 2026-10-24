@@ -14,16 +14,6 @@ namespace CathodeLib.Radiosity
         /// A delta slice's influence weight byte, from the emitter distance and how squarely the two surfaces face each
         /// other: <c>W0 * (D0/(D0+d))^K</c> (<see cref="RadiosityTuning.InfluenceCurveW0"/>), spread by the facing term.
         /// </summary>
-        /// <remarks>
-        /// Retail's weights are compressed (the strongest about twice the weakest) but fall monotonically with distance
-        /// (Solace, 794,570 links):
-        /// <code>
-        ///   0-0.5m 205 | 0.5-1m 194 | 1-2m 179 | 2-3m 170 | 3-5m 151
-        ///   5-8m   131 | 8-12m  118 | 12-20m 104 | 20-35m  63
-        /// </code>
-        /// The curve reproduces that within a few units inside 16 m (99.8% of retail's links). A fixed weight-by-rank table
-        /// gave every full probe the same total and made the lighting patchy.
-        /// </remarks>
         private static byte InfluenceWeight(float distance, float cosProduct)
         {
             float W0 = RadiosityTuning.InfluenceCurveW0;
@@ -113,10 +103,6 @@ namespace CathodeLib.Radiosity
         /// A band's integer slot count for one probe, spending the fractional part as a share of
         /// probes rather than rounding it away.
         /// </summary>
-        /// <remarks>
-        /// A quota of 0.5 means half of all probes get one slot in that band. The dither hashes the probe's atlas texel and
-        /// the band: deterministic, and uncorrelated between bands.
-        /// </remarks>
         private static int DitheredQuota(float quota, int probeTexel, int band)
         {
             int whole = (int)quota;
@@ -145,13 +131,6 @@ namespace CathodeLib.Radiosity
         /// Reorder a probe's candidates so the kept prefix spans a range of distances, rather than
         /// being whatever happened to rank highest.
         /// </summary>
-        /// <remarks>
-        /// Ranking purely by form factor ranks by proximity (1/d^2), so a probe in open space without 32 near neighbours
-        /// took a fistful of distant emitters at once: we gave long links to 11.0% of probes at 9.1 each, retail to 37.8%
-        /// at 2.8. Per-band quotas first, then a backfill from the rest, keep the strongest near contributors and reserve
-        /// room for far ones. The fractional quotas are dithered per probe (rounding them sent the far bands to zero on
-        /// every probe and brought the clumping back).
-        /// </remarks>
         private static void StratifyByDistance(List<(int texel, float weight, float distance, float cosProduct)> candidates,
                                                int keep, int probeTexel)
         {
@@ -219,12 +198,6 @@ namespace CathodeLib.Radiosity
         /// position is the member centroid and whose W is the member count. Each takes a DEAD atlas
         /// texel index outside the engine-owned corner as its slot, so nothing live is displaced.
         /// </summary>
-        /// <remarks>
-        /// Retail's clusters carry W = 1..90 members and a surface probe's 32 links reach coarse patches at any distance:
-        /// that is how one light lights a whole room (it rides every cluster its probe belongs to). Full bakes only, offered
-        /// to the solve as area-weighted candidates; the cut then rewrites every cluster and link, so what they still
-        /// decide is which surface probes have no link (the dead-texel repoint in BakeSlice).
-        /// </remarks>
         private static List<CoarseCluster> BuildCoarseClusters(SurfaceTexel[] texels, List<ProbePoint> probes,
                                                               RadiosityRuntime.RuntimeDataSlice slice,
                                                               Action<string> log)
@@ -322,10 +295,6 @@ namespace CathodeLib.Radiosity
         /// the full solve's: a probe has no link exactly when no candidate passes, and VisibleSoft depends only on its
         /// endpoints, so the order the candidates are tested in cannot change it.
         /// </param>
-        /// <remarks>
-        /// <paramref name="usedSlots"/> comes back keyed by surface probe slot so a delta slice's cross-slice
-        /// pass (EmitPairFixups) can carry on filling the same records.
-        /// </remarks>
         private static int SolveInfluences(
             RadiosityGeometry geometry, SurfaceTexel[] texels, int[] surfaceSlotForTexel,
             int[] inputProbeForTexel,
@@ -608,17 +577,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// A delta slice's scatter: every input probe gathers from its local cluster neighbourhood directly, retail-shaped.
         /// </summary>
-        /// <remarks>
-        /// <para>The scatter point list consumed by CA_RADIOSITY_INDIRECT_SCATTER. Each entry is <c>(R, G, B, A)</c>:
-        /// <c>(R, G)</c> the source cluster (<c>G * 256 + R</c>), <c>(B, A)</c> the destination input probe texel
-        /// (<c>A * 256 + B</c>). One probe's entries are contiguous, at most eight. In all 128 retail slices every source is
-        /// a live cluster, every destination a live input probe inside a declared tile, and the sources are exactly the
-        /// live clusters. No retail slice ships it empty (the smallest holds 502 entries), but an empty list still loads.</para>
-        /// <para>Retail's shape (Solace): ~6 sources per probe at p50 0.75 m / p99 5.4 m, every input probe covered. This
-        /// hop feeds everything downstream of the lightmap (input probe radiance, volume probes, every RADIOSITY_DYNAMIC
-        /// prop). Sources prefer same-facing nearby clusters, falling back to a visibility test on a normal-disjoint
-        /// neighbourhood; every live cluster then gets a destination through its own bound input probe.</para>
-        /// </remarks>
         private static List<ColourRGBA8> BuildScatterListLocal(
             RadiosityGeometry geometry,
             List<ProbePoint> probes,
@@ -835,14 +793,6 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Weight byte previously written for an influence slot.</summary>
-        /// <remarks>
-        /// The engine's decode of the byte, from the CA_RADIOSITY_INDIRECT pixel shader (reconstructed
-        /// master in ShadersDatGenerator): gain = <c>exp2(b / 255 * 22.6096) * 1.48436e-7 - 1.48437e-7</c>.
-        /// Every +11.28 bytes doubles the gain; a byte of 255 alone is 0.95, 240 is 0.38, 205 is 0.044,
-        /// 170 is 0.005. A probe's 32 gains are SUMMED with no normalisation, times the cluster's
-        /// irradiance. (Not 2^(w/32) as the delta calibration assumed - that curve is 2.8x too gentle.)
-        /// The cut's gain envelope (RebuildLinksRetailCut) works in this decode.
-        /// </remarks>
         private static byte ReadInfluenceWeight(RadiosityRuntime.RuntimeDataSlice slice, int influenceSlot)
         {
             Vector4u8 weights = slice.SurfaceProbeWeights[influenceSlot / 4];

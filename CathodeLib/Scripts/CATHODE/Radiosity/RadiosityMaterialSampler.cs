@@ -11,15 +11,6 @@ namespace CathodeLib.Radiosity
     /// <summary>
     /// Resolves the diffuse reflectance of a surface point by sampling the material's diffuse map at that point's UV.
     /// </summary>
-    /// <remarks>
-    /// <para>Per point, not per material: retail's compiler samples per texel (RADIOSITY_ALBEDO_SAMPLES.BIN), and a
-    /// per-material mean flattened Solace's 7655 distinct probe albedos to 108.</para>
-    /// <para>Materials are registered and then addressed by slot, so the per-texel path is an array index with no
-    /// locking. Registration takes a lock: the surface-light colour pass registers late materials from inside the
-    /// parallel slice bakes, so a slot number can depend on thread timing (slots are indices into this sampler, never
-    /// output). Decodes are cached per texture, since materials share maps and differ in tint; ~220 diffuse maps at
-    /// <see cref="RadiosityTuning.AlbedoTextureMaxEdge"/> keep the cache near 13 MB.</para>
-    /// </remarks>
     internal sealed class RadiosityMaterialSampler
     {
         /// <summary>A material's decoded diffuse map plus the constants applied on top of it.</summary>
@@ -288,12 +279,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Each ubershader's own DIFFUSE_TINT parameter index, or -1 where it has none.
         /// </summary>
-        /// <remarks>
-        /// These are not interchangeable: CA_ENVIRONMENT keeps DIFFUSE_TINT at 7, but every other
-        /// shader that has one puts it somewhere else (CA_HAIR at 2, CA_CHARACTER at 16, and so
-        /// on). Reading CA_ENVIRONMENT's index on another shader picks up an unrelated constant,
-        /// which is how a plain metal wall ends up tinted pure red.
-        /// </remarks>
         private static int DiffuseTintIndex(SHADER_LIST ubershader)
         {
             switch (ubershader)
@@ -334,12 +319,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// The material's DIFFUSE_TINT, which multiplies the linearised diffuse map.
         /// </summary>
-        /// <remarks>
-        /// The tint carries most of a material's brightness: environment materials share near-white base textures and
-        /// colour them per material (BSP_TORRENS' orange panels: plastic_base[d], mean (232,232,230), tint (0.761, 0.29,
-        /// 0.082)). Retail's per-material albedo divided by the tint recovers the linearised map mean within a unit in
-        /// 255. The 26-remap CA_ENVIRONMENT permutation is tinted too (untinted measured 3.24x retail's albedo on CM4).
-        /// </remarks>
         private static Vector3 ResolveDiffuseTint(Materials.Material material)
         {
             Shaders.Shader shader = material.Shader;
@@ -355,10 +334,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// How many times the diffuse map tiles across the mesh's UVs.
         /// </summary>
-        /// <remarks>
-        /// About 62% of a level's materials set it (a tail past 100). Ignoring it shrinks the texture area one atlas
-        /// texel integrates over, so the albedo comes back less averaged and more saturated than the surface is.
-        /// </remarks>
         private static float ResolveDiffuseUvMult(Materials.Material material) =>
             ResolveUvMult(material, DiffuseUvMultIndex(material.Shader?.Ubershader ?? (SHADER_LIST)(-1)));
 

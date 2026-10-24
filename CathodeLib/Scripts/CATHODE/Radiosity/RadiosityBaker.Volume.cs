@@ -122,11 +122,6 @@ namespace CathodeLib.Radiosity
         /// The four packed corners of a leaf's tile rect, as bytes <c>(x, y, cornerU, cornerV)</c>
         /// covering <c>(x, y)</c> to <c>(x + width - 1, y + height - 1)</c> inclusive.
         /// </summary>
-        /// <remarks>
-        /// Retail's first leaf on BSP_TORRENS slice 0 is (0,0,0,0) (15,0,1,0) (0,15,0,1) (15,15,1,1)
-        /// for a 16x16 tile at the origin, and across all 128 slices the y byte never exceeds 63 -
-        /// the probe texture is only 64 rows tall.
-        /// </remarks>
         private static void EmitLeafQuad(List<uint> quads, int tileIndex, int probeCount)
         {
             TileRect(tileIndex, probeCount, out int x, out int y, out int width, out int height);
@@ -149,11 +144,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Split an atlas texel index into the byte pair the engine uses to reference a cluster.
         /// </summary>
-        /// <remarks>
-        /// Every reference to the 16384-entry cluster array (the influence index map, the scatter source, a fixup's
-        /// ClusterTex) stores <c>(index % 256, index / 256)</c>, recombined as <c>y * 256 + x</c>; all 34,382,335 used retail
-        /// influence slots resolve to a live cluster this way. Splitting on the atlas width of 128 resolves wrongly.
-        /// </remarks>
         private static void ClusterRef(int atlasTexel, out byte x, out byte y)
         {
             x = (byte)(atlasTexel % ProbeTexWidth);
@@ -614,12 +604,6 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Number of visibility sub-samples a palette cell aggregates.</summary>
-        /// <remarks>
-        /// Decoded from retail: across a whole level's palette only 28 distinct byte values ever
-        /// appear, and every one is exactly <c>floor(n * 255 / 27)</c> for n in 0..27. 27 is
-        /// 3x3x3, matching <see cref="RadiosityRuntime.VolumeProbeHash.NumSubdivsPerLevel"/> of 3 -
-        /// so a cell stores how many of its 27 sub-samples were unoccluded.
-        /// </remarks>
         private const int VisSubSamples = 27;
 
         /// <summary>Palette grids are 8x8 per cube face, six faces per volume probe.</summary>

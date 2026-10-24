@@ -11,14 +11,6 @@ namespace CathodeLib.NavMesh
     /// Resolves the clear-aim cones for a cover slot by raycasting the level, and answers whether a
     /// slot is somewhere an NPC can actually stand.
     /// </summary>
-    /// <remarks>
-    /// <para>A cover slot stores three firing positions - lean out left, pop over the top, lean out
-    /// right - each with a horizontal arc and a vertical arc, packed as 4-bit nibbles spanning
-    /// -90..+90 degrees (see <c>Cover.CoverSegment.CoverSlot</c>). Retail data has a non-zero arc on
-    /// every slot; before this existed the baker wrote fixed placeholder cones.</para>
-    /// <para>Angles are measured relative to the segment normal, which points away from the cover
-    /// into the space the occupant is shooting at.</para>
-    /// </remarks>
     public sealed class CoverAimSolver
     {
         private readonly BVHAccel _bvh;
@@ -91,11 +83,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Is there navmesh close enough to <paramref name="position"/> for an NPC to occupy it?
         /// </summary>
-        /// <remarks>
-        /// This is polygon containment, not proximity to a vertex. A long straight wall is one
-        /// navmesh edge with vertices only at its ends, so testing against vertices rejected every
-        /// slot along the middle of it - which is exactly where cover matters most.
-        /// </remarks>
         public bool IsOnNavMesh(Vector3 position, float tolerance)
         {
             if (_navPolys.Count == 0)
@@ -428,13 +415,6 @@ namespace CathodeLib.NavMesh
         /// <see cref="CoverBakeSettings.AimClearDistanceVerticalCone"/>, optionally requiring both
         /// the shoot position and the move-from position to have the line.
         /// </summary>
-        /// <remarks>
-        /// Two things differ from <see cref="Sweep"/>. A yaw is decided by the LEVEL ray alone - the
-        /// old sweep called a yaw clear if ANY elevation in it was clear, so a gap above a desk
-        /// opened a firing direction straight into the desk. And the two cones get their own
-        /// distances, which is what stopped the floor and the ceiling from bounding the horizontal
-        /// arc; <see cref="CoverBakeSettings.AimDownRange"/> existed only to paper over that.
-        /// </remarks>
         private bool SweepTwoPosition(Vector3 origin, Vector3 from, bool useFrom, Vector3 forward,
                                  out float minYaw, out float maxYaw, out float minPitch, out float maxPitch)
         {

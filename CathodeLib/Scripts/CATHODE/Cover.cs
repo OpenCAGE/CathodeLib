@@ -180,14 +180,6 @@ namespace CATHODE
             /// The Flags layout, verified against
             /// retail with <c>diag coverbits all</c>.
             /// </summary>
-            /// <remarks>
-            /// One enum serves both words, each using the bits that mean something to it. On the
-            /// SEGMENT word the four link bits and <see cref="IsLowCoverBit"/> are exact in both
-            /// directions over the whole campaign - 2,829 LEFT_CORNER_LINK bits against exactly the
-            /// 2,829 segments carrying a left corner UID, and the same for the other three - while
-            /// the peek and terminating bits are never set. On the SLOT word the peek bits and
-            /// IS_LOW_COVER are the ones that carry meaning.
-            /// </remarks>
             public const int LeftPeekBit = 1 << 0;
             public const int RightPeekBit = 1 << 1;
             public const int OverPeekBit = 1 << 2;

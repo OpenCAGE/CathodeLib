@@ -565,23 +565,6 @@ namespace CATHODE
         /// the level's EnvironmentMap entities, in order, with the cubemap each resolves to and
         /// whether its Entities pin links anything.
         /// </summary>
-        /// <remarks>
-        /// It is NOT the cubemap's ordinal among the texture table's CUBE entries, which is what this
-        /// used to write. Retail numbers the level's EnvironmentMap ENTITIES: sorted by their
-        /// texture's position in the level texture table, ties in composite order, each entity gets
-        /// the next index, and the file's trailing count is the number of entities. The two agree
-        /// only while no two entities share a cubemap - Tech_Hub's Server_Hub carries two entities
-        /// on one texture (retail indices 2 and 3), which pushed its three stairwell maps to 4-6
-        /// where the cube ordinal said 3-5: every stairwell mover rendered its neighbour's cubemap.
-        /// BSP_Torrens (15 entities, no sharing) and Tech_Hub (7, one shared) both reproduce exactly.
-        /// An entity with no cubemap still takes an index (its Texture is null here): retail numbers
-        /// it straight after the EnvironmentMap before it in its composite's function order. Leaving
-        /// it out moved every later entity down one - HAB_Airport's EnvironmentMap_42 put 1,700 movers
-        /// on their neighbour's cubemap, SCI_HospitalUpper's three put 50 of its 59 entities out of
-        /// place (issue 696). With them, every retail level's stored environmentmap_index reproduces.
-        /// Nothing is stored: the ranking is recomputed from the script and the texture table every
-        /// time either file is written, so the two cannot drift apart.
-        /// </remarks>
         public List<(FunctionEntity Entity, Textures.TEX4 Texture, bool Linked)> RankEnvironmentMaps()
         {
             List<(int texture, int composite, int function, FunctionEntity entity, Textures.TEX4 tex)> ranked = new List<(int, int, int, FunctionEntity, Textures.TEX4)>();
@@ -742,14 +725,6 @@ namespace CATHODE
         /// <summary>
         /// Sets ColourCorrectionTransition colour_lut_a_index / colour_lut_b_index from the colour_lut_a / colour_lut_b paths.
         /// </summary>
-        /// <remarks>
-        /// The engine grades with the baked index, a write index into the LEVEL texture pak, not the path (retail keeps the
-        /// ayz\lut\instagram_* LUTs at 12-14 on every level, TECH_RnD its own at 15-18). Nothing re-derived it, so in a level
-        /// whose pak never held the LUTs (every level made by Level.MakeNewLevelFrom) GLOBAL's GlobalPostProcessing graded
-        /// with whatever sat at 12-14 - camera_frost_threshold.tga gave a frame-wide green shift. Re-derived from all 35
-        /// shipped levels this reproduces every stored index (198 of 198). A path the level pak cannot resolve keeps the
-        /// index it has: the Nostromo _PATCH levels name the LUTs from a pak that does not hold them.
-        /// </remarks>
         private static void SyncColourLutIndexParameters(FunctionEntity function, Textures levelTextures)
         {
             if (function == null || levelTextures == null || function.function != FunctionType.ColourCorrectionTransition)

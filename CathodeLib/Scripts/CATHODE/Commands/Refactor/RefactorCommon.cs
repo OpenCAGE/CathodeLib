@@ -46,11 +46,6 @@ namespace CATHODE.Scripting.Refactor
     /// <summary>
     /// Where a refactor reads a composite's script pages from, and whether it should keep them in step.
     /// </summary>
-    /// <remarks>
-    /// Pages are editor data (the flowgraph layouts). A composite whose pages draw all of its links has
-    /// those links rebuilt from the pages when the editor saves it, so any link a refactor adds has to
-    /// be drawn, and any it removes has to go from the page, or the next save undoes the refactor.
-    /// </remarks>
     public interface IRefactorPageSource
     {
         /// <summary>The composite's pages. The refactor copies them and never changes these objects.</summary>

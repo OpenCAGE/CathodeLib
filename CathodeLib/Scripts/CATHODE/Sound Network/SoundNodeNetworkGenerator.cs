@@ -15,17 +15,6 @@ namespace CathodeLib
     /// <summary>
     /// Build SNDNODENETWORK.DAT from a level's sound entities.
     /// </summary>
-    /// <remarks>
-    /// <para>A SoundEnvironmentMarker defines a network and carries its properties. SoundNetworkNode
-    /// entities are hand-placed nodes. When the level's SoundLevelInitialiser has
-    /// auto_generate_networks set, further nodes are scattered over the navmesh to fill the gaps.</para>
-    /// <para>Measured against retail BSP_TORRENS: hand-placed nodes are carried through unchanged,
-    /// the auto-placed ones sit a constant ~0.46 m above the navmesh, and every auto node keeps at
-    /// least network_node_min_spacing from every other node, hand-placed ones included. Their
-    /// coordinates show no lattice, so the placer scatters and rejects rather than stepping a grid.</para>
-    /// <para>A node belongs to the marker that reaches it through clear sight lines. Nodes no marker
-    /// can see form a network of their own with no reverb and no events.</para>
-    /// </remarks>
     public static class SoundNodeNetworkGenerator
     {
         /// <summary>How far above the navmesh an auto-placed node sits. Measured from retail.</summary>
@@ -42,14 +31,6 @@ namespace CathodeLib
         /// <summary>
         /// Furthest a network of each authored <c>room_size</c> class may reach from its marker.
         /// </summary>
-        /// <remarks>
-        /// Measured off retail's own file across all 32 levels, as the distance from a network's
-        /// centroid to its furthest node: small_room p50 3.3 / p99 15.1, vent 4.9 / 19.8, corridor
-        /// 7.9 / 31.3, medium_room 8.4 / 26.8, large_room 13.9 / 65.1. Without this the multi-source
-        /// flood runs a vent marker straight out of its duct and down the corridor it opens onto,
-        /// which accounts for nearly all of our node over-production - the MEDIAN network is already
-        /// 1.00x retail's count, it is a tail of vents blown up 5-145x.
-        /// </remarks>
         /// <summary>
         /// Seed cost of a marker's flood by its authored <c>room_size</c>: rooms 0, then corridors,
         /// small rooms, vents, each one step of <see cref="SoundNetworkBakeSettings.ClassSeedBias"/>
@@ -96,26 +77,12 @@ namespace CathodeLib
         /// entered and exited, so a path that clips one thin panel registers two hits without being
         /// meaningfully blocked.
         /// </summary>
-        /// <remarks>
-        /// Measured over all 21528 pairs of retail's own nodes on BSP_TORRENS, counting the surfaces
-        /// our soup puts between them: of the pairs with clear sight retail links 1055 of 1055, at
-        /// one surface 50 of 56 and at two 499 of 539 - then it falls off a cliff, 22 of 187 at
-        /// three. So two is where retail stops caring.
-        /// </remarks>
         private const int ClearSurfaceTolerance = 2;
 
         /// <summary>
         /// Visibility is tested at the node and again this far above it, and the clearer of the two
         /// answers is taken.
         /// </summary>
-        /// <remarks>
-        /// <para>Scored against retail's own links and node positions on BSP_TORRENS: testing at the
-        /// node agreed with 56.5% of the links retail calls unobstructed, at +0.5 m 70.5%, and at
-        /// +1.0 m 57.3%. So a node is stored near the floor but heard from around standing height.</para>
-        /// <para>Lifting alone is not safe, though: a node authored at ceiling height has its raised
-        /// sample end up inside the ceiling and sees nothing at all. Taking the better of the two
-        /// costs nothing on BSP_TORRENS, where it changes no answer.</para>
-        /// </remarks>
         private static readonly Vector3 VisibilityTestHeight = new Vector3(0.0f, 0.5f, 0.0f);
 
         private static readonly ShortGuid DisableNetworkCreation = ShortGuidUtils.Generate("disable_network_creation");
@@ -447,26 +414,6 @@ namespace CathodeLib
         /// <summary>
         /// Record which networks adjoin which, and the route from each network to every other.
         /// </summary>
-        /// <remarks>
-        /// <para>Both structures were read off retail's BSP_TORRENS. Exactly the network pairs with
-        /// a node link crossing between them are the pairs it declares as linked, each recorded on
-        /// both sides, and the endpoint pair it stores is the shortest of that boundary's crossings
-        /// in all 26 cases. Those endpoints come out 1.50 m apart - the spacing of the node pairs the
-        /// door_audio prefab puts either side of a doorway - and the nearest collision mapping to
-        /// each midpoint is a door.</para>
-        /// <para>Two networks adjoin only when their nodes come within
-        /// <see cref="SoundNetworkBakeSettings.AdjoinDistance"/> of each other. Our link set reaches
-        /// further than retail's, so counting every crossing declared 35 boundaries against its 13;
-        /// requiring a clear line of sight instead declares none at all, which is itself the tell -
-        /// a boundary between two rooms is a doorway, and the door blocks the view.</para>
-        /// <para>NetworkPaths is the full upper triangle over the named networks, each carrying the
-        /// barriers along the route. Walking the fewest network links reproduces 75 of BSP_TORRENS'
-        /// 78 lists; the three misses all take a longer way round rather than cross its most
-        /// obstructed boundary, so the real cost is probably weighted by occlusion rather than
-        /// counted in hops.</para>
-        /// <para>BarrierInstanceGuid is the collision instance index of the barrier in the doorway -
-        /// see <see cref="CollectBarriers"/>.</para>
-        /// </remarks>
         private static void LinkNetworks(List<SoundNodeNetwork.NetworkInfo> networks, int markerNetworks,
                                          SoundNodeNetwork.NetworkNode[] nodes, List<Link> links, int[] owner,
                                          List<(Vector3 position, uint instance)> barriers,
@@ -894,16 +841,6 @@ namespace CathodeLib
         /// Collision instances owned by CollisionBarrier entities - invisible volumes that stop the
         /// player going somewhere.
         /// </summary>
-        /// <remarks>
-        /// They are STANDARD/FIXED like a wall, so the occluder soup treats them as solid, and they
-        /// seal sound nodes into pockets that retail puts in a room. On BSP_TORRENS the two hiding
-        /// cupboards beside the bridge are blocked by a CollisionBarrier - not by the cupboard, and
-        /// not by its animated door, which is not FIXED and so is not in the soup at all. The pockets
-        /// retail really does seal are blocked by named collision MESHES instead. So a barrier blocks
-        /// the player, not sound. `diag raynames` names every surface a sight line crosses, which is
-        /// how this was found.
-        /// </remarks>
-        /// </remarks>
         private static HashSet<HavokPackfile.CompoundInstance> GameplayBarrierInstances(
             Level level, IEnumerable<InstancedEntity> entities)
         {
@@ -964,19 +901,6 @@ namespace CathodeLib
         /// Fold a sealed pocket into the room around it when the pocket is a BOX rather than a
         /// PASSAGE.
         /// </summary>
-        /// <remarks>
-        /// <para>The pockets retail keeps sealed and the ones we invent are told apart by what they
-        /// are, not by how far off or how blocked they are. On BSP_TORRENS retail's five are all vent
-        /// ducts and ladder shafts, which are separate spaces; the four we invent are hiding
-        /// cupboards, whose own collision hull seals the nodes from the deck 1.7 m away and which
-        /// retail puts in 'Torrens Bridge'. Someone hiding in a locker hears the room.</para>
-        /// <para>A duct or a shaft runs away from you in some direction; the inside of a cupboard
-        /// does not. So the test is free space: cast along all six axes from every node in the
-        /// pocket, and if nothing can see further than
-        /// <see cref="SoundNetworkBakeSettings.EnclosedPocketExtent"/> in ANY direction, the pocket
-        /// is a container standing in a room.</para>
-        /// </remarks>
-        /// </remarks>
         private static int AbsorbEnclosedPockets(List<Vector3> positions, int[] owner, int markerNetworks,
                                                  BVHAccel occluders, Action<string> log)
         {
@@ -1192,18 +1116,6 @@ namespace CathodeLib
         /// <summary>
         /// Complain when two markers claim one space.
         /// </summary>
-        /// <remarks>
-        /// <para>A network takes its reverb, room size and events from a single
-        /// SoundEnvironmentMarker, so each marker is meant to own a space of its own. The test is
-        /// local: two markers resolve to the SAME seed node, meaning the nearest node either can see
-        /// is the same one. Only the first can own it, so the other is left describing a room it
-        /// holds no part of and its network comes out empty - and retail ships zero empty named
-        /// networks, so this firing means the bake is wrong (or two markers are in one room).</para>
-        /// <para>A whole-level connectivity test was tried first and is useless: defining a region as
-        /// a connected component of the clear-sight link graph puts nearly every marker in one
-        /// region, in retail's own shipped files as much as in ours. Rooms connect through doorways;
-        /// that is what a level is, and it is not a defect.</para>
-        /// </remarks>
         private static void WarnOnSharedRegions(List<Vector3> positions, List<SoundNodeNetwork.NetworkInfo> networks,
                                                 int[] seeds, bool[] blind, float[] reach, Action<string> log)
         {
@@ -1245,24 +1157,6 @@ namespace CathodeLib
         /// <summary>
         /// Position and collision-instance index of every barrier that could divide two networks.
         /// </summary>
-        /// <remarks>
-        /// A sound barrier is either a SoundBarrier entity or, far more commonly, the NavMeshBarrier
-        /// that sits in a doorway - BSP_TORRENS has no SoundBarrier at all but a NavMeshBarrier on
-        /// every door. What retail records is the barrier's collision INSTANCE index, the slot its
-        /// collider occupies in the world host. It is not the collision proxy index: the proxy on
-        /// these PATH_CLOSED rows is -1.
-        /// <para>**Retail's values do not match ours, and that is retail's staleness, not our bug**
-        /// (2 Sep 2026, `diag barrguid BSP_TORRENS <regression-test install>`, which still holds the
-        /// 2017 COLLISION.HKX). Against the shipped packfile's secondary host in its on-disk order,
-        /// the instance nearest each of retail's 13 crossings is 0.07-0.37 m away - the barrier -
-        /// and the difference between retail's guid and that instance's index is 0, 0, 0, 0, 7, 11,
-        /// 11, 11, 15, 17, 17, 20, 20, rising monotonically with the index. That is about twenty
-        /// instances inserted into the compound AFTER the sound network was baked: the guid is this
-        /// index in the collision the sound bake saw, and the shipped collision is newer. So the
-        /// semantics here are right, and the value we write is consistent with the COLLISION.HKX we
-        /// write next to it, which is what the game reads. Against our own rebuilt file it can never
-        /// equal retail's number, because our compound has a different instance count and order.</para>
-        /// </remarks>
         private static List<(Vector3 position, uint instance)> CollectBarriers(Level level, List<InstancedEntity> barriers)
         {
             var found = new List<(Vector3, uint)>();
@@ -1336,16 +1230,6 @@ namespace CathodeLib
         /// The level's collision with every sound barrier taken OUT of it, so a candidate boundary
         /// can be asked whether the two rooms are joined by an opening.
         /// </summary>
-        /// <remarks>
-        /// Two rooms adjoin when you can get from one to the other, and what stands between them at a
-        /// doorway is the door - which is a barrier. Requiring plain line of sight was tried early
-        /// and declared no boundaries at all on BSP_TORRENS, but that was measured against the full
-        /// soup, in which the closed door leaf is itself an occluder: the test was asking whether the
-        /// rooms are joined by a HOLE, not by a DOORWAY. Subtracting the barriers asks the second
-        /// question, and uses the barrier set as what sits IN the opening rather than as a solid the
-        /// crossing must pierce, which <see cref="BuildBarrierGeometry"/> records as refuted.
-        /// </remarks>
-        /// </remarks>
         private static BVHAccel BuildOpeningGeometry(Level level, List<InstancedEntity> barriers, bool skipSoundHulls, Action<string> log)
         {
             HashSet<HavokPackfile.CompoundInstance> skip = BarrierInstances(level, barriers);
@@ -1384,12 +1268,6 @@ namespace CathodeLib
         /// Whether a run between two nodes is clear of everything but the door, tried at several
         /// heights.
         /// </summary>
-        /// <remarks>
-        /// A node sits on the navmesh, so a single run between two of them skims the floor and any
-        /// threshold, step, ramp lip or door sill stands in its way - which reads as "these rooms do
-        /// not adjoin" for a great many doorways that plainly do. A wall blocks at every height, so
-        /// sampling upward costs no precision and is what separates a sill from a partition.
-        /// </remarks>
         private static bool SeesThroughOpening(BVHAccel openingGeometry, Vector3 a, Vector3 b)
         {
             if (openingGeometry == null) return true;
@@ -1419,17 +1297,6 @@ namespace CathodeLib
         /// Collision geometry of the level's sound barriers alone, so a candidate boundary can be
         /// asked whether it passes THROUGH a door rather than merely near one.
         /// </summary>
-        /// <remarks>
-        /// <para>Distance to a barrier's pivot cannot make the distinction that matters. Retail's own
-        /// boundaries sit a median 0.90 m from one, so the pivots are genuinely at the doorways - but
-        /// so are the false boundaries we declare between two rooms that meet in a wall beside a
-        /// door.</para>
-        /// <para>Requiring the crossing to intersect this geometry is refuted by retail's own file:
-        /// of the node pairs it stored for ChallengeMap11's 132 boundaries, only 39% pass through any
-        /// barrier, and 39% again when the segment is extended a metre past each end. The barrier
-        /// sits about 0.90 m to one SIDE of the midpoint rather than between them. A barrier is a
-        /// label retail attaches to a boundary, not a solid the boundary passes through.</para>
-        /// </remarks>
         private static BVHAccel BuildBarrierGeometry(Level level, List<InstancedEntity> barriers,
                                                      out uint[] triangleInstance, Action<string> log)
         {
@@ -1522,17 +1389,6 @@ namespace CathodeLib
         /// <summary>
         /// Drop an authored node that is connected to nothing and stands over nothing.
         /// </summary>
-        /// <remarks>
-        /// <para>Matt: a door package places a sound node on each side of its doorway, and a fake
-        /// corridor door backs into the abyss - so one of the pair sits outside the level with no
-        /// floor under it. Retail does not write those nodes at all; in the game's debug view they
-        /// show WHITE, meaning they belong to no network.</para>
-        /// <para>Neither half of the test works alone. On BSP_TORRENS 25 of the 96 nodes retail KEEPS
-        /// have no navmesh beneath them and 3 see no other node, but precisely two are both blind and
-        /// floorless, they are precisely the two retail drops, and no node retail keeps satisfies
-        /// both. A node with nothing to link to and no floor to grow fill from cannot end up in
-        /// anyone's network, so writing it only invents a one-node network of its own.</para>
-        /// </remarks>
         private static int DiscardOrphanedManualNodes(Level level, List<Vector3> positions, int manualCount,
                                                       BVHAccel occluders, Action<string> log, List<object> groups = null)
         {
@@ -1680,13 +1536,6 @@ namespace CathodeLib
         /// Throw away sealed-off networks made entirely of scattered nodes, marking their nodes
         /// with an owner of -1, and return how many nodes went.
         /// </summary>
-        /// <remarks>
-        /// Every node in retail's five nameless networks on BSP_TORRENS is a hand-placed
-        /// SoundNetworkNode: a designer put a node in a sealed vent, so it has to exist. A pocket
-        /// holding only scattered nodes is the fill having spread somewhere no marker can reach,
-        /// which retail's placer evidently does not do - it left us five extra networks, three of
-        /// them a single node.
-        /// </remarks>
         private static int DiscardStrandedFill(List<Vector3> positions, int manualCount, int markerNetworks,
                                                List<SoundNodeNetwork.NetworkInfo> networks, ref int[] owner)
         {
@@ -2306,12 +2155,6 @@ namespace CathodeLib
         /// Link every pair within <paramref name="radius"/>, stored once on the lower-indexed node -
         /// none of retail's 2491 links on BSP_TORRENS is reciprocated.
         /// </summary>
-        /// <remarks>
-        /// Blocked pairs are linked too rather than dropped. Retail's ObstructedDistance is zero on
-        /// only about 60% of its links and runs up to 24 on the rest, so an obstruction is measured
-        /// into the link, not used to reject it. Filtering on line of sight instead left us at half
-        /// retail's link count.
-        /// </remarks>
         private static List<Link> BuildLinks(List<Vector3> positions, BVHAccel occluders,
                                              float radius, Action<string> log)
         {
@@ -2368,15 +2211,6 @@ namespace CathodeLib
         /// <summary>
         /// Give every node to the marker that reaches it most cheaply through the link graph.
         /// </summary>
-        /// <remarks>
-        /// <para>Straight-line distance to the nearest marker puts nodes in the room next door
-        /// whenever a wall happens to be thin. Walking the links instead means a node joins the
-        /// marker it is actually connected to.</para>
-        /// <para>Only links with a clear line of sight are walked, which is stricter than the set
-        /// that gets written out. A link through even one collision hull is enough to reach into a
-        /// sealed vent from the room below it, and retail keeps those vents as networks of their
-        /// own.</para>
-        /// </remarks>
         private static int[] AssignToNetworks(List<Vector3> positions, List<Link> links, List<Vector3> markers,
                                               List<SoundNodeNetwork.NetworkInfo> networks, BVHAccel occluders,
                                               Action<string> log, NavigationMesh nav = null)
@@ -2553,13 +2387,6 @@ namespace CathodeLib
         /// How much geometry lies between two nodes, counted as surfaces crossed. Clear line of
         /// sight gives 0.
         /// </summary>
-        /// <remarks>
-        /// Measuring the span from the first hit to the last instead counts the air between two walls
-        /// twenty metres apart as twenty metres of obstruction, which marked 96% of pairs blocked on
-        /// BSP_TORRENS against retail's 40%. A surface count also matches the shape of retail's
-        /// ObstructedDistance.
-        /// </remarks>
-        /// </remarks>
         private static int Crossings(BVHAccel occluders, Vector3 from, Vector3 to)
         {
             if (occluders == null) return 0;

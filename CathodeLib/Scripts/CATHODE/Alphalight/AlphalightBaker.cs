@@ -14,68 +14,6 @@ namespace CathodeLib.Alphalight
     /// Rebuilds DATA/ENV/x/WORLD/ALPHALIGHT_LEVEL.BIN and the <c>alpha_light_*</c> parameters that
     /// go with it on every ModelReference that samples the atlas.
     /// </summary>
-    /// <remarks>
-    /// <para>Despite the name, the file holds no lighting. It is a <b>sample position atlas</b>: an
-    /// A16B16G16R16F image whose RGB is an <i>object-space position</i> on the alpha-lit surface and
-    /// whose A is a per-model scalar. Lighting is a runtime job - CA_ALPHALIGHT_POSITION transforms
-    /// these local positions per instance, CA_ALPHALIGHT_CLEAR / CA_ALPHALIGHT_LIGHT accumulate the
-    /// live lights at them, and the alpha surface reads the result back through the transform in its
-    /// <c>alpha_light_offset_*</c> / <c>alpha_light_scale_*</c> parameters. So nothing here needs to
-    /// know where the lights are.</para>
-    ///
-    /// <para>How the atlas is laid out, verified against retail on BSP_TORRENS, TECH_HUB, SCI_HUB,
-    /// TECH_RND_HZDLAB and HAB_SHOPPINGCENTRE:</para>
-    /// <list type="bullet">
-    /// <item>Each participating ModelReference owns a <b>box</b> of <c>(W+1) x (H+1)</c> texels.
-    /// <c>W x H</c> of those are probes; the extra row and column are a dilation border on the
-    /// <i>left and top</i>. Boxes never overlap and every live texel is inside one.</item>
-    /// <item>Boxes are placed by the classic binary-tree allocator (insert into the first free leaf
-    /// that fits; split the remainder along its longer side), inserting in <b>REDS.BIN order</b> -
-    /// the index of the entity's renderable run - and growing the atlas by powers of two from 64
-    /// until everything fits. That reproduces retail's placement box for box on every level checked,
-    /// so a level whose renderables have not moved gets its retail layout back.</item>
-    /// <item>The parameters point at the first <i>probe</i>, not at the box:
-    /// <c>offset = (probeX / resolution, probeY / resolution)</c> and
-    /// <c>scale = (W / resolution, H / resolution)</c>. Since a shader maps surface UV 0..1 onto
-    /// <c>probeX - 0.5 .. probeX + W - 1</c> in texel space, the border texel at <c>probeX - 1</c> is
-    /// what makes the bilinear tap at UV 0 land on probe 0 cleanly.</item>
-    /// <item>The border column repeats each row's first probe; the border row is a flat fill of probe
-    /// (0,0). Texels no box claimed are <c>(0, 0, 0, -1024)</c>.</item>
-    /// </list>
-    ///
-    /// <para>How a probe grid is built: the mesh is rasterised in its <b>alphalight unwrap</b> -
-    /// TexCoord3 on most vertex formats, TexCoord2 on the few that stop there - sampling grid
-    /// <i>nodes</i> at <c>(i / (W-1), j / (H-1))</c> rather than texel centres. A node takes the
-    /// closest point on the nearest triangle, measured in <i>texel</i> space, provided that is within
-    /// <see cref="AlphalightBakeSettings.CoverageTexels"/> of it; where charts overlap the first
-    /// triangle in index order wins. Nodes further from the surface than that are filled afterwards
-    /// by an in-place dilation that copies the first filled neighbour of left, up, right, down, pass
-    /// after pass - which is why a whole empty row comes out as a constant copied from the column
-    /// above, and a run past the end of a chart repeats its last probe. Both are retail's behaviour.
-    /// <c>alpha_light_average_normal</c> is the mean of the probes' normals, copies included, left
-    /// unnormalised so its length falls away as the surface curves.</para>
-    ///
-    /// <para>What still separates the output from retail's:</para>
-    /// <list type="bullet">
-    /// <item><b>Grid size.</b> Deterministic, but not reproduced. Over 2004 retail samples, no two
-    /// entities whose whole renderable set matches byte for byte were ever given different grids, so
-    /// it is a pure function of data we hold - we simply do not have the function. It is not a
-    /// world-space texel density, nor a span of any shipped UV channel. Until it is reproduced,
-    /// <see cref="AlphalightBakeSettings.PreserveExistingResolution"/> reuses what COMMANDS already
-    /// records, and only new content falls back to
-    /// <see cref="AlphalightBakeSettings.TargetTexelSize"/>.</item>
-    /// <item><b>Source geometry.</b> On a minority of models retail's probes do not lie on the
-    /// shipped mesh: every probe of a flat pane is displaced along its normal by one authored-looking
-    /// distance (0.4 to 11 cm on TECH_HUB, differing between panes of the same door), cut corners are
-    /// filled in as though the pane were a full rectangle, and gaps between coplanar panes are
-    /// interpolated straight across. All of that is consistent with retail having rasterised a
-    /// different, simpler version of those meshes than the one that shipped. There is no source for
-    /// it in the level, so those models land within a few centimetres rather than exactly.</item>
-    /// <item><b>A channel.</b> <c>sqrt(mesh area / probe cells) / sqrt(20 pi)</c> is bit-exact on the
-    /// majority and within 2% on 78 of 112 TECH_HUB models; the rest (partial unwraps, shells) are
-    /// off by 5-20%, so retail's area is not quite the shipped mesh's either.</item>
-    /// </list>
-    /// </remarks>
     public static class AlphalightBaker
     {
         /// <summary>

@@ -878,11 +878,6 @@ namespace CathodeLib.NavMesh
         /// Where two cover segments meet at a right angle, keep one and drop the other. See
         /// <see cref="CoverBakeSettings.CornerArmRule"/>.
         /// </summary>
-        /// <remarks>
-        /// Each corner is settled once and neither arm can go on to knock out a third segment: a
-        /// curved wall's own pieces meet at an angle, and letting the cull chain through them removes
-        /// most of a level.
-        /// </remarks>
         static List<Cover.CoverSegment> KeepOneArmPerCorner(List<Cover.CoverSegment> segments, CollisionNavMeshSoup soup, CoverBakeSettings settings)
         {
             if (settings.CornerArmRule == 0 || segments.Count < 2)
@@ -1577,17 +1572,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Restate the corner and colinear links in each segment's Flags field, the way retail does.
         /// </summary>
-        /// <remarks>
-        /// <para>Cross-tabulated over all 7,361 cover segments the game ships: 0x0008 is set on 2,044
-        /// segments and every one of them has a left corner link (2,061 segments have one at all);
-        /// 0x0010 is the same for right corners, 0x0020 for left colinear links and 0x0040 for right.
-        /// Each is a 100% correlation. 0x2000 is set on 4,218 segments and every one is low cover.</para>
-        /// <para>Retail also uses 0x0080/0x0100, 0x0200/0x0400 and 0x0800/0x1000 - the same left/right
-        /// pairing, and only ever on segments that already carry the primary bit, so they refine a
-        /// corner or colinear link (external versus internal, most likely, given the generator has
-        /// angle thresholds for exactly that) rather than stating anything new. Which of the three
-        /// states applies is not established, so they are left clear: guessing would be worse.</para>
-        /// </remarks>
         static void ApplyLinkFlags(List<Cover.CoverSegment> segments, CoverBakeSettings settings)
         {
             if (!settings.WriteLinkFlags)
@@ -1718,20 +1702,9 @@ namespace CathodeLib.NavMesh
         /// Move each corner-linked endpoint onto the crossing of the two segments' lines, so the
         /// two segments actually meet the way retail's do.
         /// </summary>
-        /// <remarks>
-        /// Every target is computed before any endpoint moves. Snapping in place would shift a line
-        /// that a later pair in the same pass still has to cross against, so the result would depend
-        /// on segment order. The crossing lies on the segment's own infinite line, so this changes
-        /// its length but never its direction or normal.
-        /// </remarks>
         /// <summary>
         /// The signed corner angle the EXTERNAL and AUTO corner windows are measured over.
         /// </summary>
-        /// <remarks>
-        /// The turn from one normal to the other about +Y, offset by 180. The offset is what makes
-        /// the configured corner angles land on the data - see
-        /// <see cref="CoverBakeSettings.LinkMinExternalCornerAngle"/>.
-        /// </remarks>
         static float ExternalCornerAngle(Vector3 na, Vector3 nb)
         {
             Vector3 a = SafeXZ(na), b = SafeXZ(nb);
@@ -1756,20 +1729,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Can an NPC slide straight from one segment to its linked neighbour?
         /// </summary>
-        /// <remarks>
-        /// <para>One rule serves both AUTO bits: the two must be CONTIGUOUS - their ends within
-        /// <see cref="CoverBakeSettings.LinkDistanceForCornerOrAutoLink"/> - and the turn between
-        /// them no more than <see cref="CoverBakeSettings.LinkMaxAutoTransitionAngle"/>. Each link
-        /// kind then satisfies one half for free, which is why the two bits look like different
-        /// rules: a corner link is only ever formed at 0.5 m so its gap always passes, and a
-        /// colinear partner faces the same way so its angle is always about 180.</para>
-        /// <para>The colinear half is measured exact over retail's 860 left colinear links
-        /// (`diag covercolin all`): 0 of the 178 AUTO ones have a gap over 0.5 m and only 1 of the
-        /// 682 non-AUTO ones is under it, with the worst set gap at 0.49 and the smallest clear gap
-        /// at 0.47. Plain colinear links run out to 4.0 m (p90 3.58), so the two constants really do
-        /// separate two different things. That single exception is most likely a blocked path -
-        /// close enough to walk to, but not actually reachable - which we do not test.</para>
-        /// </remarks>
         static bool IsAutoTransition(float angle, float gap, CoverBakeSettings settings)
         {
             return angle <= settings.LinkMaxAutoTransitionAngle
@@ -1973,13 +1932,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Angle between two normals projected onto XZ, in degrees.
         /// </summary>
-        /// <remarks>
-        /// Kept in scalars on purpose. Writing to a field of a by-value <see cref="Vector3"/>
-        /// parameter (<c>a.Y = 0</c>) miscompiles under .NET Framework's RyuJIT and faults with an
-        /// AccessViolationException - which, being a corrupted-state exception, is not catchable
-        /// and takes the process down. The same code runs fine on .NET 8, so it only bites the
-        /// WinForms app. Do not "simplify" this back into Vector3 operations.
-        /// </remarks>
         static float AngleBetweenNormalsDeg(Vector3 a, Vector3 b)
         {
             float ax = a.X, az = a.Z;
@@ -2146,17 +2098,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// The three peek bits of a slot's Flags word, from the arcs the solver found.
         /// </summary>
-        /// <remarks>
-        /// <para>The peek angles inform BITS, they do not gate the arc. Verified over
-        /// retail's 9,085 slots with `diag coverbits all`: every peek bit implies its arc clears the
-        /// threshold (100.0% on all three), no DEAD arc carries the bit (0 of 3,279 over-tops), and
-        /// yet a live arc without its bit is ordinary - 21.8% of live lean-lefts, 22.1% of
-        /// lean-rights, 14.2% of over-tops, at median widths of 60 to 108 degrees. So retail writes
-        /// the full arc either way and only withholds the bit.</para>
-        /// <para>This previously read bare liveness, which set the bit on every arc however narrow.
-        /// The over-the-top test is "30 either side" - the arc has to reach BOTH ways, not merely be
-        /// 60 degrees wide somewhere off to one side.</para>
-        /// </remarks>
         static int PeekBits(Cover.CoverSegment.CoverSlot slot, CoverBakeSettings settings)
         {
             if (!settings.ApplyPeekThresholds)
@@ -2192,26 +2133,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Mark the slot at each end of a segment with that end's terminating-edge and link bits.
         /// </summary>
-        /// <remarks>
-        /// <para>Measured over retail's 9,085 slots with `diag coverbits all`. Only the END-MOST
-        /// slot ever carries one: IS_TERMINATING_LEFT_EDGE implies "leftmost slot" on 100.0% of
-        /// its 5,600, and IS_TERMINATING_RIGHT_EDGE implies "rightmost slot AND pct &gt; 0.5" on
-        /// 100.0% of its 938. The pct tie-break is what makes the two counts so lopsided - a
-        /// single-slot segment puts its slot at exactly 0.5, which can take the LEFT bit but never
-        /// the right.</para>
-        /// <para>Necessary but not sufficient: 76.1% of leftmost slots and 82.0% of qualifying
-        /// rightmost ones actually carry the bit, and no combination of the link fields, the peek
-        /// bits or arc liveness explains the rest - the closest, "no left link at all", overlaps
-        /// only 64.6%. The residual condition is undecoded, and is most likely geometric: whether
-        /// the cover really ENDS there rather than being continued by something we do not model.
-        /// Writing the necessary condition still beats what this replaced, which set the left bit
-        /// on 100% of slots against retail's 61.6% and never set the right one at all.</para>
-        /// <para>The four LINK bits follow the same end-most-slot rule, and there they are all but
-        /// exact: a slot's RIGHT_CORNER_LINK bit is "last slot, pct &gt; 0.5, and the segment has a
-        /// right corner link" on 100.0% of its 412 in BOTH directions, right colinear 100.0/99.4%,
-        /// and the two left bits 100.0/97.3% and 100.0/97.7%. We wrote these only on the segment
-        /// word and left the slot word at zero, against retail's 28.6% and 9.7%.</para>
-        /// </remarks>
         static void ApplyEndSlotBits(Cover.CoverSegment seg)
         {
             if (seg.OccupancySlots.Count == 0)

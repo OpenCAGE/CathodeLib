@@ -8,21 +8,11 @@ namespace CathodeLib.Radiosity
     /// CPU decode of the texture formats Cathode uses for diffuse maps, into a plain RGB8 image
     /// the bake can sample per texel.
     /// </summary>
-    /// <remarks>
-    /// <para>Only the formats that appear on a diffuse sampler are handled: BC7 (96% of a retail level's), DXT1/3/5 and
-    /// uncompressed. A material whose diffuse slot holds anything else (BC6H, DXN, ASTC) falls back to the material
-    /// average.</para>
-    /// <para>Returns the stored (sRGB-encoded) bytes; <see cref="RadiosityMaterialSampler"/> linearises.</para>
-    /// </remarks>
     internal static partial class RadiosityTextureDecoder
     {
         /// <summary>
         /// Decode a texture to RGB8, choosing the largest mip that fits inside <paramref name="maxEdge"/>.
         /// </summary>
-        /// <remarks>
-        /// Uses the larger of the streamed and persistent parts (<see cref="Pick"/>). Picking a mip rather than decoding mip
-        /// 0 and downsampling gets the texture's own prefiltering.
-        /// </remarks>
         public static bool TryDecode(Textures.TEX4 texture, int maxEdge, out byte[] rgb, out int width, out int height)
         {
             rgb = null;

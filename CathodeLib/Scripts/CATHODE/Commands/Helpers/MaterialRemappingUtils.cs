@@ -488,13 +488,6 @@ namespace CathodeLib
         /// Index the table's names on this thread until the result is disposed - for the instancing walk, which asks
         /// for materials by name tens of thousands of times.
         /// </summary>
-        /// <remarks>
-        /// Each ask was three passes over the whole table, normalising every name in it. While the walk runs the table
-        /// only grows at the end (MaterialFactory appends what it builds; nothing renames, removes or reorders), so the
-        /// three names MatchesByName compares are worked out once per entry, and entries appended since are indexed on
-        /// the next ask. Every bucket holds table positions in table order, so the matches come out in exactly the
-        /// order the passes found them.
-        /// </remarks>
         internal static IDisposable IndexNamesWhileWalking(Materials materials)
         {
             NameIndex previous = _nameIndex;
@@ -642,11 +635,6 @@ namespace CathodeLib
         /// <summary>
         /// Which vertex layouts each material is known to be drawn with, per model table.
         /// </summary>
-        /// <remarks>
-        /// Weak-keyed on purpose. A plain static dictionary kept every model table it had ever been
-        /// asked about alive for the life of the process, so a tool that opens one level after
-        /// another never gave back the memory of the ones it had closed.
-        /// </remarks>
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Models, Dictionary<Materials.Material, HashSet<string>>> _vertexFormatCache =
             new System.Runtime.CompilerServices.ConditionalWeakTable<Models, Dictionary<Materials.Material, HashSet<string>>>();
 

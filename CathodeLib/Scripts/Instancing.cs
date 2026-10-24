@@ -2982,24 +2982,11 @@ namespace CathodeLib
         /// <summary>
         /// Swap every mover's primary and secondary zone when it has two.
         /// </summary>
-        /// <remarks>
-        /// A FLICKER EXPERIMENT, not a fix - leave it false unless you are testing. 95.8% of movers carry
-        /// both zones exactly as retail does, and most of the rest are our pair the RIGHT way up but the
-        /// WRONG way round. Turning this on trades errors rather than removing them, so a level that looks
-        /// BETTER with it on is still evidence even though this is not the real rule - which is not
-        /// spatial: containment picks retail's primary 64.6% of the time, worse than chance.
-        /// </remarks>
         public static bool SwapTwoZoneMoverOrder = false;
 
         /// <summary>
         /// The value written to every mover's <c>Flags.RequiresScript</c>.
         /// </summary>
-        /// <remarks>
-        /// ANOTHER FLICKER EXPERIMENT. We hardcode true and retail disagrees on about a third of a level's
-        /// movers, but no predicate tried beats "always true", so the rule is undecoded. Neither setting
-        /// is correct - but if the flickering moves to a DIFFERENT set of models when this is flipped, the
-        /// flag is the cause and the rule is worth decoding properly.
-        /// </remarks>
         public static bool MoverRequiresScript = true;
 
         // -----
@@ -3103,17 +3090,6 @@ namespace CathodeLib
         /// <summary>
         /// Move CHARACTERACCESSORYSETS rows onto the composite instances their characters are placed in now.
         /// </summary>
-        /// <remarks>
-        /// A row is keyed by its character entity and the composite instance holding it, an id hashed from the hop path down
-        /// from the level root - but a row that came across with a ported composite (CompositePorter) can only be keyed by
-        /// the path down from that composite, since where it will be placed is not known yet, and until then it names an
-        /// instance that does not exist: the engine never finds it, and the NPC never finishes spawning. Rows whose key
-        /// matches an instanced entity are left exactly as they are, which is every row of every shipped level. A row that
-        /// matches nothing moves to the instance of its entity whose hop path ENDS with the path the row was keyed by - the
-        /// same NPC, reached through the composites it now sits under - and is repeated when the
-        /// same content is placed more than once. Nothing else gets a row: retail leaves most instances of a character
-        /// unkeyed (ChallengeMap3 keys 2 of the 8 its NPC_Logic is instanced as), and a row with nowhere to go stays as it was.
-        /// </remarks>
         private void RekeyAccessorySets()
         {
             List<CharacterAccessorySets.CharacterAttributes> rows = _level.AccessorySets?.Entries;

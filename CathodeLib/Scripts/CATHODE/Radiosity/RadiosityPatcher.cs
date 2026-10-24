@@ -10,24 +10,6 @@ namespace CathodeLib.Radiosity
     /// Delta-bake: keep the level's shipped radiosity wholesale and patch only what an edit
     /// invalidated, instead of regenerating everything.
     /// </summary>
-    /// <remarks>
-    /// <para>For edited RETAIL levels the robust route is not to regenerate unchanged content at all: the full bake is
-    /// sensitive to structural detail, and the game accepts a loaded retail runtime selectively modified and saved.</para>
-    /// <para>The pipeline, in this order. Keep every shipped slice verbatim. Re-bind the
-    /// surface-light slices' entity references and the instance-map rows so they survive the
-    /// resource renumbering an instanced save performs (a retail-loaded runtime otherwise writes
-    /// its stale raw indices back); zero the lights of entities the edit deleted and drop the rows
-    /// of resources that no longer have a mover. Census the movers the edit ADDED or MOVED (the
-    /// delta). Extend the volume probe field over delta content outside it
-    /// (<see cref="RadiosityBaker.AppendProbeOnlySlice"/>), then force the delta movers onto the
-    /// dynamic radiosity path (<see cref="DynamicRadiosityConverter"/>); whatever the converter
-    /// cannot convert is baked into appended lightmap slices
-    /// (<see cref="RadiosityBaker.AppendDeltaSlices"/>). Append the probe slices' scheduling rows
-    /// (rendering follows a resource's first map row, so they go last), and finally restore the
-    /// pristine MODEL_PARAMS of every mover outside the delta. Deleted geometry's baked bounce (a
-    /// removed wall's shadow) intentionally stays: un-baking is a full-bake problem by
-    /// definition.</para>
-    /// </remarks>
     internal static class RadiosityPatcher
     {
         public static RadiosityBaker.BakeResult PatchLevel(

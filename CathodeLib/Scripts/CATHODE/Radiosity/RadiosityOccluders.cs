@@ -10,23 +10,12 @@ namespace CathodeLib.Radiosity
     /// <summary>
     /// Collision geometry as a low-detail stand-in for the render meshes when testing visibility.
     /// </summary>
-    /// <remarks>
-    /// A collision hull is a coarse closed shell around each object, the shape a visibility test wants: occluding against
-    /// render geometry left 26-27% of our surface probes with every direction blocked (retail: 7-9%), wedged in interior
-    /// submeshes, panel back faces and double-sided surfaces the shell does not have.
-    /// </remarks>
     public static class RadiosityOccluders
     {
         /// <summary>
         /// Build a world-space triangle soup from the level's static collision, or return false
         /// when the level has none usable.
         /// </summary>
-        /// <remarks>
-        /// Both world hosts are taken. The navmesh bake uses only the secondary, since that is the
-        /// walkable set, but light is blocked by everything solid - the primary host holds the
-        /// structural colliders that a floor-only soup would leave out, and a missing wall is a
-        /// light leak between rooms.
-        /// </remarks>
         /// <param name="staticOnly">
         /// Keep only colliders that never move, matching what navmesh generation considers. Sound
         /// occlusion wants this: a crate that can be shoved around should not be baked in as a wall.
@@ -130,11 +119,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Add the render triangles of any baked instance that has no collision of its own.
         /// </summary>
-        /// <remarks>
-        /// An instance missing from COLLISION.MAP contributes nothing to the proxy, so it would stop blocking light (a
-        /// wall that leaks into the room behind it). Retail geometry is almost fully covered, but user-imported movers
-        /// often have no collision at all; their own render triangles stand in.
-        /// </remarks>
         static int AppendUncoveredRenderGeometry(Level level, RadiosityGeometry geometry,
                                                  List<float> positions, List<int> indices,
                                                  out int instanceCount)

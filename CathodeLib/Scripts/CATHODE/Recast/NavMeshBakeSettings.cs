@@ -16,13 +16,6 @@ namespace CathodeLib.NavMesh
         /// The <c>walkableHeight</c> written into the tile header, which is NOT the height the mesh was
         /// built at.
         /// </summary>
-        /// <remarks>
-        /// Every shipped NAV_MESH carries 0.5 - all 11 tiles surveyed across 8 levels, every state -
-        /// while the geometry plainly was not built at a flat 0.5 (see LowestNavigableHeight, which is
-        /// 7 cells because 8 throws away the DeepCrouch polys retail keeps). The header field is what
-        /// the runtime queries with; the build height is a property of the bake. Writing the build
-        /// height here shipped 0.4375 in every tile we produced.
-        /// </remarks>
         public float HeaderWalkableHeight = 0.5f;
         public float DeepCrouchHeight = 0.875f;
         public float CrouchHeight = 1.625f;
@@ -30,14 +23,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Steepest surface Recast will call walkable.
         /// </summary>
-        /// <remarks>
-        /// 38, not the 40 this used to be. ENG_TowPlatform's exterior hull plating sits at about
-        /// 38.2 degrees: at 40 Recast covers it and the level bakes 19,198 m2 of navmesh against
-        /// retail's 9,413, at 38 it bakes 9,058 and the match goes from 63.1% to 97.7%. The cliff is
-        /// between 38.0 and 38.5 and nothing else in the campaign is near it - swept over all 32
-        /// levels, 38 costs BSP_LV426_Pt02 1.1 points and BSP_Torrens 0.3, and moves no other level
-        /// by more than 0.2.
-        /// </remarks>
         public float WalkableSlopeAngle = 38.0f;
         public float MaxContourError = 1.3f;
         public float MaxEdgeLength = 10.0f;
@@ -61,19 +46,6 @@ namespace CathodeLib.NavMesh
         /// How far each height class grows outwards over the heightfield once the classes are
         /// marked, in cells. Only used with <see cref="HeightLimitedMarkedBeforePolygons"/>.
         /// </summary>
-        /// <remarks>
-        /// <para>The spread is not decoration. A clearance measured at the cell is only low under
-        /// the table itself, while retail's deep-crouch region runs out to where a character stops
-        /// fitting: marked and left alone the surface is almost perfectly right and far too small
-        /// (ChallengeMap11 32.5 m2 against retail's 52.5, but only 1% of it spurious).</para>
-        /// <para><b>This started at 4 and we ship 2</b>, which is deliberate. Swept with
-        /// the crawl gates over ChallengeMap11 / TECH_RND / Tech_Hub, crawl F1 means are 82.2 at
-        /// spread 2, 75.9 at 3 and 69.9 at 4 - at 4 the surface is the closest match to retail's
-        /// (86-91% covered) but it grows enough extra mouths to emit 118-162 crawl positions against
-        /// retail's 87-89. Our spread is a four-connected walk over span connectivity, which is a
-        /// diamond rather than whatever metric produced retail's regions, so the two numbers are not
-        /// measuring the same distance. Re-derive this if retail's spread is ever understood properly.</para>
-        /// </remarks>
         public int HeightLimitedAreaSpread = 2;
 
         /// <summary>
@@ -91,12 +63,6 @@ namespace CathodeLib.NavMesh
         /// Crouch grows by <see cref="HeightLimitedAreaSpread"/> plus this; deep crouch grows by the
         /// spread alone, and wins any overlap.
         /// </summary>
-        /// <remarks>
-        /// The value of 1 is confirmed rather than assumed. Sweeping the crouch spread over
-        /// 0 / 1 / 2 / 3 cells at deep spread 2, crawl F1 is 80.0 / 80.8 / 82.1 / 81.9 on
-        /// ChallengeMap11 and 72.6 / 72.3 / 72.3 / 75.2 on Tech_Hub - 3 (= 2 + 1) is best or tied on
-        /// both, and it costs nothing in assault even though crouch spreading eats standing rim.
-        /// </remarks>
         public int HeightLimitedAreaSpreadExtraForNonDeepCrouch = 1;
         public float HeightLimitedClearanceBias = 0.0f;
 
@@ -104,13 +70,6 @@ namespace CathodeLib.NavMesh
         /// Classify a polygon's height by the share of its own surface that is low, rather than by
         /// the single worst reading anywhere on it.
         /// </summary>
-        /// <remarks>
-        /// With the worst-reading rule our deep-crouch surface came out at 1,845 m2 against retail's
-        /// 797 over 31 levels, and 62% of it is floor retail calls Standing - one low column under a
-        /// desk condemns the whole open-floor polygon Recast merged around it. Crawl-space jobs are
-        /// generated from exactly this surface, so it is also what makes the alien's under-table
-        /// behaviour fire in the wrong places.
-        /// </remarks>
         public bool HeightLimitedInteriorSampling = true;
 
         /// <summary>Share of a polygon that must read deep-crouch for the polygon to be deep-crouch.</summary>
@@ -123,16 +82,6 @@ namespace CathodeLib.NavMesh
         /// Grow deep-crouch onto a neighbouring polygon that is partly low, in the spirit of the
         /// 4-cell spread retail's classes show. Zero disables it.
         /// </summary>
-        /// <remarks>
-        /// <para>After the share fix we cover 76-78% of retail's deep-crouch floor and no clearance
-        /// bias moves that - crawl recall sits frozen at the same value for every bias at or below
-        /// zero - so the rest is polygon granularity rather than a threshold.</para>
-        /// <para>Measured and left OFF. On ChallengeMap11 it does what it says: deep-crouch area
-        /// goes 46.8 to 52.4 m2 against retail's 52.5 and coverage 76% to 78%. But the extra area is
-        /// in the wrong places, spurious goes 20% to 25% and crawl F1 falls 69.4 to 67.1 (64.1 with
-        /// no share floor at all). The totals match while the locations do not, which is the same
-        /// shape of answer the clearance-bias sweep gave.</para>
-        /// </remarks>
         public float HeightLimitedDeepNeighbourShare = 0f;
 
         /// <summary>How many times <see cref="HeightLimitedDeepNeighbourShare"/> may grow outwards.</summary>
@@ -142,29 +91,12 @@ namespace CathodeLib.NavMesh
         /// Fold the height class into the Recast area id BEFORE the regions are built, so the
         /// contour is cut along the class boundary and a crawl space becomes its own polygons.
         /// </summary>
-        /// <remarks>
-        /// This is what retail's data suggests - its deep-crouch regions are one or two
-        /// polygons of about half a square metre, far smaller than Recast merges to on its own, and
-        /// a class spread of that shape only makes sense on the heightfield. The
-        /// cost is the 6-bit area id: it now carries <c>1 + class + 3 * slot</c>, so barriers get 20
-        /// slots instead of 62 ids and any beyond that stop cutting the contour (they still get
-        /// stamped geometrically). Sampling a polygon's interior becomes unnecessary when this is on
-        /// - the class is already in the id. Worth +12.9 of crawl F1 over interior sampling across
-        /// four levels, for no change in the navmesh score.
-        /// </remarks>
         public bool HeightLimitedMarkedBeforePolygons = true;
 
         /// <summary>
         /// Minimum region area (m2) to use when <see cref="HeightLimitedMarkedBeforePolygons"/> is
         /// on. Negative keeps <see cref="MinRegionArea"/>.
         /// </summary>
-        /// <remarks>
-        /// Splitting on class boundaries turns a crawl space that used to belong to a big standing
-        /// region into a region of its own, and Recast DELETES a region below the minimum when no
-        /// neighbour shares its area type - which would punch holes in exactly the floor this is
-        /// meant to keep. Measured on ChallengeMap11 it makes no difference at 0, 0.0625 or 0.125
-        /// against the default, so the default stands.
-        /// </remarks>
         public float HeightLimitedRegionArea = -1f;
 
         public bool FilterUnreachable = true;
@@ -206,17 +138,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Skip COLLISION.MAP rows flagged GHOSTED / PRE_GHOSTED when building the Recast soup.
         /// </summary>
-        /// <remarks>
-        /// <b>true -> false (2 Sep 2026).</b> ChallengeMap9 ships 50 m2 of standing floor on the upper
-        /// deck that we never generated: `diag navvariant hosts:` bisected the soup and the floor came back
-        /// only with this skip off, and `diag navinst` shows the Floor_W_Filler module there flagged
-        /// GHOSTED|PRE_GHOSTED in retail's own shipped COLLISION.MAP exactly as in ours (19 ghosted rows of
-        /// 197 around the point, identical) - and retail's navmesh walks on it. A pre-ghosted collider is
-        /// floor to the shipped bake. Measured against the shipped navmesh on ten levels: CM9 recall
-        /// 93.5 -> 97.2, SCI_HospitalLower precision 97.9 -> 98.4, ENG_TowPlatform 95.6 -> 96.4,
-        /// Tech_MuthrCore recall 99.5 -> 99.8, SCI_Hub +0.1; HzdLab, Tech_Hub, CM11, Torrens, Solace
-        /// unchanged. No level lost recall or precision, so no door that starts open became a wall.
-        /// </remarks>
         public bool SkipGhostedCollision = false;
 
         /// <summary>
@@ -239,16 +160,6 @@ namespace CathodeLib.NavMesh
         /// Skip PLAYER_ONLY collision when building the Recast soup - the invisible surfaces that
         /// exist to keep Ripley somewhere, which no AI ever touches.
         /// </summary>
-        /// <remarks>
-        /// <b>false -> true (2 Sep 2026).</b> ENG_TowPlatform's tow deck (234 m2, `Platform_Section_1`) was
-        /// an island the seed filter removed: a PLAYER_ONLY CollisionBarrier box on the docking junction
-        /// stood solid in the soup from the floor to 1.67 m and cut the deck off (`diag navvariant gaps` /
-        /// `hosts:`; retail's COLLISION.MAP types it PLAYER_ONLY too, and retail's navmesh runs across it).
-        /// Measured against the shipped navmesh: TowPlatform recall 86.9 -> 97.5 with precision 96.5 -> 96.8
-        /// (F1 91.4 -> 97.1), HzdLab +0.1; ChallengeMap9, ChallengeMap11 and Tech_Hub unchanged; the rest
-        /// of the eleven-level sweep in `logs/navvariant_playeronly_B.txt`. CAMERA-typed rows
-        /// (<see cref="SkipCameraCollision"/>) made no difference anywhere and stay in.
-        /// </remarks>
         public bool SkipPlayerOnlyCollision = true;
 
         /// <summary>
@@ -307,10 +218,6 @@ namespace CathodeLib.NavMesh
         /// Vertical gap (metres) above which a poly with surface beneath it is treated as a
         /// separate storey and kept. Below this it is a shelf, crate lid or duct top.
         /// </summary>
-        /// <remarks>
-        /// This is what stops the strip decapitating multi-storey levels: SCI_Hub's upper deck
-        /// sits ~8 m over the main floor, so it is never mistaken for a prop.
-        /// </remarks>
         public float ElevatedPolyStoreySeparation = 1.9f;
 
         /// <summary>
@@ -357,13 +264,6 @@ namespace CathodeLib.NavMesh
         /// Leave glass out of the soup. Off for the navmesh - a window still stops you walking
         /// through it - and ON for the cover bake.
         /// </summary>
-        /// <remarks>
-        /// Glass is collision type TRANSPARENT / DYNAMIC_TRANSPARENT. You cannot take cover behind
-        /// a window and you can see straight through one, so for cover it is not an obstacle at
-        /// all - but the probe measures it as a full-height solid and runs cover along it. Matt
-        /// spotted exactly that on the top floor of ENG_TowPlatform, where we covered the front
-        /// window and retail has nothing there.
-        /// </remarks>
         public bool SkipTransparentCollision = false;
 
         public static NavMeshBakeSettings CreateDefault() => new NavMeshBakeSettings();

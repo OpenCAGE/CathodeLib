@@ -11,22 +11,6 @@ namespace CATHODE.Scripting.Refactor
     /// The script as it was before a refactor and as it is after, for everything the refactor touched,
     /// so the whole change can be taken back and put back on the same objects.
     /// </summary>
-    /// <remarks>
-    /// A refactor edits many composites at once: entities come and go, links are rewired, stored paths
-    /// are rewritten. Recording each of those as its own undo step would need an edit type per kind of
-    /// change, and those would have to replay in exactly the right order. Instead, anything about to be
-    /// changed is snapshotted the first time it is touched, and again once the refactor is done. Undo
-    /// writes the first snapshot back, redo the second.
-    ///
-    /// <para>The objects themselves are never replaced. An entity keeps its identity across an undo, so
-    /// anything holding it (a selection, an open editor, the viewer's registry) still holds the right
-    /// thing. Snapshots never share a list with the live object: <c>~Entity</c> clears
-    /// <c>childLinks</c> and <c>parameters</c> in place, so a shared list would be emptied behind our back.</para>
-    ///
-    /// <para>A composite's entities are snapshotted in dictionary order, and a restore rebuilds the
-    /// dictionaries in that order. The order is not cosmetic: it is the order instancing walks, which
-    /// decides zone arbitration, environment map ties and which placement of a shared composite claims it.</para>
-    /// </remarks>
     public sealed class ScriptTransaction
     {
         private readonly Commands _commands;

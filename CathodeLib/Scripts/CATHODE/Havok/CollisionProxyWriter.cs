@@ -92,12 +92,6 @@ namespace CathodeLib.Havok
         /// <param name="userData">What retail stores here is the write index of the row's physics material.</param>
         /// <param name="filterInfo">The collision type of the template instance; retail uses 9 (BALLISTICS) for prop materials and 3 (STANDARD) for world collision.</param>
         /// <returns>The new compound, last in <see cref="HavokPackfile.StaticCompoundShapes"/>, with its <c>ProxyIndex</c> assigned.</returns>
-        /// <remarks>
-        /// Both packfiles of a level (32 and 64-bit) need the proxy at the same ordinal; call this on each with the
-        /// same mesh and compare the results, restoring a <see cref="CreateCheckpoint"/> on either side if they
-        /// disagree. The mobile/Switch builds ship only the 64-bit file, as a 2018 tagfile; the same call writes
-        /// that, laid out from the file's own type table, and its ordinal is the proxy-list slot it is given.
-        /// </remarks>
         public static StaticCompoundShape AddMeshCollisionProxy(this HavokPackfile packfile, IList<Vector3> positions, IList<int> triangles, uint userData = 0, uint filterInfo = 9)
         {
             if (positions == null || triangles == null)

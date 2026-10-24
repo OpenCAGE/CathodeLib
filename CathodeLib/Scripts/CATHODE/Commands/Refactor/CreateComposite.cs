@@ -13,17 +13,6 @@ namespace CATHODE.Scripting.Refactor
     /// <summary>
     /// Moving a selection of entities out of a composite into a new composite, placed where they were.
     /// </summary>
-    /// <remarks>
-    /// The selected entities S of P move, as they are (same objects, same ids), into a new composite N,
-    /// and an instance In of N takes their place in P at the origin - so every position, being relative
-    /// to its composite, stays where it was.
-    ///
-    /// <para>Links only join entities of one composite, so every link between S and what stays behind is
-    /// routed through a pin of N: the part inside N runs to the pin, the part in P runs from In's pin,
-    /// and joined back up (the relay rule De-instance undoes) they make the original link. Which kind of
-    /// pin follows from which end owned the link and which side of a node it is drawn on, so the script
-    /// pages can draw both halves. Stored paths anywhere that reached into S through P gain the In step.</para>
-    /// </remarks>
     public sealed class CreateCompositePlan
     {
         public Composite Parent { get; }

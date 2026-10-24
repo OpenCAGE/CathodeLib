@@ -9,13 +9,6 @@ namespace CathodeLib.NavMesh
     /// Builds the alien's backstage navmesh: a triangulated sheet spanning the tops of the
     /// level's PathfindingAlienBackstageNode entities (the ceiling ends of the vent traversals).
     /// </summary>
-    /// <remarks>
-    /// Matches the retail generator, decoded from SCI_Hub's shipped NAV_MESH:
-    /// the node top positions are Delaunay-triangulated in XZ, then every edge is recursively
-    /// halved (Y interpolated linearly) while longer than 15 m, and the refined point set is
-    /// triangulated again. Every subdivision point retail ships - e.g. the 7 interior points of
-    /// SCI_Hub's 88 m south hull edge - falls exactly on those halving fractions.
-    /// </remarks>
     public static class BackstageMeshBuilder
     {
         public sealed class Result

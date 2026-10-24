@@ -54,11 +54,6 @@ namespace CathodeLib
     /// <summary>
     /// A helper class that holds all parse-able formats for a level, and saves them safely to update indexes across all
     /// </summary>
-    /// <remarks>
-    /// A component stays usable after the Level is dropped: code that keeps only <see cref="Commands"/> can still save it.
-    /// Components hold the ones they write through (Commands holds the renderable elements, collision maps and environment
-    /// animations, for example), so a level's memory is freed once nothing refers to any of its components.
-    /// </remarks>
     public class Level
     {
         public Textures Textures;

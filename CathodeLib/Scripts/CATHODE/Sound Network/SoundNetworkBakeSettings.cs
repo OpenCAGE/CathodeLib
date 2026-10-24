@@ -6,11 +6,6 @@ namespace CathodeLib.Sound
     /// entirely and leaves SNDNODENETWORK.DAT as it was found on disk, the same way the radiosity
     /// bake is opted into.
     /// </summary>
-    /// <remarks>
-    /// These were static fields on <see cref="SoundNodeNetworkGenerator"/> until the four agent
-    /// bakes were made opt-in; the defaults below are the values those statics shipped with, and
-    /// every measurement quoted was taken with them.
-    /// </remarks>
     public sealed class SoundNetworkBakeSettings
     {
         /// <summary>
@@ -25,100 +20,23 @@ namespace CathodeLib.Sound
         /// Two hand-placed SoundNetworkNode entities closer than this come through as one; the
         /// first in entity order is kept. 0 disables.
         /// </summary>
-        /// <remarks>
-        /// Retail does this and we never did. `diag authcensus SCI_HOSPITALLOWER`: the level places
-        /// 907 SoundNetworkNode entities, retail's file holds 823, and of the 84 it drops **77% have a
-        /// kept authored node within 0.50 m against 1% of the kept ones** (kept nearest-kept p10 0.80,
-        /// p50 1.21 m). The share is flat from 0.50 to 0.75 m, so the radius is about half a metre -
-        /// not the level's 1.5 m minimum spacing, which most kept pairs sit inside. The dropped ones
-        /// are whole prefabs' worth: every `Hiding_Cupboard_Freestanding` node (its neighbour is the
-        /// door_audio pair), ladders beside landings, vent-prefab nodes beside the duct's own.
-        /// <para>Bake-free at 0.5 m on six levels: node recall held on every one (worst HzdLab 95.1 ->
-        /// 94.9), node F1 up on all six (HzdLab 85.2 -> 91.4, its nodes 1,046 -> 914 against retail.s
-        /// 849), per-network count agreement up on five, links and paths identical everywhere. 0.75 m
-        /// starts costing recall (CM11 81.4, HzdLab 86.2). Replicates on CM11 (63% of dropped within
-        /// 0.5 m of a kept node, 0% of kept) and Tech_Hub (84% vs 1%).</para>
-        /// <para>**Shipped at 0.5 m** (run `soundE` against `soundB`): dev four sound 91.7 -> 91.9, overall
-        /// 79.2 -> 79.3; guards TORRENS 96.9 -> 97.1, Solace unchanged, HzdLab 89.9 -> 91.0. Positive on
-        /// four of seven levels, neutral on two, -0.2 on CM9.</para>
-        /// </remarks>
         public float AuthoredDedupDistance = 0.5f;
 
         /// <summary>
         /// When a level ships more than one SoundLevelInitialiser, take the LAST one rather than the
         /// first. Four campaign levels ship two, and on all four retail's fill follows the last.
         /// </summary>
-        /// <remarks>
-        /// The floor of a min-spacing packing is visible in the shipped file - the smallest distance
-        /// between two of retail's fill nodes - and on 24 of the 31 levels with fill it equals
-        /// network_node_min_spacing to within 2 cm, which is what identifies the parameter. Every
-        /// level that breaks the law ships two initialisers, and the last one predicts the floor
-        /// exactly: ENG_ReactorCore 1.25 (first authors none, so we took the 2.0 default),
-        /// SCI_AndroidLab 1.2 (first says 1.5), TECH_MuthrCore 1.5 (first authors none).
-        /// HAB_CorporatePent is the case that fixes the direction: its last initialiser authors no
-        /// spacing either, so the value is the 2.0 default - and 2.00 is the floor retail shipped,
-        /// against the 1.5 its FIRST initialiser asks for. The other 27 levels ship one, where first
-        /// and last are the same entity and nothing moves.
-        /// <para>MEASURED 8 Sep 2026 over the campaign (run n02): sound 92.2 -> 92.4, overall
-        /// unchanged at 89.3. Per level ENG_ReactorCore +3.64, TECH_MuthrCore +1.48,
-        /// HAB_CorporatePent +0.95, SCI_AndroidLab -0.36, and exactly 0.00 on five single-initialiser
-        /// controls. AndroidLab loses for the same reason NoInitialiserSpacing does - the correct,
-        /// tighter floor lets our over-eager fill in, and the count ratio falls further than recall
-        /// rises.</para>
-        /// <para>NOT SHIPPED, on the engine limit rather than the score. At the correct 1.25 m floor
-        /// ENG_ReactorCore's worst node carries 579 links against retail's 466 there and 474 across
-        /// the whole campaign - x1.22 on the exact dimension that
-        /// SOUND_ENVIRONMENT::load_network_data overflowed when we shipped 1,173. The excess is
-        /// proportional to the node excess (nodes x1.24, degree x1.24), so it is the fill density
-        /// defect again, not this setting. All four affected levels DO reach gameplay in
-        /// AYZ_PCProfile with it on, but the original fault never reproduced in that build either,
-        /// so a clean load is not evidence of safety. Turn it on once the fill matches retail's
-        /// density; it is one word, and the decode behind it is solid.</para>
-        /// </remarks>
         public bool UseLastInitialiser = false;
 
         /// <summary>
         /// network_node_min_spacing to assume when a level ships no SoundLevelInitialiser at all.
         /// </summary>
-        /// <remarks>
-        /// The five DLC maps with no initialiser - ChallengeMap 3, 7, 9, 11 and 12 - all show a
-        /// fill-to-fill floor of 1.20 m to the centimetre across 2,554 fill nodes (rule 81), against
-        /// the 1.4 assumed here. So 1.2 is what retail used, and it is not in doubt.
-        /// <para>MEASURED 8 Sep 2026 and NOT shipped, because setting it to the right value makes
-        /// the score WORSE: ChallengeMap9 +0.61, CM7 +0.15, CM11 -0.57, CM3 -0.45, CM12 -0.34, net
-        /// -0.60. Node recall rises on all five, by 6 to 10 points, and the count ratio falls
-        /// further than recall gains.</para>
-        /// <para>The reason is worth keeping. Our fill SATURATES the spacing floor and retail's does
-        /// not, so at a 1.4 m floor we under-pack by about the same factor that our greedy fill
-        /// over-packs by, and the two errors cancel into a node count that looks right. Correcting
-        /// the floor removes one error and exposes the other. **The parity score on these five
-        /// levels was right for the wrong reasons**, and the harness cannot tell a correct input
-        /// with a wrong algorithm from a wrong input with a wrong algorithm - it rewards the
-        /// compensating error. Ship this only together with a fill that stops where retail stops;
-        /// see the CandidateMode remarks for why thinning candidates is not that fix.</para>
-        /// </remarks>
         public float NoInitialiserSpacing = 1.4f;
 
         /// <summary>
         /// Keep a fill candidate only where there is a ceiling above it, within the level's
         /// <c>network_node_ceiling_height</c>. Off by default while measured.
         /// </summary>
-        /// <remarks>
-        /// ENG_ReactorCore's second initialiser authors 300; every other level reports the type
-        /// default of 50, and a level with no initialiser reports 0.
-        /// <para>REFUTED 8 Sep 2026. At 50 m the test drops 85 of HAB_Airport's 53,346 fill
-        /// candidates (0.16%), 0 of SCI_HospitalLower's 34,202 and 0 of TECH_Comms' 38,026. It
-        /// cannot account for a 20-50% surplus, and it was the last initialiser parameter we had
-        /// not implemented.</para>
-        /// <para>The premise behind it was wrong as well, which is the more useful half. The fill
-        /// surplus looked like it split on the initialiser - the five levels without one sit at
-        /// 0.94-1.09x retail's fill and every level with one at 1.2-1.5x - but those five are
-        /// exactly the levels where we used a 1.4 m floor against retail's 1.20 (rule 81). We
-        /// UNDER-pack there and land on retail's count by accident. At matched spacing our fill is
-        /// denser than retail's everywhere. Retail accepts fill pairs at exactly the floor, so its
-        /// acceptance test is ours, but it leaves gaps our greedy fill closes: its packing is not
-        /// maximal. That points at the CANDIDATE SET, not at any suppressing parameter.</para>
-        /// </remarks>
         public bool FillRequiresCeiling = false;
 
         /// <summary>
@@ -129,13 +47,6 @@ namespace CathodeLib.Sound
         /// <summary>
         /// Offer fill candidates from STANDING navmesh polygons only. Off by default while measured.
         /// </summary>
-        /// <remarks>
-        /// `diag fillclass SCI_HOSPITALLOWER soundB`: of retail's 562 fill nodes 98% stand on standing
-        /// floor, 0% on crouch, 2% on deep crouch and none off the mesh; of our 755, 79% / 2% / 7% /
-        /// 12%. Retail's fill does not go under tables or into ducts - those spaces get only the
-        /// hand-placed nodes - and its density on standing floor alone is 0.207 nodes per m2 against
-        /// our 0.242.
-        /// </remarks>
         public bool FillStandingOnly = false;
 
         /// <summary>
@@ -143,21 +54,6 @@ namespace CathodeLib.Sound
         /// initialiser's <c>network_node_max_visibility</c>. Only ever active on a level that has a
         /// SoundLevelInitialiser; off by default while measured.
         /// </summary>
-        /// <remarks>
-        /// The two DLC maps with no initialiser land within 2% of retail's node count at the 1.4 m
-        /// default spacing; every campaign level with one is 20-35% over, at authored spacings of 1.0
-        /// to 1.7 - so it is the initialiser's presence that changes retail's fill, not its spacing.
-        /// Its other parameter is `network_node_max_visibility` (15 on SCI_HospitalLower). If retail
-        /// only fills where a marker can see within that range, levels without an initialiser get no
-        /// cap, which is the split observed.
-        /// <para>REFUTED 8 Sep 2026 on four levels, and it is not a close call: HAB_Airport -13.05,
-        /// SCI_AndroidLab -5.64, TECH_Comms -3.76, SOLACE -1.36. Airport's node recall falls 85.7 -> 63.2 and its path
-        /// ratio 96 -> 30, because the cull takes nodes retail keeps and the networks they held
-        /// together come apart. The node-count overshoot it was meant to explain is real, but the
-        /// marker-sight cap is not its cause - the surplus and the nodes this removes are different
-        /// nodes. Combined with UseLastInitialiser it is still -4.14 on AndroidLab, so it is not an
-        /// interaction either. Leave it off; the overshoot needs a different explanation.</para>
-        /// </remarks>
         public bool FillRequiresMarkerSight = false;
 
         /// <summary>
@@ -168,52 +64,12 @@ namespace CathodeLib.Sound
         /// and the fill walks the pending list backwards, so the middle of a piece of floor is taken
         /// before its edges.
         /// </summary>
-        /// <remarks>
-        /// The fill takes every candidate that clears the spacing, so the candidate set sets the
-        /// density. Mode 4 is better on every level measured. Centroids alone (1) helps only where
-        /// we overshoot retail's node count and hurts where it is already right, which makes it a
-        /// fit rather than a rule; a uniform lattice (3) loses to geometry-derived candidates at
-        /// matched node counts, which is itself the finding - retail's node positions follow the
-        /// navmesh, they are not a grid.
-        /// <para>RE-MEASURED 8 Sep 2026, after the spacing decode (UseLastInitialiser) made the
-        /// floors comparable, and the 2 Sep verdict stands for a better reason than it was given.
-        /// A sparser candidate set does fix the node COUNT and costs node RECALL, every time:
-        /// SCI_HospitalLower mode 1 takes the count ratio 85.8 -> 95.2 and recall 92.9 -> 84.6
-        /// (-0.31); BSP_LV426_PT02 mode 2 lands 834 nodes against retail's 831, a 99.6 ratio, and
-        /// recall falls 77.4 -> 68.5 (+0.03); TECH_RND_HzdLab mode 1 goes 92.9 -> 98.0 and 94.8 ->
-        /// 91.6 (+0.05). Nothing nets more than a third of a point either way.</para>
-        /// <para>The reason is that our node POSITIONS are wrong, not our node count. `diag nodemiss`
-        /// puts 99.7% of retail's nodes within 1.5 m of one of ours but only 84% within the 1.0 m
-        /// the score uses - the two sets are the same cloud in a different realisation, displaced by
-        /// about one spacing. Thinning the candidate set therefore drops good nodes at the same rate
-        /// as surplus ones. **No rule that only changes HOW MANY candidates are offered can win both
-        /// terms**; that needs retail's traversal order, which is not recoverable from the shipped
-        /// file. The same trade sank FillRequiresMarkerSight and FillRequiresCeiling.</para>
-        /// </remarks>
         public int CandidateMode = 4;
 
         /// <summary>
         /// Visit fill candidates in list order rather than reversed. The acceptance test is unchanged;
         /// only which of two candidates competing for the same floor wins moves.
         /// </summary>
-        /// <remarks>
-        /// Order sets the PHASE of a min-spacing packing, and phase is what node recall measures -
-        /// 99.7% of retail's nodes have one of ours within 1.5 m but only 84% within the 1.0 m the
-        /// score uses. Density is already right, so this is the one dimension of the fill that can
-        /// move recall without moving the count.
-        /// <para>REFUTED 8 Sep 2026, and it settles the question it was asked for. Forward order
-        /// costs SCI_HospitalLower 0.25, ChallengeMap11 0.39, TECH_RnD_HzdLab 0.42 and HAB_Airport
-        /// 0.46, and - the point - node recall barely moves at all: 92.9 -> 92.7, 84.1 -> 85.8,
-        /// 94.8 -> 95.1, 85.7 -> 85.5. Reversing the phase does not move us toward retail.</para>
-        /// <para>`diag nullmodel n01 ord1` then measured the CEILING directly. Two packings that are
-        /// both ours - same code, same level, only this flag different - agree with each other
-        /// 87.7% at the 1.0 m the score uses, while ours agrees with retail 87.5%. **Two valid
-        /// realisations of the same packing process agree only 0.2 points better than ours agrees
-        /// with retail, so node recall is at its structural ceiling.** The 1.80 points the recall
-        /// term loses are the packing problem itself, not a placement defect - and 2.30 points of
-        /// the measured recall gap is the harness's greedy matcher besides (see Geometry.cs).
-        /// Nothing short of retail's exact algorithm moves this term.</para>
-        /// </remarks>
         public bool FillForwardOrder = false;
 
         /// <summary>Lattice step for CandidateMode 3, as a multiple of the authored spacing.</summary>
@@ -227,20 +83,6 @@ namespace CathodeLib.Sound
         /// <summary>
         /// How close two networks' nodes must come for the networks to count as adjoining.
         /// </summary>
-        /// <remarks>
-        /// <para>Every one of retail's network links is stored against a node pair about 1.5 m apart - the
-        /// spacing of the pair the door_audio prefab puts either side of a doorway - but the tail
-        /// matters, because NetworkPaths are laid over the connected components of this graph and a
-        /// missed boundary strands a whole network. Sweeping shows a clean cliff on SCI_Hub: 2.0 and
-        /// 2.5 give 54 boundaries and 276 paths, 3.0 gives 58 and 300, and 3.5 gives 64 boundaries
-        /// with all 378 paths - the last value that keeps the component structure whole while
-        /// shedding redundant chords. Nothing else moves with it; boundaries do not scale with node
-        /// count.</para>
-        /// <para>That 3.5 was fitted with proximity as the ONLY gate. Under
-        /// <see cref="BarrierBoundaryTest"/> 3 the opening is the gate and the range is only a
-        /// search radius, so it relaxes to 5.0: best or tied on all four dev levels there, and 6.5
-        /// starts admitting false pairs again (CM11 boundary F1 86 -> 84).</para>
-        /// </remarks>
         public float AdjoinDistance = 5.0f;
 
         /// <summary>
@@ -250,43 +92,6 @@ namespace CathodeLib.Sound
         /// must pass THROUGH barrier collision geometry, 3 the two networks must see each other
         /// with every barrier taken OUT of the occluders - they adjoin through an opening.
         /// </summary>
-        /// <remarks>
-        /// <para>A boundary IS a doorway: across all 32 shipped files every one of retail's 3,050
-        /// network links carries a non-zero BarrierInstanceGuid. <see cref="AdjoinDistance"/> alone
-        /// cannot express that, because two rooms are near each other along every shared wall as
-        /// well as through the door that joins them. Measured as a boundary SET rather than a count
-        /// (pair our networks to retail's by position, then ask which of retail's adjoining pairs we
-        /// also declare), the shipped rule has 87-91% recall at 42-59% precision - we find nearly
-        /// all the real ones and declare about 1.7x too many, so precision is the whole defect.</para>
-        /// <para>Mode 1 buys precision only by losing more recall, at every radius from 0.75 to
-        /// 3.0 m. Mode 2 is refuted by retail's own file: only 39% of stored crossings pass through
-        /// any barrier, because the barrier sits about 0.90 m to one SIDE of the midpoint - it is a
-        /// LABEL retail attaches to a boundary, not a solid the boundary pierces. **Mode 3 is the
-        /// rule and ships** (2 Sep 2026): it improves the boundary set on ten levels of fourteen and
-        /// regresses on none, keeps BSP_TORRENS exact, and once the sound hulls are skipped
-        /// (<see cref="OpeningSkipsSoundCollision"/>) it recovers all of the recall the first version
-        /// lost - Tech_Hub 176 links against retail's 184 from the old rule's 224, with paths
-        /// unchanged.</para>
-        /// <para>Under mode 3 the run is tried at <c>SoundNodeNetworkGenerator.OpeningHeights</c>
-        /// above each node, because a node sits on the navmesh and a single floor-level run is
-        /// stopped by any threshold or door sill.</para>
-        /// <para>On its own it still loses on the harness, because the links it removes were
-        /// standing in for the sealed door networks we lacked. Paired with
-        /// <see cref="SealedNetworkLinking"/> 1 and <see cref="OpeningExemptsSealed"/> false - a door
-        /// node must itself SEE OUT, through the soup that keeps the hulls - it is the net win the
-        /// diagnosis had been predicting: dev four sound 89.6 -> 91.7, overall 78.7 -> 79.2 (run
-        /// `soundB`), TORRENS exact, Tech_Hub 74 / 184 / 2147 against retail's 72 / 184 / 2151.
-        /// Every earlier attempt to admit sealed networks broke TORRENS because it admitted by size
-        /// or by exemption; the opening test is the discriminator those lacked. Guarded end to end
-        /// on three more levels (TORRENS exact, Solace -0.6, TECH_RnD_HzdLab -3.8, the one real
-        /// loss) and bake-free on thirteen more: better on seven, level on one, worse by at most
-        /// 0.14 of summed link+path ratio on five, with LV426_Pt01 and ENG_Alien_Nest landing
-        /// exactly on retail's structure.</para>
-        /// <para>Measured and rejected on top of mode 3 (`diag openmiss` names each miss): a longer
-        /// adjoin (6.5 loses 2 on CM11), a join-width cap (our correct joins are as wide as the
-        /// false ones), a per-vent boundary cap (retail's vents hold two), and a barrier requirement
-        /// on named pairs (inert at 3 m, harmful at 2).</para>
-        /// </remarks>
         public int BarrierBoundaryTest = 3;
 
         /// <summary>
@@ -302,27 +107,12 @@ namespace CathodeLib.Sound
         /// Under <see cref="BarrierBoundaryTest"/> 3, also leave SOUND and SOUND_BARRIER typed
         /// collision out of the opening soup, not just the barrier entities.
         /// </summary>
-        /// <remarks>
-        /// The opening test asks whether two rooms are physically joined. A level's authored sound
-        /// occlusion hulls (`Audio_Sock_COL`, collision type SOUND) are laid across doorways to
-        /// attenuate what passes through them - they describe how sound travels through an opening,
-        /// not whether there is one. `diag openmiss` names them as the blocker on half of Tech_Hub's
-        /// and a third of Tech_RnD_HzdLab's missed retail boundaries, each within a metre of a
-        /// barrier pivot, i.e. at a doorway.
-        /// </remarks>
         public bool OpeningSkipsSoundCollision = true;
 
         /// <summary>
         /// Under <see cref="BarrierBoundaryTest"/> 3, whether a sealed network's crossing is exempt
         /// from the opening test (true) or must pass it like any other (false).
         /// </summary>
-        /// <remarks>
-        /// Exempting them was the first reading - a door node stands IN the doorway, so gating it on
-        /// seeing through that doorway looked circular - and it is what let sealed admission break
-        /// BSP_TORRENS. Not exempting them is the discriminator sealed admission never had: TORRENS'
-        /// fake-door pockets sit behind solid geometry and cannot see out, while a real door node
-        /// sees both rooms. Only meaningful with <see cref="SealedNetworkLinking"/> on.
-        /// </remarks>
         public bool OpeningExemptsSealed = false;
 
         /// <summary>
@@ -330,25 +120,12 @@ namespace CathodeLib.Sound
         /// and still adjoin; 0 disables. Width is the XZ extent of every candidate crossing's
         /// midpoint between the two networks.
         /// </summary>
-        /// <remarks>
-        /// A doorway is narrow - retail's boundary endpoints are 1.50 m apart, the door_audio pair -
-        /// while the false boundaries the opening rule still declares are overwhelmingly WIDE joins,
-        /// two markers meeting across open floor with dozens of candidate pairs (`diag openmiss`).
-        /// </remarks>
         public float OpeningMaxWidth = 0f;
 
         /// <summary>
         /// Under <see cref="BarrierBoundaryTest"/> 3, also require a barrier pivot within
         /// <see cref="BarrierSearchRadius"/> of the kept crossing for a NAMED-to-named boundary.
         /// </summary>
-        /// <remarks>
-        /// Mode 1 asked this on its own and lost recall, because the crossing it kept was the
-        /// shortest one anywhere - along the shared wall, metres from the door. Under mode 3 the
-        /// kept crossing is the shortest one that SEES through, so the same question is asked of a
-        /// point that is far likelier to be in the doorway. The false boundaries this targets are
-        /// the open joins with no door at all - two markers meeting across floor with no barrier
-        /// within 2-3 m (`diag openmiss`: 3 of CM11's 10, 4 of Tech_Hub's 18).
-        /// </remarks>
         /// <para><b>Measured over the whole campaign and left OFF (7 Sep 2026, run `c16`).</b> On a
         /// seven-level sweep it looked free - CorporatePent +0.71, Solace +0.38, ChallengeMap9 +0.43,
         /// zero on the other four - but those levels were all ones we OVER-link, where removing any
@@ -368,13 +145,6 @@ namespace CathodeLib.Sound
         /// sealed network's crossing must also have a barrier pivot within
         /// <see cref="BarrierSearchRadius"/>. A door node has a door.
         /// </summary>
-        /// <remarks>
-        /// Retail's linked one-node sealed networks are the door_audio prefab's node, and its
-        /// barrier sits about 0.9 m from the crossing. Once the opening test is made clearer - sound
-        /// hulls skipped, three heights - sealed admission starts admitting pockets that merely see
-        /// out (Tech_Hub 78 networks against retail's 72), and this is the test that says which of
-        /// them are doors.
-        /// </remarks>
         /// <para><b>false -> true (2 Sep 2026).</b> Once sealed networks of up to three authored nodes may hold a
         /// boundary (<see cref="SealedNetworkLinking"/> 4), the ones they gain without a barrier are all
         /// false: BSP_TORRENS 26 -> 30 links and 78 -> 92 paths against retail's exact 26 / 78, back to exact
@@ -387,15 +157,6 @@ namespace CathodeLib.Sound
         /// Under <see cref="BarrierBoundaryTest"/> 3 with <see cref="OpeningSkipsSoundCollision"/>,
         /// test a SEALED network's crossing against the soup that still holds the SOUND hulls.
         /// </summary>
-        /// <remarks>
-        /// The authored sound hulls play two parts. Across a doorway they wrongly block the run
-        /// between two rooms that plainly adjoin, which is why the named-to-named test skips them.
-        /// Around a sealed pocket they are the very thing that seals it: on BSP_TORRENS the two
-        /// fake-door pockets retail leaves unlinked are closed by hulls, and sealed admission is
-        /// exact there with the hulls kept (18 / 26 / 78) and one pocket over with them skipped
-        /// (19 / 28 / 91). A door node sees out through a real opening; a pocket sees out only once
-        /// its hull is taken away.
-        /// </remarks>
         public bool SealedOpeningKeepsSoundHulls = true;
 
         /// <summary>
@@ -404,20 +165,6 @@ namespace CathodeLib.Sound
         /// <see cref="SealedLinkMaxNodes"/> nodes, 2 always, 3 only when a barrier sits at the
         /// crossing, 4 only when it is that small AND made entirely of AUTHORED nodes.
         /// </summary>
-        /// <remarks>
-        /// Retail is exact at one end: every one of the 100 one-node sealed networks across the 32
-        /// shipped files holds a boundary, and the share falls away immediately above that - 37% at
-        /// two nodes, 26% at three, 0% at six. A one-node sealed network is the lone door node in a
-        /// doorway no marker claimed; larger ones are sealed pockets. The rule is about retail's
-        /// sealed networks and ours are not the same population - we generate more of them - so
-        /// admitting them by size alone adds boundaries retail does not have, and mode 3 barely
-        /// filters anything. **On by default from 2 Sep 2026, but only under
-        /// <see cref="BarrierBoundaryTest"/> 3 with <see cref="OpeningExemptsSealed"/> false**: a
-        /// one-node sealed network is admitted when its crossing can see out through the opening,
-        /// tested against the soup that keeps the sound hulls. That is what separates a door node
-        /// from a hull-sealed pocket, and it is why BSP_TORRENS stays exact where every earlier
-        /// admission rule broke it. With the opening test off this should go back to 0.
-        /// </remarks>
         /// <para><b>1 -> 4 with <see cref="SealedLinkMaxNodes"/> 3 (2 Sep 2026).</b> A lift's door nodes are
         /// authored and come in twos and threes (a shaft pair, a front group with the door package beyond), and
         /// retail links them to the car at each stop. Bake-free: ChallengeMap9 links 50 -> 56 (retail 56) and
@@ -464,25 +211,12 @@ namespace CathodeLib.Sound
         /// Leave SOUND and SOUND_BARRIER typed collision - the authored occlusion hulls - out of the
         /// occluder soup the marker FLOOD and the node links see through. Off by default.
         /// </summary>
-        /// <remarks>
-        /// The hulls are what the opening test already skips for named-to-named boundaries. Here
-        /// the question is ownership: `diag netsurplus <level> soundB extra` finds whole chunks of
-        /// our nodes forming sealed pockets that sit exactly on retail's NAMED networks - 19 nodes
-        /// of SCI_HospitalLower's main corridor, 8 of Tech_RnD_HzdLab's circular corridor - which
-        /// means retail's flood reached them through something ours could not see past.
-        /// </remarks>
         public bool FloodSkipsSoundHulls = false;
 
         /// <summary>
         /// Drop every generated (non-authored) node that the flood assigns to a network whose
         /// marker is <c>room_size</c> Vent. Off by default while it is measured.
         /// </summary>
-        /// <remarks>
-        /// Retail's fill never enters a vent: `diag fillcensus` finds 0 fill nodes in every one of
-        /// Tech_Hub's four and Tech_RnD_HzdLab's three Vent-class networks - their nodes are all
-        /// hand-placed - where ours carries up to 31 fill nodes in one duct. Corridors get almost
-        /// none either (Tech_Hub p50 1 fill node across ten), but that one is not a clean rule.
-        /// </remarks>
         public bool NoFillInVents = false;
 
         /// <summary>
@@ -490,20 +224,6 @@ namespace CathodeLib.Sound
         /// node: a marker's seed cost is this times its class rank (large room 0, medium 1,
         /// corridor 2, small room 3, vent 4). 0 disables (default while measured).
         /// </summary>
-        /// <remarks>
-        /// On Tech_Hub the networks we over-fill are small ones beside big ones: "Vent Of Vent" 32
-        /// nodes against retail's 3, "Server Corridor" 44 against 3, "This one is for Cain" 46
-        /// against 7, and the extra nodes are mostly AUTHORED ones that retail gives to the room next
-        /// door - Tech_Support - ServerRoom 220 against our 147, Transit - Platform 144 against 88.
-        /// The nearest-marker flood lets the passage win what retail's room claims (`diag fillcensus`,
-        /// `diag netsurplus ... nodes`).
-        /// <para>**Measured end to end at 2 m and left OFF** (run `soundC` against `soundB`): the
-        /// boundary set improves on every level that is not already exact (CM11 80 -> 81, HospitalLower
-        /// 61 -> 62, Tech_Hub 80 -> 83, HzdLab 62 -> 76) and the harness does not move - dev four sound
-        /// 91.7 -> 91.5 (CM9 -0.8, CM11 -0.4, HospitalLower +0.3, Tech_Hub +0.1), guards TORRENS and
-        /// Solace unchanged, HzdLab +0.4. Larger values trade Tech_Hub for HzdLab, and a strict class
-        /// hierarchy (50 m) starves the small rooms outright.</para>
-        /// </remarks>
         public float ClassSeedBias = 0f;
 
         /// <summary>
@@ -511,21 +231,6 @@ namespace CathodeLib.Sound
         /// them can see through the hull-free soup - the flood's occluders with the door barriers
         /// and the authored sound hulls removed. Off by default while measured.
         /// </summary>
-        /// <remarks>
-        /// `diag netsurplus <level> soundB extra` finds whole chunks of room as sealed pockets sitting
-        /// on retail's NAMED networks: 19 nodes of SCI_HospitalLower's Treatment - Main Corridor, 5 of
-        /// its Reception Hub, 8 of Tech_RnD_HzdLab's circular corridor. They are passages, so
-        /// <see cref="EnclosedPocketExtent"/> does not fold them, and they are sealed by the authored
-        /// hulls: removing the hulls from the whole flood claims them (paths land exactly on both
-        /// levels) but also lets named rooms run into each other. This does only the pocket half.
-        /// The standing-floor test is what keeps a vent duct or a ladder shaft - crouch floor behind
-        /// a grille - sealed the way retail keeps BSP_TORRENS' five.
-        /// <para>**Measured end to end at a three-node floor and left OFF** (`soundD` against `soundB`):
-        /// Tech_Hub lands on 72 networks against retail.s 72 and still loses 0.4, CM9 loses 0.4 (37 -> 36
-        /// of 47), HospitalLower +0.1, Solace +0.6 (29 -> 27 of 33), TORRENS and HzdLab unchanged - mean
-        /// -0.01 over seven levels. It also removes networks on levels already under retail.s count.
-        /// Structurally right on the chunks it folds; the harness does not pay for it.</para>
-        /// </remarks>
         public bool AbsorbStandingPocketsThroughHulls = false;
 
         /// <summary>How far a standing pocket may look through the hull-free soup for an owned node.</summary>
@@ -548,14 +253,6 @@ namespace CathodeLib.Sound
         /// Drop an authored node that can see no other node AND has no navmesh beneath it - see
         /// <c>SoundNodeNetworkGenerator.DiscardOrphanedManualNodes</c>.
         /// </summary>
-        /// <remarks>
-        /// Off, because it does not generalise. It is exact on BSP_TORRENS - the two nodes it drops
-        /// are precisely the two retail omits - but DLC/ChallengeMap12 has seven nodes that are both
-        /// blind and floorless and retail KEEPS FOUR of them, giving them up to 50 links of their
-        /// own. No refinement separates them: neither distance to navmesh nor solid collision
-        /// beneath. Our "sees nothing" is partly a measure of our own occlusion rather than of the
-        /// level, since retail links these nodes freely and records the obstruction.
-        /// </remarks>
         /// <para><b>false -> true (2 Sep 2026)</b>, with <see cref="OrphanSightRange"/> 12 and
         /// <see cref="OrphanSightThroughDoors"/>. The rule that did not generalise judged sight against the full
         /// soup with no range: a void node forty metres from anything counted as seeing another void node, and a
@@ -645,17 +342,6 @@ namespace CathodeLib.Sound
         /// length of the level, because links are built before anything knows which room a node is
         /// in. Zero keeps every link.
         /// </summary>
-        /// <remarks>
-        /// Measured over all 32 levels: retail keeps 86.9% of its 1,766,451 links inside a single
-        /// network, and the ones that leave are short (p50 15 m, p90 34, p99 64). Unlimited, ours
-        /// were 42.7% inside, 1.62x retail's count, and reached a node degree of 1173 against
-        /// retail's campaign-wide worst of 474 - which is what the engine's fixed link array
-        /// overflows on. At 20 m the count lands at 0.96x retail, 72.5% inside, and the worst
-        /// degree at 405. Cuts at 10-12 m match retail's inside share instead but throw away a
-        /// fifth of the links; 40 m matches its median length but leaves degree at 737.
-        /// The cut is applied at write time, AFTER network assignment and boundary detection, so
-        /// nothing else in the bake - nodes, networks, boundaries, paths - can see it.
-        /// </remarks>
         public float CrossNetworkLinkDistance = 0.0f;
 
         /// <summary>
@@ -663,18 +349,6 @@ namespace CathodeLib.Sound
         /// with each other. Retail's do: sound network rule 69 read its cross-network links as
         /// existing only between networks that share one, and the shape of the file agrees.
         /// </summary>
-        /// <remarks>
-        /// Measured over all 32 levels against retail's 1,766,451 links. Unlimited we wrote 1.62x
-        /// as many, only 42.7% of them inside a single network against retail's 86.9%, with a node
-        /// degree of 1173 against retail's campaign-wide worst of 474 - which is the fixed array
-        /// the engine's load_network_data overflows. This rule leaves 0.93x retail's count, 74.6%
-        /// inside, worst degree 413, and a length distribution that lands on retail's: p90 30 m
-        /// against 37, p99 65 against 66. A plain distance cut cannot do that - at 20 m it matches
-        /// the count (0.96x) but cuts p99 to 48, because it throws away the long cross-room links
-        /// retail genuinely keeps through a real doorway.
-        /// Applied after LinkNetworks has decided the boundaries, so nodes, networks, boundaries
-        /// and paths are all settled before it and none of them can see it.
-        /// </remarks>
         public bool CrossNetworkLinksNeedBoundary = true;
 
         /// <summary>
@@ -682,16 +356,6 @@ namespace CathodeLib.Sound
         /// reached from nowhere else. Nearest crossing first, and only ever enough of them to make
         /// the named graph connected.
         /// </summary>
-        /// <remarks>
-        /// A level's rooms are one connected space and retail's files say so: TECH_COMMS ships 96
-        /// boundaries over 70 named networks and a route between 2145 of the 2415 possible pairs.
-        /// Ours keeps 70 boundaries there, which is a spanning tree's worth but arranged in pieces,
-        /// and the path count collapses to 737 - paths are quadratic in connectivity, so the last
-        /// few boundaries are worth far more than their number suggests. The gates that drop them
-        /// (no line through an opening, join too wide, sealed network over its quota) are each
-        /// defensible on their own; this only overrides them where the alternative is a room no
-        /// sound can reach.
-        /// </remarks>
         /// <para><b>OFF until 7 Sep 2026, because on its own it is a WASH.</b> It lifts the levels whose
         /// graph really had fallen apart - TECH_COMMS sound 82.7 -> 87.4, SCI_HospitalUpper 86.9 -> 90.1 -
         /// and costs the levels whose connectivity was already AHEAD of retail's: Solace -1.2 (we wrote
@@ -712,25 +376,12 @@ namespace CathodeLib.Sound
         /// Restrict <see cref="ReconnectNetworkGraph"/> to networks that hold NO boundary at all,
         /// rather than merging any two components.
         /// </summary>
-        /// <remarks>
-        /// Merging two components that each already have boundaries makes things worse where our
-        /// connectivity is already ahead of retail's: on CHALLENGEMAP11 one such reinstatement cost
-        /// 1.7 sound, because we were already writing 1000 paths against retail's 797. A network
-        /// with no boundary at all is a room no sound can reach, which retail never ships.
-        /// </remarks>
         public bool ReconnectIsolatedOnly = false;
 
         /// <summary>
         /// How far <see cref="ReconnectNetworkGraph"/> may look for a crossing of its own when no
         /// refused candidate exists between two parts of the graph. 0 uses refused candidates only.
         /// </summary>
-        /// <remarks>
-        /// A refused candidate only exists where a crossing was CONSIDERED, which is within
-        /// <see cref="AdjoinDistance"/>. Two halves of a level joined by a lift shaft or a long
-        /// service corridor have no node pair that close, so reconnection has nothing to put back
-        /// and the graph stays in pieces: on TECH_COMMS the refused set alone lifts paths 737 to
-        /// 1495 of retail's 2145 and then runs out, with our 15 components against retail's 5.
-        /// </remarks>
         /// <para><b>Measured over twelve balanced levels and left OFF (7 Sep 2026).</b> At 15 m with a
         /// component floor of 4 it is the best thing that has happened to TECH_COMMS - paths 737 ->
         /// 1892, sound 86.97 -> 88.68 - and it pays every point of it straight back on
@@ -747,21 +398,6 @@ namespace CathodeLib.Sound
         /// to join it to another - both when putting a refused boundary back and when searching within
         /// <see cref="ReconnectSearchDistance"/>. 0 or 1 joins everything, lone networks included.
         /// </summary>
-        /// <remarks>
-        /// Retail's own component structure says a level is NOT simply connected. It ships one
-        /// <b>This is the knob that made reconnection shippable.</b> Retail's own component structure
-        /// says a level is NOT simply connected. It ships one
-        /// SCI_HospitalUpper [63,2] plus three, TECH_HUB [66,4] plus two - but HAB_CorporatePent,
-        /// a tower whose floors do not share sound, ships [12,9,7,5] plus sixteen singletons. So
-        /// the piece that is obviously wrong is a LARGE one standing alone: our TECH_COMMS is
-        /// [32,22,5] and our HospitalUpper [50,8], where a 22-network chunk of a level cannot be
-        /// a room no sound reaches. A lone network can be exactly that, and retail ships dozens.
-        /// <para>Over twelve levels chosen to balance the ones we over-link, the ones we under-link
-        /// and four already close to retail: 4 is worth +0.55 sound and 6 the same, 8 and 12 lose
-        /// SCI_HospitalUpper. The four controls - BSP_LV426_PT01/PT02, BSP_TORRENS, SCI_Hub,
-        /// ChallengeMap3 - do not move by a thousandth under any setting, which is the test this
-        /// had to pass and <see cref="OpeningRequiresBarrier"/> failed.</para>
-        /// </remarks>
         public int ReconnectMinComponent = 4;
 
         /// Two MARKER networks whose closest crossing pierces a door barrier box, with the two nodes
@@ -782,16 +418,6 @@ namespace CathodeLib.Sound
         /// Two MARKER networks whose nearest nodes are within this distance adjoin whatever the
         /// opening sight test says. 0 disables it.
         /// </summary>
-        /// <remarks>
-        /// <see cref="DoorCrossingIsBoundary"/> asks the same question but insists the crossing
-        /// PIERCE a barrier we collected, which only covers the doors that are SoundBarrier or
-        /// NavMeshBarrier entities. `diag bridges` shows what that leaves: TECH_COMMS refuses nine
-        /// of retail's boundaries whose two nodes sit 0.9-1.5 m apart, every one of them carrying a
-        /// barrier in retail's own file, and its path count collapses to 737 of 2145 as a result.
-        /// Two rooms whose nodes are a metre and a half apart are separated by a door leaf, not by
-        /// architecture - retail's boundary endpoints spike at exactly 1.50-1.60 m, the door_audio
-        /// prefab straddling a doorway.
-        /// </remarks>
         /// <para><b>Measured and left OFF (7 Sep 2026).</b> Over six levels at 1.50, 1.75, 2.00 and
         /// 2.50 m, with and without the barrier: mean +0.02 at best, and negative above 2 m (Solace
         /// -1.56 at 2.00). The reason is in `diag bridges`: the boundaries we WRONGLY HOLD and the
@@ -811,14 +437,6 @@ namespace CathodeLib.Sound
         /// <summary>
         /// Nearest crossings CLOSER than this are not admitted by <see cref="NearCrossingDistance"/>.
         /// </summary>
-        /// <remarks>
-        /// Retail's own files sort themselves by this distance (`diag nearsep`, 2,608 network pairs
-        /// within 6 m across the 32 levels): the 1.50-2.00 m band is 94% joined, and it holds 915 of
-        /// the 1,378 pairs under 2 m - the door_audio prefab, whose two nodes straddle a doorway at
-        /// a fixed spacing. Under 1.50 m the share falls to 79% and under 1.00 m to 86% over a
-        /// handful of pairs: two rooms whose nodes almost touch are as often running alongside one
-        /// another down a shared wall as facing each other through a door.
-        /// </remarks>
         public float NearCrossingMinDistance = 0f;
 
         /// <summary>
@@ -854,28 +472,12 @@ namespace CathodeLib.Sound
         /// Free space, in metres, under which a sealed pocket counts as a container standing in a
         /// room rather than a passage of its own, and is folded into the room. 0 disables it.
         /// </summary>
-        /// <remarks>
-        /// Off, because it does not work. The idea was that a vent duct runs away from you and the
-        /// inside of a hiding cupboard does not, so free space would tell a container from a
-        /// passage. BSP_TORRENS refutes it: its vents are floor STUBS, and `Vent_Floor_Filler`
-        /// measures the same 1.9 m a cupboard does. It gets the wrong answer at every threshold.
-        /// See rule 19 in the notes - the discriminator is prefab identity, not shape.
-        /// </remarks>
         public float EnclosedPocketExtent = 0.0f;
 
         /// <summary>
         /// The most boundaries a SEALED network may hold. 0 lets it hold as many as
         /// <see cref="AdjoinDistance"/> finds, which is how the marker networks work.
         /// </summary>
-        /// <remarks>
-        /// A different rule from which sealed networks get linked at all
-        /// (<see cref="SealedNetworkLinking"/>), and retail is emphatic: of the 100 one-node sealed
-        /// networks across the 32 shipped files, 97 hold exactly one link. A door node hangs off the
-        /// room it opens onto as a LEAF - not, as you would expect, a bridge between two rooms - and
-        /// the paths it takes part in are the ones it inherits from the component it attaches to.
-        /// Without the cap, every admitted sealed network takes every neighbour within AdjoinDistance
-        /// and the boundary count overshoots the moment SealedNetworkLinking is turned on at all.
-        /// </remarks>
         public int SealedMaxBoundaries = 1;
 
         /// <summary>Largest sealed network that may hold a boundary under SealedNetworkLinking 1.</summary>

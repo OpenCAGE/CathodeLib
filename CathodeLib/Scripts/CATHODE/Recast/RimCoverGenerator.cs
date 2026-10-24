@@ -11,24 +11,6 @@ namespace CathodeLib.NavMesh
     /// Cover generation driven by the navmesh rim, built to match what retail's own COVER files
     /// measurably are rather than to rediscover them from a rasterised world.
     /// </summary>
-    /// <remarks>
-    /// <para>Measured across SCI_Hub, Tech_Hub, SCI_HospitalLower and BSP_Torrens, every shipped
-    /// cover segment lies on the navmesh rim, displaced 0.2925 m OUTWARD - onto the wall side.
-    /// The navmesh is eroded by the walkable radius (0.3125), so that puts the cover face 0.02 m off
-    /// the collision surface, and pushing a segment 0.3 m back along its own normal lands it on the
-    /// mesh for 79-85% of them. The spread is tiny: the 10th and 90th percentiles of the distance to
-    /// the rim are 0.29 and 0.31.</para>
-    /// <para>Two conditions separate rim that retail covers from rim it does not, and both hold on
-    /// every level measured. Cover never forms where the approach side is crouch or deep-crouch
-    /// floor (0.0% of 73 crouch samples on SCI_Hub, 0.0% of 361 and 1.2% of 341 on Tech_Hub), and it
-    /// grows steadily with how much open floor stands in front of it - from 3-5% of samples with
-    /// under 3 m2 within 2.5 m to 41-58% of those with over 15 m2. A corridor wall is not cover; the
-    /// same wall facing a room is.</para>
-    /// <para>Obstacle height is a weaker signal than it first looks. SCI_Hub strongly prefers
-    /// waist-high (~1 m) and full-wall (~3.5 m) obstacles and disfavours everything between, but
-    /// Tech_Hub is far flatter, so only the floor - an obstacle at least
-    /// <see cref="CoverBakeSettings.MinimumHeight"/> tall - is enforced here.</para>
-    /// </remarks>
     public static class RimCoverGenerator
     {
         /// <summary>
@@ -977,12 +959,6 @@ List<Vector3> inwards, int from, int to)
             /// How far the solid behind a rim point extends away from it, measured at knee height.
             /// Zero when there is nothing there; one cell when it is a single thin panel.
             /// </summary>
-            /// <remarks>
-            /// Retail is choosy about this and the corridor levels show it most clearly: on
-            /// BSP_LV426_Pt01 the rim it covers has a median depth of 3.2 m and a 10th percentile of
-            /// 1.0, while the rim it leaves alone has a median of 0.0 - a single thin panel with open
-            /// space behind it. SCI_Hub and Tech_Hub lean the same way more gently.
-            /// </remarks>
             public float ObstacleDepth(Vector3 from, Vector3 outward, float floorY, float maxDepth)
             {
                 int slab = (int)Math.Floor((floorY + 0.4f) / Slab);
@@ -1054,15 +1030,6 @@ List<Vector3> inwards, int from, int to)
         /// How thick the solid behind a rim point is, measured by walking a ray through it rather
         /// than by reading the voxel field.
         /// </summary>
-        /// <remarks>
-        /// <para>This is the one measurement the voxel field cannot make. Its cells are 0.25 m and a
-        /// triangle marks every cell its bounding box touches, so a 10 cm panel comes out half a
-        /// metre thick and is indistinguishable from a wall. Ray casting sees the real surfaces.</para>
-        /// <para>What it buys: retail will not put cover against a single thin panel with open space
-        /// behind it. On BSP_LV426_Pt01 - the level we are furthest from, shipping 24 segments where
-        /// we produced 237 - the rim retail covers has a median thickness of 3.2 m and a 10th
-        /// percentile of 1.0, while the rim it ignores has a median of 0.0.</para>
-        /// </remarks>
         public sealed class DepthProbe
         {
             private readonly BVHAccel _bvh;
@@ -1110,12 +1077,6 @@ List<Vector3> inwards, int from, int to)
             /// touches, so it reads high and blurs the waist-high objects retail actually covers
             /// into the walls it mostly does not.
             /// </summary>
-            /// <remarks>
-            /// Scans upwards in <see cref="CoverBakeSettings.RayTopStep"/> increments and stops at
-            /// the first miss above 0.3 m, so a ceiling with nothing under it is not the top of a
-            /// desk. This is the measurement the rim-feature survey used, where the covered rate by
-            /// obstacle height is 36.9% at 0.5-1.0 m against 15.6% above 3.5.
-            /// </remarks>
             public float TopAlong(Vector3 rimPoint, Vector3 outward, float floorY, CoverBakeSettings settings)
             {
                 if (_bvh == null)
@@ -1187,15 +1148,6 @@ List<Vector3> inwards, int from, int to)
             /// How far along the wall you can walk from here before the thing you are hiding behind
             /// stops. Capped at <paramref name="limit"/>.
             /// </summary>
-            /// <remarks>
-            /// Retail's cover sits near where a wall ENDS - somewhere you can lean out - and thins
-            /// out along a long run. Measured over the rim of four levels, covered% against metres
-            /// to the end: Tech_Hub 37.7 / 27.2 / 16.4 / 9.5 / 4.6 / 1.7 at 0/1/2/3/5/6 m against a
-            /// 30% base, SCI_Hub 28.2 / 18.6 / 5.8 and then ZERO beyond 4 m across 132 samples,
-            /// Tech_MuthrCore 22.0 falling to ~11. It is the first rim feature that runs the same
-            /// direction on every level with signal, and it is exactly the shape of our surplus:
-            /// we run cover down whole walls, retail does not.
-            /// </remarks>
             public float WallEndDistance(Vector3 rimPoint, Vector3 outward, float floorY, float limit)
             {
                 if (_bvh == null) return limit;
@@ -1220,13 +1172,6 @@ List<Vector3> inwards, int from, int to)
             /// Widest contiguous clear firing arc from where the occupant stands, swept horizontally
             /// about the inward normal at the given eye height. Returned in degrees.
             /// </summary>
-            /// <remarks>
-            /// This is the measurement retail's own files carry and we never made. Every shipped
-            /// cover slot has at least 60 degrees of clear arc (p10 84, and 0.0% of 9,085 slots below
-            /// 60), and the two height classes are defined by WHICH arc: low cover's over-the-top arc
-            /// has a median of 180 degrees and is zero on 0.2% of slots, while high cover's is zero on
-            /// 100% of them and it is a lean-past-the-edge arc instead, median 96.
-            /// </remarks>
             public float ClearArcDegrees(Vector3 stand, Vector3 inward, float eyeY, float range, float stepDegrees)
             {
                 if (_bvh == null) return 360f;

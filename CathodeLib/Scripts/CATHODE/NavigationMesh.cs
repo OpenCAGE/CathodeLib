@@ -194,14 +194,6 @@ namespace CATHODE
         /// The bit-packed area word: poly type, barrier id, enabled, character admittance, off-mesh
         /// link type, height class and markup, in 24 bits.
         /// </summary>
-        /// <remarks>
-        /// Every setter masks its value to its own field. They did not, and a value too wide for its
-        /// field silently ran into the next one: TECH_COMMS shipped four ground polygons reading
-        /// link type Teleport and four reading link type 8 because a barrier's classes were being
-        /// written into the 5-bit admittance field as the 10-bit CHARACTER_CLASS_COMBINATION they were
-        /// authored in. Nothing complained, and the corruption was only visible by diffing the shipped
-        /// file's histograms against retail's.
-        /// </remarks>
         public struct dt_area_t
         {
             private uint _value;

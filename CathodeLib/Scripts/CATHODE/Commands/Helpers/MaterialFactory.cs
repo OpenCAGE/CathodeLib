@@ -868,12 +868,6 @@ namespace CathodeLib
         /// True when a parameter the entity does carry should still be left to the material being
         /// replaced, judging by the value itself.
         /// </summary>
-        /// <remarks>
-        /// An all-zero colour is not a black tint, it is an unset one: a surface effect sphere whose
-        /// COLOUR_TINT reads &lt;0,0,0&gt; ships with 1,1,1 in the material, and a genuinely black tint
-        /// would make the effect invisible. Seven of Solace's eight surface effect spheres are this
-        /// case; the ones that author a real colour (&lt;255,255,255&gt;) rebuild exactly.
-        /// </remarks>
         public static bool TreatAsUnauthored(CATHODE.ShaderTypes.SHADER_LIST ubershader, string parameterName, float[] value)
         {
             if (value == null || value.Length < 3 || parameterName == null)
@@ -888,13 +882,6 @@ namespace CathodeLib
         /// True for a parameter that the entity authors but retail never writes into the material,
         /// so the material being replaced keeps its own value.
         /// </summary>
-        /// <remarks>
-        /// Only one so far: a surface effect's FALLOFF. Every CA_EFFECT_OVERLAY material retail ships
-        /// holds 1,1,1 in FALLOFF's three slots whatever the entity says, while every other constant
-        /// in the block rebuilds exactly - so the shader declares the parameter and the runtime must
-        /// supply it from somewhere else. Writing the authored value instead is what made these the
-        /// last material type we could not generate.
-        /// </remarks>
         public static bool NotBakedIntoMaterial(CATHODE.ShaderTypes.SHADER_LIST ubershader, string parameterName)
         {
             return ubershader == CATHODE.ShaderTypes.SHADER_LIST.CA_EFFECT_OVERLAY &&

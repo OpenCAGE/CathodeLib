@@ -36,23 +36,6 @@ namespace CathodeLib.NavMesh
         /// Separate minimum run length for runs whose obstacle can be seen OVER - below the cover
         /// dividing line. 0 uses <see cref="SpottingCoverLengthToGenerateOnePoint"/> for both.
         /// </summary>
-        /// <remarks>
-        /// Retail's spotting is two populations (`diag spotsplit`, 7,409 positions on 13 levels): a
-        /// third sits on rim that carries cover, on low obstacles with a median top of 1.10 m and a
-        /// 7.5 m view over them, and two thirds sits against TALL walls, median top 2.43 m with a
-        /// 0.20 m view over. Retail gives the tall class about 1.3x the jobs of the low class at the
-        /// same run length below 2 m (`diag spotramp`: 0.46 against 0.36 at 0.8-1.1 m, 0.77 against
-        /// 0.61 at 1.1-1.5, converging above 4 m), so one threshold has to be the average of two.
-        /// Bake-free the best pair is low 1.0 / tall 0.8 at 72.2 F1 against 71.8 for the single
-        /// threshold. MEASURED IN THE BAKER AND REJECTED - keep this at 0. Spotting F1, low 1.0 /
-        /// tall 0.8 against shipped: Tech_Hub 70.1 against 70.5, CM11 69.8 against 69.9,
-        /// HospitalLower 73.5 against 74.5, Solace 73.3 against 73.7; low 1.2 and 1.4 lose harder and
-        /// tall 0.7 loses too. The baker already applies <see cref="SpottingMinObstacleHeight"/> per
-        /// POSITION with a collision-read probe, which removes most of what a low-run length
-        /// threshold would, so the bake-free gain measures a gap the baker does not have - the same
-        /// fate as <see cref="SpottingObstacleExemptLength"/>. The two-population split is real; this
-        /// way of spending it is not.
-        /// </remarks>
         public float SpottingCoverLengthToGenerateOnePointLow = 0f;
 
         /// <summary>Obstacle height at or above which a run counts as a tall wall. See <see cref="SpottingCoverLengthToGenerateOnePointLow"/>.</summary>
@@ -95,29 +78,11 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Build assault runs only from the rim of standing-height floor.
         /// </summary>
-        /// <remarks>
-        /// An assault position is somewhere an NPC stands and fights from, and retail never puts one
-        /// on crouch or deep-crouch navmesh: 46 of 46 on SCI_Hub and 44 of 44 on BSP_TORRENS stand
-        /// on standing-height floor, against 69% of ours.
-        /// </remarks>
         public bool AssaultRequireStandingFloor = true;
 
         /// <summary>
         /// Build the spotting runs only from the rim of standing-height floor.
         /// </summary>
-        /// <remarks>
-        /// This was off, on the reading that retail's spotting jobs are only 83-97% on standing
-        /// floor so the crouch ones must be intended. That reading was wrong: a spotting job sits
-        /// 0.293 m OUTSIDE the rim, off the navmesh, so asking which polygon it lands on is
-        /// ambiguous at exactly the crouch/standing boundary - which is where all the disagreement
-        /// sits. The direct test settles it. Placing jobs by the rule on retail's own navmesh, with
-        /// and without the filter, over all 31 levels: RECALL IS UNCHANGED on every one (identical
-        /// to a tenth of a point, occasionally higher) while precision rises everywhere. Crouch rim
-        /// contributes nothing but false positives. Mean spotting F1 +4.5 points, better on 31 of
-        /// 31: ChallengeMap9 55.8 -> 68.4, ENG_TowPlatform 56.8 -> 66.2, ChallengeMap7 66.6 -> 75.2,
-        /// Tech_RnD_HzdLab 62.5 -> 71.1, ChallengeMap11 62.8 -> 69.9, SCI_AndroidLab 65.7 -> 72.4,
-        /// Tech_Hub 69.2 -> 73.1, SCI_Hub 71.2 -> 72.2.
-        /// </remarks>
         public bool SpottingRequireStandingFloor = true;
 
         /// <summary>
@@ -143,32 +108,12 @@ namespace CathodeLib.NavMesh
         public bool UseEmbeddedLearnedSelectors = true;
 
         /// <summary>Minimum distance between two learned spotting jobs, metres. Retail puts two within 0.75 m 5.6% of the time.</summary>
-        /// <remarks>
-        /// <b>0.75 -&gt; 0.80 (7 Sep 2026), campaign run `c20` against `c17`.</b> Spotting F1 82.85
-        /// -&gt; 83.01 and the count surplus x1.060 -&gt; x1.036, so it improves parity on both the
-        /// score and the shape - our excess spotting falls by 40%. Jobs 82.87 -&gt; 82.94.
-        /// It only re-opened because two things changed under it: the selectors were retrained on
-        /// 31 levels on 6 Sep, and `diag jobiter` was calling <c>JobPositionBaker.Bake</c> WITHOUT
-        /// the embedded models, so every fast job sweep since the learned passes shipped had been
-        /// scoring the length-rule path instead (Tech_Hub spotting read ~70 there against the
-        /// harness's 83.3). Re-tune the learned constants after any retrain, with that tool.
-        /// A 14-level sweep over-promised here - it read +0.20 where the campaign gives +0.16, and
-        /// on <see cref="LearnedAssaultSeparation"/> it read +0.61 where the campaign gives +0.21.
-        /// </remarks>
         public float LearnedSpotSeparation = 0.80f;
 
         /// <summary>
         /// Where in each station interval a learned job pass samples, as a fraction. 0.5 is the
         /// midpoint. The station COUNT and spacing do not change; only the phase does.
         /// </summary>
-        /// <remarks>
-        /// Not a tuning knob - it exists to bound the ceiling. Spotting is a greedy separation-limited
-        /// packing like the sound fill, and where the 0.25 m sampling starts is an arbitrary choice,
-        /// so a run at a different phase is an equally valid realisation of the same rule. Scoring
-        /// two of our own realisations against each other says how much of the spotting residual is
-        /// reachable at all; see the sound case in SoundNetworkBakeSettings.FillForwardOrder, where
-        /// the answer was none of it.
-        /// </remarks>
         public float LearnedStationPhase = 0.5f;
 
         /// <summary>
@@ -185,13 +130,6 @@ namespace CathodeLib.NavMesh
         public float LearnedAssaultThreshold = 0.45f;
 
         /// <summary>Minimum distance between two learned assault positions, metres. Retail's along-run gap is p5 1.08.</summary>
-        /// <remarks>
-        /// <b>0.85 measured and NOT taken (7 Sep 2026, campaign run `c21`).</b> It is worth +0.21
-        /// assault F1 (84.07 -&gt; 84.28) and buys it by moving the assault COUNT off retail's:
-        /// x1.014 -&gt; x1.036, from all but exact to 3.6% over. Matt's standing preference is
-        /// structural parity over the harness number where the two disagree - the same trade he
-        /// declined on the cover floor the same day - so it stays at 1.00.
-        /// </remarks>
         public float LearnedAssaultSeparation = 1.00f;
 
         /// <summary>
@@ -212,13 +150,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Build the assault runs from the baked COVER rather than from raw navmesh rim.
         /// </summary>
-        /// <remarks>
-        /// The parameter names for this pass all say "cover" - one point per run of
-        /// cover, a minimum distance from the edge of cover - and retail's run over cover volumes. Bare
-        /// rim stands in for those badly: 35% of the positions we produce are more than 5 m from
-        /// any retail one, because a stretch of wall with nothing to hide behind still counts as a
-        /// run. Cover carries the obstacle, thickness and open-floor gates already.
-        /// </remarks>
         public bool AssaultFromCover = false;
 
         /// <summary>
@@ -230,12 +161,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Reject an assault position with nothing tall enough in front of it to fight from behind.
         /// </summary>
-        /// <remarks>
-        /// Measured on SCI_Hub: 0 of retail's 46 assault positions face open floor and their tenth
-        /// percentile obstacle stands 1.50 m, while 31% of ours face nothing at all. Of the 85 we
-        /// produce that retail does not, 59% fail this test; of the 29 that land on a retail one,
-        /// none do.
-        /// </remarks>
         public bool AssaultRequireObstacle = true;
 
         /// <summary>See <see cref="AssaultRequireObstacle"/>.</summary>
@@ -245,36 +170,11 @@ namespace CathodeLib.NavMesh
         /// Reject a whole RUN whose mean obstacle height is below this, rather than testing each
         /// position separately. OFF by default - see the remarks.
         /// </summary>
-        /// <remarks>
-        /// Retail's assault selection is a per-wall decision and, unlike cover's, it is learnable.
-        /// Labelling every rim run of 3 m or more on twelve levels with whether retail put an assault
-        /// position on it (1,525 runs, 52.9% positive) and searching twenty aggregated features
-        /// exhaustively, the mean obstacle top over the RUN reaches F1 **83.5% on its own** at 1.63
-        /// (P 76.8 / R 91.4); the best six-term conjunction only reaches 84.3. Mean wall-end distance
-        /// is close behind at 83.4, and note its direction - assault wants walls FAR from an end,
-        /// the opposite of cover, consistent with the two being anti-correlated.
-        /// <para>**It does not transfer**, and the reason is worth remembering: 83.5% is a RUN-level
-        /// score - it measures which walls get chosen - while the harness matches POSITIONS within
-        /// 0.75 m. Our wall selection is evidently already close to retail's, because at the learned
-        /// 1.63 this gate never fires at all (the per-position test at 1.8 has removed those runs
-        /// already), and at 1.8 it is worth +1.2 on SCI_Hub and +0.5 on ChallengeMap9 - about +0.1 of
-        /// job score for a ray probe every 0.5 m of every run. The assault loss is in WHERE along a
-        /// chosen wall the positions land, and in run construction, not in which wall is chosen.</para>
-        /// </remarks>
         public bool AssaultRequireRunObstacle = false;
         /// <summary>
         /// Face an assault position along the rim edge it actually stands on, rather than along the
         /// length-weighted mean normal of the whole run.
         /// </summary>
-        /// <remarks>
-        /// **OFF - measured, and it is not the cause.** The yaw is the only orientation we write in
-        /// any of the four systems and it is 7.7 degrees out against retail on SCI_Hub's matched
-        /// assault positions. The obvious suspect was the run's mean normal diverging from the local
-        /// wall on a curve, but switching to the local edge moved the error from 7.697 to 7.706
-        /// degrees - nothing. On the positions that match, the run is straight enough that the two
-        /// normals agree, so the 7.7 comes from somewhere else. Kept as a knob so the hypothesis is
-        /// not retried.
-        /// </remarks>
         public bool AssaultYawFromLocalEdge = false;
 
         /// <summary>See <see cref="AssaultRequireRunObstacle"/>.</summary>
@@ -285,32 +185,6 @@ namespace CathodeLib.NavMesh
         /// Reject a whole run whose wall is too short to fight from, measured along the WALL rather
         /// than along the navmesh rim.
         /// </summary>
-        /// <remarks>
-        /// Assault is a which-wall problem, unlike spotting, which is a how-many problem. Splitting
-        /// the error with an oracle - keep our runs and our along-run layout but take the ANSWER
-        /// from retail - gives 61.5 shipped, 80.6 for perfect binary run selection and 90.4 for a
-        /// perfect count per run, so the walls we choose are most of what is wrong.
-        /// <para>A greedy search over thirty aggregated rim features, scored directly at POSITION
-        /// level over thirteen levels, takes exactly one term: <c>max over the run of
-        /// WallEndDistance</c>. Nothing else adds more than 0.3, and held-out refits match the
-        /// fitted rule on every level, which is what you expect of one threshold on one feature.
-        /// </para>
-        /// <para>What it means physically: the run has to contain at least one point with a metre
-        /// of unbroken wall on BOTH sides of it. This is not run length - a 4 m rim run tracing
-        /// three sides of a pillar fails it, and a 3 m run along a corridor wall passes.</para>
-        /// <para>**Read the size of this honestly.** On retail's own navmesh with no other gate it
-        /// is worth 61.5 -> 70.6, but the per-position obstacle test we already ship
-        /// (<see cref="AssaultRequireObstacle"/>) reaches 68.6 on its own and the two are
-        /// SUBSTITUTES - ANDing them scores 68.5, below either. What it is actually worth in the
-        /// baker, on our navmesh and on top of every gate already there, is about a point, and the
-        /// threshold that carries it is 1.00 rather than the 1.25 the bake-free search picks: our
-        /// rim and the collision set this probe reads are both different from that search's.
-        /// Per level, shipped -> this plus <see cref="AssaultMergeDistance"/> and
-        /// <see cref="AssaultRimToCollision"/>: ChallengeMap9 53.1 -> 55.9, TECH_HUB 61.6 -> 62.9,
-        /// SCI_Hub 55.6 -> 58.8, ChallengeMap11 61.6 -> 61.9. Positive on all four, mean +1.9.
-        /// Dropping the obstacle gate in its favour is NOT safe - it wins on ChallengeMap9 (57.9)
-        /// and loses on the other three.</para>
-        /// </remarks>
         public bool AssaultRequireWallLength = true;
 
         /// <summary>
@@ -324,25 +198,9 @@ namespace CathodeLib.NavMesh
         /// How far inside the collision surface the eroded navmesh rim sits, so
         /// <see cref="AssaultDistanceFromGeometry"/> can be turned into an inset from the rim.
         /// </summary>
-        /// <remarks>
-        /// This was the walkable radius, 0.3125, which put the position 0.1875 in from the rim
-        /// against the 0.208 median retail ships. It is the wrong number: the rim sits 0.2925 inside
-        /// the collision - the same offset the cover baker writes its faces at, and the same 0.29
-        /// that retail's spotting jobs sit OUTSIDE the rim (p25, p50 and p75 all 0.29 over 20,470
-        /// of them). 0.5 - 0.2925 = 0.2075 against a measured 0.21 at p25, p50 and p75 of retail's
-        /// 1,445 assault positions. Worth +0.2.
-        /// </remarks>
         public float AssaultRimToCollision = 0.2925f;
 
         /// <summary>Two assault positions closer together than this collapse into one.</summary>
-        /// <remarks>
-        /// There was no merge at all on this pass. Retail's own along-run gap between consecutive
-        /// assault positions has p5 1.08 and p10 1.18 over 478 pairs, so it never ships a pair on
-        /// top of another; ours does, wherever two runs meet at a corner. Swept at 0.25 / 0.40 /
-        /// 0.50 / 0.60 / 0.80 / 1.00 both bake-free and in the baker: 0.50 is best or tied
-        /// everywhere, and past 0.80 it costs recall faster than it buys precision. On its own in
-        /// the baker it is worth +0.8 on TECH_HUB, +1.0 on ChallengeMap9 and +0.3 on ChallengeMap11.
-        /// </remarks>
         public float AssaultMergeDistance = 0.5f;
 
         /// <summary>How far in front of the position to look for that obstacle.</summary>
@@ -358,11 +216,6 @@ namespace CathodeLib.NavMesh
         /// The same test for spotting positions, at a much lower bar - a spotting position is a
         /// place to look from, not a place to fight from, so a knee-high edge counts.
         /// </summary>
-        /// <remarks>
-        /// Swept on four levels: 0.7 m is the best value everywhere and 0.9 collapses recall, which
-        /// puts the cliff on <see cref="NavMeshBakeSettings.DeepCrouchHeight"/> at 0.875 - above it
-        /// the test starts throwing away the crawl-height ledges retail spots from.
-        /// </remarks>
         public bool SpottingRequireObstacle = true;
 
         /// <summary>See <see cref="SpottingRequireObstacle"/>.</summary>
@@ -401,20 +254,6 @@ namespace CathodeLib.NavMesh
         /// The spot has to get at least this far into the deep-crouch region or the edge is
         /// dropped - a crawl space too shallow to hide in is not worth a job.
         /// </summary>
-        /// <remarks>
-        /// These three were all set to reject a shallow spot, and together they were throwing away
-        /// half of retail's crawl jobs. Retail places 0.86 jobs per mouth on a one-mouth deep-crouch
-        /// region and 4.0 on a six-mouth one, over 1,000 regions on 31 levels; we were managing
-        /// about 0.42. The gates are not wrong in principle - retail's own job-to-task spans run
-        /// p10 1.06 / p50 1.33 / p90 2.00, so its spots really are 0.5-1.5 m in - but the DEPTH
-        /// PROBE is fragile: it walks inward from the middle of a mouth edge in 0.0625 m steps and
-        /// stops at the first sample outside the region, so a vent entered from its side reads as
-        /// shallow and the job is dropped even though retail puts one in that vent. Relaxing the
-        /// three gates recovers those without costing precision. Crawl F1: ChallengeMap11
-        /// 36.1 -> 49.7, Tech_Hub 44.2 -> 57.3, ChallengeMap9 59.2 -> 71.2, SCI_HospitalLower
-        /// 34.1 -> 35.4. Better on all four, mean +10.0. The cause itself is addressed separately by
-        /// <see cref="CrawlProbeFanDegrees"/>, which fans the probe out instead of trusting one normal.
-        /// </remarks>
         public float CrawlMinDistanceInsideDeepCrouchForSpotPosition = 0.25f;
 
         /// <summary>Spot and path have to end up further apart than this. See the remarks above.</summary>
@@ -423,17 +262,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Directions the crawl-space depth probe tries, in degrees off the mouth edge's normal.
         /// </summary>
-        /// <remarks>
-        /// The probe walks inward from the middle of a mouth edge and stops at the first sample
-        /// outside the deep-crouch region, so along the normal alone a vent entered from its SIDE
-        /// reads as shallow and the job is dropped even though retail puts one there. Fanning out
-        /// and keeping the deepest direction that stays inside is the fix for the cause rather than
-        /// the symptom. Crawl F1 against the single ray: ChallengeMap16 57.4 -> 64.1, ChallengeMap12
-        /// 41.4 -> 43.5, Tech_RnD 57.1 -> 59.3. WIDER IS NOT BETTER - a +-20/40/60/80 fan wins the
-        /// first two outright (68.6 and 46.3) but collapses Tech_RnD to 50.4, and +-30/55 does the
-        /// same, so +-30 is the only setting that is positive on all three. Set to a single 0 to get
-        /// the old single-ray behaviour back.
-        /// </remarks>
         public float[] CrawlProbeFanDegrees = { 0f, -30f, 30f };
 
         /// <summary>
@@ -441,48 +269,12 @@ namespace CathodeLib.NavMesh
         /// deep-crouch region whose own outer wall never gets <see cref="CrawlMinRegionDepth"/>
         /// away from a way in.
         /// </summary>
-        /// <remarks>
-        /// The other depth test is per MOUTH - it probes inward from one edge and stops at the spot
-        /// offset - so a region with one deep pocket and one shallow entrance gets judged twice and
-        /// inconsistently. Retail decides per region. Splitting the crawl error with an oracle on
-        /// retail's own navmesh gives 72.1 shipped, 78.9 for perfect binary region selection and
-        /// 86.3 for a perfect count per region, and a greedy search over sixteen region features
-        /// scored at position level takes one term, region depth at 0.48, worth 72.1 -> 76.6.
-        /// Nothing else adds more than 0.2.
-        /// <para>**OFF, because it does not transfer to our navmesh.** Swept in the baker on
-        /// SCI_HospitalLower, crawl F1 against 55.0 shipped: 46.8 at 0.25, 41.8 at 0.375, 35.6 at
-        /// 0.50, 22.1 at 0.75. It throws away 78 of 140 jobs at 0.50 and recall falls from 60.2%
-        /// to 27.1%. The reason is what the depth is measured FROM: a region's depth here is how
-        /// far its own outer wall - edges with no neighbour at all - gets from a way in, and our
-        /// deep-crouch regions mostly have no such wall. They sit under furniture with walkable
-        /// floor continuing on every side, so every edge is a mouth, the wall list is empty and
-        /// the depth reads zero. Retail's vents are bounded by real geometry. Kept as a knob so
-        /// the hypothesis is not retried without fixing the measurement first.</para>
-        /// </remarks>
         public bool CrawlRequireRegionDepth = false;
 
         /// <summary>See <see cref="CrawlRequireRegionDepth"/>.</summary>
         public float CrawlMinRegionDepth = 0.5f;
 
         /// <summary>Two crawl-space jobs are never placed closer together than this.</summary>
-        /// <remarks>
-        /// <b>0.25 -&gt; 0.50 (7 Sep 2026), campaign run `c22` against `c20`.</b> Crawl F1 73.84
-        /// -&gt; 76.67 and the count x1.592 -&gt; x1.184 - the surplus falls by 69%, and it was the
-        /// worst structural over-production of any of the four systems. Jobs 82.94 -&gt; 83.04,
-        /// overall 89.2 -&gt; 89.3. Byte scope verified: the only files that differ from `c20` across
-        /// all 32 levels are CRAWL_SPACE_SPOTTING_POSITIONS.
-        /// <para>The failure it fixes was pure PRECISION - crawl recall ran 91-96% while precision
-        /// sat at 55-63%, so we were finding nearly every retail job and inventing 60% more. 0.65
-        /// lands the count nearer still (x1.008) and is NOT taken: it loses 1.5 F1 and is 7 up / 7
-        /// down over fifteen levels, so its exact average hides per-level swings. The companion
-        /// gate <see cref="CrawlMinDistanceInsideDeepCrouchForSpotPosition"/> is negative on its own
-        /// (-5.4 at 0.50, -15.1 at 0.75) and adds nothing on top of the separation.</para>
-        /// <para><b>Why a knob the 30 Aug sweep measured at -0.2 is now worth +2.4:</b> that sweep
-        /// ran before the deep-crouch surface fix, which moved three of its four baseline levels a
-        /// long way (SCI_HospitalLower crawl 55.0 -&gt; 70.0, CM11 83.0 -&gt; 87.6, CM9 81.9 -&gt;
-        /// 85.1), and it ran through `diag jobiter` while that tool was still baking without the
-        /// embedded selectors. Its "do not re-run these sweeps" note had outlived its baseline.</para>
-        /// </remarks>
         public float CrawlMinSeparation = 0.50f;
 
         // The glass wall test. A ray is swept through the cover at chest height, from

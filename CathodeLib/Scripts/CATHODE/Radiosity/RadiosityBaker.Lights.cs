@@ -15,10 +15,6 @@ namespace CathodeLib.Radiosity
         /// diffuse map, else the mover's EmissiveTint - gamma-encoded by the
         /// <see cref="EmissiveLightColour(Vector3)"/> overload.
         /// </summary>
-        /// <remarks>
-        /// CA_ENVIRONMENT has no emissive texture sampler, so a fixture's light colour comes from its material and is shared
-        /// by the whole family: retail records one value per family where the per-mover EmissiveTint varies.
-        /// </remarks>
         private static Vector3 EmissiveLightColour(
             Movers.MOVER_DESCRIPTOR mover, RadiosityGeometry geometry)
         {
@@ -75,12 +71,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Encode an emissive radiosity multiplier into a surface light's Scale byte.
         /// </summary>
-        /// <remarks>
-        /// Scale is fixed point in sixteenths, biased by one: the engine reads <c>(Scale + 1) / 16</c>.
-        /// <c>ceil(16 * multiplier) - 1</c> reproduces retail's value set ({0, 1, 3, 7, 15, 23, 31} on BSP_TORRENS) for all
-        /// but one of its 376 emissive movers. Feed it the multiplier alone: the tint's brightness belongs in the light's RGB.
-        /// The field is a full byte, not five bits: Solace's Scale 159 and 255 lights carry 88% of its light energy.
-        /// </remarks>
         private static byte EmissiveScaleByte(float multiplier)
         {
             if (multiplier <= 0.0f) return 0;
@@ -99,11 +89,6 @@ namespace CathodeLib.Radiosity
         /// What the shipped bake said about each emitting entity (delta path), plus the flux coefficient fitted from it for
         /// entities it does not cover.
         /// </summary>
-        /// <remarks>
-        /// The shipped bake is ground truth for its own emitters in ways no formula recovers: its Weights encode level state
-        /// (Solace's dark sections carry fixtures whose flux is written near zero) and its RGB the true light colours.
-        /// Entities in it take its values verbatim; the area model covers new or modified content.
-        /// </remarks>
         private sealed class RetailLightPriors
         {
             /// <summary>
@@ -160,11 +145,6 @@ namespace CathodeLib.Radiosity
             /// exactly ONE retail entity carries - which is what a duplicated composite produces,
             /// since duplication mints a new composite instance id but keeps every resource_id.
             /// </summary>
-            /// <remarks>
-            /// This is what the lit/unlit decision must use. A resource_id shared by several retail instances only says the
-            /// fixture CLASS is lit somewhere (a fixture placed 30 times with 5 lit would force-light the other 25); H24 did
-            /// that and took a duplicate's light slices past the engine's 1024 cap, which blacked out the area.
-            /// </remarks>
             public Prior LookupOwn(Resources.Resource resource)
             {
                 if (resource == null)
@@ -183,11 +163,6 @@ namespace CathodeLib.Radiosity
             /// As <see cref="LookupOwn"/>, but an ambiguous resource_id still yields the merged prior. Only for VALUES
             /// (colour, Scale, flux, sample count), where the fixture class beats the scratch fallbacks.
             /// </summary>
-            /// <remarks>
-            /// Duplicated retail content finds its light values this way: a copy keeps every resource_id under a new
-            /// composite_instance_id, so the exact key misses on every copied mover. The K fit
-            /// (<see cref="CalibrateWeightCoefficient"/>) joins exact matches only (<see cref="LookupExact"/>).
-            /// </remarks>
             public Prior Lookup(Resources.Resource resource)
             {
                 if (resource == null)
@@ -280,15 +255,6 @@ namespace CathodeLib.Radiosity
         /// Per-level flux coefficient K in <c>per-entity Weight sum = K x sqrt(emissive area)</c>,
         /// fitted against the shipped bake the delta path patches.
         /// </summary>
-        /// <remarks>
-        /// <para>Delta path only: a full bake reuses no retail light values (its prior set is empty, K =
-        /// <see cref="DefaultWeightK"/>). A prior is retail's OUTPUT, so it is stale by construction: an edited material
-        /// keeps the light retail baked for the old one. On an unedited level the priors are total (Solace: every light of
-        /// all three slices).</para>
-        /// <para>The fit joins the shipped light slices to our measured emissive areas through RESOURCES.BIN (exact matches
-        /// only), which also absorbs any uniform bias in our area measurement. With fewer than 20 joined emitters K stays
-        /// <see cref="DefaultWeightK"/>.</para>
-        /// </remarks>
         private static RetailLightPriors CalibrateWeightCoefficient(
             Level level, Dictionary<int, float> emissiveAreas, Action<string> log)
         {
@@ -396,11 +362,6 @@ namespace CathodeLib.Radiosity
         /// carries the sqrt-flux of its own AREA SHARE, so the per-entity sum is
         /// K x sqrt(samples x area) and grows with sample count.
         /// </summary>
-        /// <remarks>
-        /// Decoded 27 Aug 2026: per-emitter ratios against retail fell as n^-0.5 in retail's sample count, which only the
-        /// area-SHARE form gives, and SumW = C x sqrt(n x area) fits every emitter of both levels best, with C piling
-        /// against one ceiling (<see cref="DefaultWeightK"/>).
-        /// </remarks>
         private static byte EmissiveWeightByte(float weightK, float emissiveArea, int samples)
         {
             if (emissiveArea <= 0.0f || samples <= 0) return 1;
@@ -531,10 +492,6 @@ namespace CathodeLib.Radiosity
         /// slice's emissive movers. One LightSlice per source, holding the input probes that
         /// sample it.
         /// </summary>
-        /// <remarks>
-        /// Scripted LIGHT movers (deferred light entities) are not sampled: retail attaches no light slice to one (SCI_Hub
-        /// join), and they already light the scene at runtime (injecting them double-counted 17% of the direct energy).
-        /// </remarks>
         private static RadiosityRuntime.RuntimeSurfaceLights BuildSurfaceLights(
             Level level, RadiosityGeometry geometry, List<RadiosityGeometry.Instance> instances,
             SurfaceTexel[] texels, int[] inputProbeForTexel, bool lostEmittersMustBeVisible,
@@ -563,11 +520,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Hold the slice's light table to the engine's limit, keeping the brightest emitters.
         /// </summary>
-        /// <remarks>
-        /// Overflowing the light-slice table is silent: the slice renders BLACK in game (H24's 1199- and 1092-slice delta
-        /// slices lost a whole duplicated environment). Retail's slices each cover one room; ours cover zones and can reach
-        /// the limit. Runs after every pass that can add a slice.
-        /// </remarks>
         private static void TrimLightSlices(RadiosityRuntime.RuntimeSurfaceLights lights, Action<string> log)
         {
             if (lights?.LightSlices == null || lights.LightSlices.Count <= MaxSurfaceLightSlices)
@@ -625,12 +577,6 @@ namespace CathodeLib.Radiosity
         /// Lights for emissive movers that never entered the bake geometry at all - dynamic
         /// radiosity movers and members of composites the static gate excluded.
         /// </summary>
-        /// <remarks>
-        /// On SCI_Hub, 532 of the 544 emitters retail lights and we did not are stationary RADIOSITY_DYNAMIC movers with an
-        /// emissive material: rightly kept out of the lightmap, but their emission on the static surfaces around them is
-        /// 23% of retail's direct energy. Each is sampled at the nearest input probes of the slice that owns the probes
-        /// closest to it.
-        /// </remarks>
         private static void AddUnbakedEmitterLights(
             Level level, RadiosityGeometry geometry, SliceBake[] slices,
             bool lostEmittersMustBeVisible, RetailLightPriors lightPriors, Action<string> log)
@@ -829,12 +775,6 @@ namespace CathodeLib.Radiosity
         /// Lights for emissive movers that ended the rasterise pass with no live emissive texel,
         /// sampled at the input probes nearest their emissive surface.
         /// </summary>
-        /// <remarks>
-        /// An emitter only reaches <see cref="BuildEmissiveSurfaceLights"/> through its live atlas texels, and many never get
-        /// one (the emissive submesh loses a shared rect's texels to its mates): retail ships 1818 light slices on SCI_Hub,
-        /// texel-derived emitters alone gave us 1211. Any mover with emissive triangles and no texel-derived light gets one
-        /// here.
-        /// </remarks>
         private static void BuildLostEmitterLights(
             Level level, RadiosityGeometry geometry, List<RadiosityGeometry.Instance> instances,
             SurfaceTexel[] texels, int[] inputProbeForTexel, ProbeGrid grid,

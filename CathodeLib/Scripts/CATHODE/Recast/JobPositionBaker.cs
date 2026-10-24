@@ -13,39 +13,6 @@ namespace CathodeLib.NavMesh
     /// Builds the three AI job-position files that sit beside the navmesh in every state:
     /// SPOTTING_POSITIONS, CRAWL_SPACE_SPOTTING_POSITIONS and ASSAULT_POSITIONS.
     /// </summary>
-    /// <remarks>
-    /// All three are lookup grids of jobs, and a job pairs a place worth checking with the place an
-    /// NPC stands to check it: the JobPosition is the hiding spot, the TaskPosition the vantage
-    /// point. That is why retail's spotting JobPositions sit just OUTSIDE the walkable surface -
-    /// 168 of BSP_TORRENS' 169 - while the TaskPositions sit on it.
-    ///
-    /// Spotting and assault both lay positions along a run of cover, with the same shape of rule
-    /// and their own constants (see <see cref="JobPositionBakeSettings"/>). Every distance is
-    /// measured from the WALL GEOMETRY, and the navmesh is already eroded inward by the walkable
-    /// radius, so the offsets have to be converted before they can be applied to the rim. That
-    /// conversion is what reconciles the two: an assault position 0.5 m off the geometry lands
-    /// 0.1875 m inside the rim, against the 0.208 median retail ships, and a spotting job 0.03 m
-    /// off the geometry lands 0.2825 m outside it, against 0.2929 measured.
-    ///
-    /// Retail's positions follow cover volumes. We rebuild the runs from the navmesh rim,
-    /// because the COVER file that ships is only the tactically usable subset and nowhere near
-    /// enough on its own - BSP_TORRENS has 17 segments totalling 34 m, three of them long enough
-    /// to qualify, against 46 assault positions in the shipped file. Applying the rules to that
-    /// cover alone reproduces only 3 of the 46, but with exact yaw on all three, so the rules are
-    /// right and the input was incomplete.
-    ///
-    /// Crawl spaces work off the mouths of a deep-crouch region - edges whose neighbour is walkable
-    /// floor of another class. An edge with no neighbour is the crawl space's own outer wall and is
-    /// not a way in.
-    ///
-    /// Grids use a 10 m cell, an origin of min(0, lowest job X/Z) - retail never writes a positive
-    /// origin - and cells of floor((max - origin) / 10) + 1. A job is filed under the cell holding
-    /// its TASK position, which is why some JobPositions fall outside their own cell (16 of
-    /// BSP_TORRENS' 169).
-    ///
-    /// Measured against retail on BSP_TORRENS, Solace, SCI_Hub and Tech_Hub with
-    /// <c>SndDump.exe jobbake</c>.
-    /// </remarks>
     public static class JobPositionBaker
     {
         public sealed class BakeResult
@@ -550,16 +517,6 @@ namespace CathodeLib.NavMesh
         /// length, then one edge distance in from each end with more spread evenly between so no
         /// gap exceeds the maximum spacing (the Assault* settings).
         /// </summary>
-        /// <remarks>
-        /// Retail's positions follow cover volumes. We rebuild the runs from the navmesh rim
-        /// instead, because the COVER file that ships is only the tactically usable subset and is
-        /// nowhere near enough on its own - BSP_TORRENS has 17 segments totalling 34 m, of which
-        /// three are long enough to qualify, against 46 assault positions in the shipped file.
-        /// The rim stands in for the wall, inset from it by the walkable radius, which is why
-        /// retail's positions sit 0.208 m inside the rim and not the full 0.5 m off the geometry.
-        /// Doing it this way took the match against retail from 39/41/46% to 65/72/56% on
-        /// BSP_TORRENS / Solace / SCI_Hub.
-        /// </remarks>
         static List<AssaultPositions.JobInfo> BuildAssaultAlongCover(
             List<List<RimEdge>> runs, JobPositionBakeSettings settings, GlassProbe glass,
             ObstacleProbe obstacles, ref int glassRejected, ref int obstacleRejected, ref int wallRejected)
@@ -762,14 +719,6 @@ namespace CathodeLib.NavMesh
         /// Describe every station along <paramref name="runs"/> once and score it with one or two
         /// models, keeping the stations each model puts at or above its threshold.
         /// </summary>
-        /// <remarks>
-        /// A station description is a couple of hundred raycasts, and with both selectors on the
-        /// spotting and assault passes walk the same standing runs - so describing the rim once and
-        /// asking both models halves the job bake. Runs are independent of each other, so they are
-        /// walked in parallel and the per-run candidates concatenated in run order: each list comes
-        /// out exactly as the sequential scan built it, which matters because the sort that follows
-        /// is not stable and the placement walks the sorted order.
-        /// </remarks>
         static void ScanLearnedStations(
             List<List<RimEdge>> runs, RimCoverGenerator.DepthProbe probe, CoverBakeSettings coverSettings,
             CoverGbdtModel modelA, float thresholdA, List<(float prob, Vector3 on, Vector3 inward)> outA,
@@ -1129,12 +1078,6 @@ namespace CathodeLib.NavMesh
         /// sits <see cref="JobPositionBakeSettings.AssaultCoverRimOffset"/> outside the navmesh rim,
         /// so it is put back on the rim first and the usual inset applied from there.
         /// </summary>
-        /// <remarks>
-        /// Chaining is endpoint-based and flip-tolerant: the cover baker cuts a continuous run into
-        /// segments of at most its maximum length, and adjacent polygons hand out their boundary in
-        /// opposite directions, so a segment's Left is as likely to meet the neighbour's Left as its
-        /// Right.
-        /// </remarks>
         static List<List<RimEdge>> ChainCoverRuns(List<Cover.CoverSegment> segments, JobPositionBakeSettings settings)
         {
             var edges = new List<RimEdge>(segments.Count);
@@ -1266,13 +1209,6 @@ namespace CathodeLib.NavMesh
         /// furthest any of the region's own outer wall gets from a way into it. A vent you cannot
         /// get properly inside is not a crawl space worth a job.
         /// </summary>
-        /// <remarks>
-        /// The existing depth test is per MOUTH - it probes inward from one edge and caps at the
-        /// spot offset - so a region with one deep pocket and one shallow entrance is judged twice
-        /// and inconsistently. Retail decides per region: searching region features against its own
-        /// files at position level, <c>maxDepth &gt;= 0.48</c> is the only term that pays, and it is
-        /// worth 72.1 -> 76.6. See CrawlMinRegionDepth.
-        /// </remarks>
         static float[] CrawlRegionDepths(NavigationMesh nav, out int[] regionOf)
         {
             int n = nav.Polygons.Length;
@@ -1378,13 +1314,6 @@ namespace CathodeLib.NavMesh
         /// Crawl spaces: the job is the spot inside the vent worth checking, the task is where an
         /// NPC stands outside it to look in.
         /// </summary>
-        /// <remarks>
-        /// Retail's crawl jobs are all on walkable surface with several metres of clear run ahead,
-        /// and sit a median 0.19 m from a deep-crouch polygon centroid (min 0.07, max 0.50 on
-        /// Solace) - so they are the centroids, not samples off the region's rim. The task is
-        /// pushed out through the nearest way out of the crawl space, which is why retail's
-        /// job-to-task distances vary between 1.06 and 1.73 m rather than being constant.
-        /// </remarks>
         static List<SpottingPositions.JobInfo> BuildCrawlSpace(
             NavigationMesh nav, List<RimEdge> mouths, JobPositionBakeSettings settings)
         {

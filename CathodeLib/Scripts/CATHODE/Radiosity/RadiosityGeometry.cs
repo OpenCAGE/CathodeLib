@@ -15,11 +15,6 @@ namespace CathodeLib.Radiosity
     /// World-space renderable triangle soup for the lighting bake, grouped into the radiosity
     /// "instances" that RADIOSITY_INSTANCE_MAP addresses, with a BVH over the whole level.
     /// </summary>
-    /// <remarks>
-    /// This is the radiosity counterpart to <c>CollisionNavMeshSoup</c>. It reads render meshes
-    /// rather than collision hulls because the bake needs lightmap UVs (UV set 1) and materials,
-    /// neither of which exist on the Havok side.
-    /// </remarks>
     public sealed class RadiosityGeometry
     {
         /// <summary>
@@ -34,12 +29,6 @@ namespace CathodeLib.Radiosity
             /// <summary>
             /// The island id retail's bake assigned this instance's movers, or -1 for geometry retail never baked.
             /// </summary>
-            /// <remarks>
-            /// The instance index (RADIOSITY_INSTANCE_MAP's lightmap_transform) is the island id the runtime state system
-            /// addresses (scripts toggling a RadiosityIsland), and islands subdivide composites, never merge them. A
-            /// renumbering permutes the state targets (powered-off sections render lit), so matched islands must keep
-            /// retail's id and grouping.
-            /// </remarks>
             public int RetailIslandId = -1;
 
             /// <summary>Indices into <c>Level.Movers.Entries</c> that belong to this island.</summary>
@@ -195,11 +184,6 @@ namespace CathodeLib.Radiosity
         /// one is geometry in the renderer's sense but not in radiosity's: a fog volume, a
         /// particle sheet, a light cone, a refraction pane, a debug box.
         /// </summary>
-        /// <remarks>
-        /// The renderable-type filter in <see cref="IsBakeable"/> misses some: ChallengeMap16's <c>SURFACEEFFECTBOX_*</c>
-        /// movers on <c>CA_EFFECT_OVERLAY</c> type-check as bakeable and supplied about a fifth of that level's albedo
-        /// chroma.
-        /// </remarks>
         private static readonly HashSet<SHADER_LIST> NonSurfaceShaders = new HashSet<SHADER_LIST>
         {
             // Effects and overlays.
@@ -567,13 +551,6 @@ namespace CathodeLib.Radiosity
         /// <see cref="RadiosityTuning.IslandSplitMaxOverlap"/> of its own, else starts a new one. Everything else stays in
         /// one island, however much its charts overlap.
         /// </summary>
-        /// <remarks>
-        /// Over 19 levels it reproduces retail's grouping on 4,894 of the 4,955 composites retail splits (98.8%) and on
-        /// 38,515 of the 38,523 it leaves whole. Without it a composite's glass maps onto the same texels as the frame around
-        /// it (Torrens' MU-TH-UR room: seven screens shared one 14x14 rect with the console). Only islands with no retail id
-        /// are split; glass smaller than <see cref="RadiosityTuning.IslandSplitMinArea"/>, or with no triangles, stays. The
-        /// first group keeps the original instance object and the others follow it, in order of their first mover.
-        /// </remarks>
         private static void SplitTransparentIslands(Level level, RadiosityGeometry geo, List<float> verts, List<Vector2> uvs,
             List<int> tris, List<int> triInstance, List<int> triMoverSlot)
         {
@@ -728,10 +705,6 @@ namespace CathodeLib.Radiosity
         /// Widen the instance's raw UV bounds by a triangle, and mark the cells of the unit UV
         /// square that the triangle's UV bounding box covers.
         /// </summary>
-        /// <remarks>
-        /// The bounding box over-reads diagonal triangles; cell-centre coverage was measured and left off (it raised
-        /// surface probes by 10%, and ChallengeMap4's mean rmse was a wash).
-        /// </remarks>
         private static void MarkUvCoverage(Instance instance, List<Vector2> uvs, int i0, int i1, int i2)
         {
             if (instance.UvGrid == null)
@@ -766,14 +739,6 @@ namespace CathodeLib.Radiosity
         /// Retail's rect size for geometry that still carries retail's lightmap UVs, read off the
         /// mesh alone.
         /// </summary>
-        /// <remarks>
-        /// CA's compiler chose each rect and then wrote the chart into it with texel centres at
-        /// <c>(i + 0.5) / (w - 0.5)</c>, so an island's lightmap UV extent along U is <c>(w - 1) / (w - 0.5)</c> for the rect
-        /// width <c>w</c> (MODEL_PARAMS stores <c>w - 0.5</c>), and likewise V: exact on 95.1% of the ten challenge maps'
-        /// 30,494 islands, within a texel on 99.2% (16 Sep 2026). Retail's rects were never a function of area. A chart not
-        /// written by that compiler fails the integer test and keeps the area formula; every retail model keeps retail's
-        /// probe density wherever it is placed.
-        /// </remarks>
         internal static bool TryRectFromUvConvention(Instance instance, out int width, out int height)
         {
             width = height = 0;
@@ -847,10 +812,6 @@ namespace CathodeLib.Radiosity
         /// Separate, lower-detail geometry used for occlusion, or null to occlude against the
         /// render meshes themselves.
         /// </summary>
-        /// <remarks>
-        /// Collision hulls avoid the interior submeshes, back faces and panel detail of render meshes that probes got
-        /// caught inside.
-        /// </remarks>
         internal BVHAccel OccluderBvh { get; private set; }
 
         /// <summary>Triangle count of the occluder soup, or 0 when occluding against render meshes.</summary>
@@ -872,10 +833,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// How far to pull a visibility ray in at each end when occluding against the proxy.
         /// </summary>
-        /// <remarks>
-        /// Neither endpoint of a visibility ray lies on the proxy surface (both are on the render meshes), so without it
-        /// the shell around the target blocks the ray just before it arrives.
-        /// </remarks>
         internal float OccluderEndpointSlack { get; set; }
 
         /// <summary>Largest share of a link, per end, that <see cref="OccluderEndpointSlack"/> may skip.</summary>
@@ -902,12 +859,6 @@ namespace CathodeLib.Radiosity
         /// Where a visibility ray for a surface point should start: on the occluder shell rather
         /// than inside it.
         /// </summary>
-        /// <remarks>
-        /// A collision hull is a coarse shell built <em>around</em> its object, so a point on the render surface is
-        /// normally inside it, and an unmoved origin is blocked at once (probes with no influence went from 26% to 59%).
-        /// Cast along the normal: a back-face hit means we started inside a shell, so the origin goes just past where the
-        /// ray leaves it; a front-face hit is a real occluder, and the origin stays put.
-        /// </remarks>
         internal Vector3 VisibilityOrigin(Vector3 position, Vector3 normal, float range, float offset)
         {
             Vector3 fallback = position + normal * offset;
@@ -1111,16 +1062,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Composite instances that own at least one mover asking for <c>RADIOSITY_STATIC</c>.
         /// </summary>
-        /// <remarks>
-        /// <para>This decides whether anything in a composite gets a lightmap rect, and so how many slices a level needs:
-        /// it selects 1260 / 1763 / 7838 composites on BSP_TORRENS / Solace / Tech_Hub against retail's 1243 / 1758 / 7825
-        /// (every renderable static mover gave 1522 / 4980 / 11078, and Solace 23 slices against retail's 3). The whole
-        /// composite comes along once it qualifies: that reproduces 100% of the resources retail lists.</para>
-        /// <para>The surplus it admits is NOT inert (open parity item): on CM3, 28 resources retail never maps (weapons,
-        /// physics templates, light fittings; no per-mover predicate separates them), whose extra instance-map rows cost
-        /// unrelated ceilings and walls their lightmap binding. A product fix needs the pristine instance-map keys
-        /// harvested in Instancing.</para>
-        /// </remarks>
         private static HashSet<ShortGuid> CollectLightmappedComposites(Level level)
         {
             const long staticBit = 1L << (int)SHADER_REQUIREMENTS.RADIOSITY_STATIC;
@@ -1177,11 +1118,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// True when any element of the mover asks for RADIOSITY_DYNAMIC.
         /// </summary>
-        /// <remarks>
-        /// Dynamic instances are lit from the volume probes, and retail never maps one (0 of BSP_TORRENS' 3171 mapped
-        /// movers); a rect on one makes the engine assert "mixing static and dynamic radiosity in the same instance".
-        /// RADIOSITY_STATIC is deliberately not required: retail maps movers that carry neither bit.
-        /// </remarks>
         internal static bool RequiresDynamicRadiosity(Movers.MOVER_DESCRIPTOR mover)
         {
             const long dynamicBit = 1L << (int)SHADER_REQUIREMENTS.RADIOSITY_DYNAMIC;
@@ -1206,12 +1142,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Whether this element emits, and how strongly, as radiance injected into the probe set.
         /// </summary>
-        /// <remarks>
-        /// An element emits because its <em>material</em> compiles the environment ubershader's EMISSIVE feature, not
-        /// because the mover carries an emissive multiplier: the feature flag picks out all 1639 entities retail lights on
-        /// Solace and BSP_TORRENS, the multiplier only 41.5%. Resolved per element, so a lamp's glass emits and its
-        /// housing does not.
-        /// </remarks>
         private static Vector3 ResolveEmissive(
             Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element)
         {
@@ -1230,11 +1160,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// An emissive element's strength: the material's own EMISSIVE_MULT constant.
         /// </summary>
-        /// <remarks>
-        /// Retail's Scale source: on BSP_TORRENS each light slice's Scale is <c>EmissiveScaleByte(EMISSIVE_MULT)</c> of its
-        /// mover's material (0.5 -> 7 on 118 of 118, 1.0 -> 15 on 513 of 517). The clamped mover multiplier is only the
-        /// fallback for a material whose shader does not remap the constant.
-        /// </remarks>
         internal static float ResolveEmissiveStrength(
             Movers.MOVER_DESCRIPTOR mover, RenderableElements.Element element)
         {
@@ -1258,11 +1183,6 @@ namespace CathodeLib.Radiosity
         /// The MATERIAL behind a mover's strongest emissive element - the one whose diffuse map
         /// gives the emitter its colour.
         /// </summary>
-        /// <remarks>
-        /// CA_ENVIRONMENT has no emissive texture sampler (EMISSIVE is a feature bit), so an emissive surface is lit from
-        /// its DIFFUSE map, shared per fixture family. The emitter colour itself is the material's DIFFUSE_TINT where it
-        /// has one (RadiosityBaker.EmissiveLightColour).
-        /// </remarks>
         internal static Materials.Material ResolveMoverEmissiveMaterial(
             Movers.MOVER_DESCRIPTOR mover)
         {
@@ -1386,10 +1306,6 @@ namespace CathodeLib.Radiosity
         /// The emissive radiance a mover would inject, whether or not it entered the bake
         /// geometry. Zero when nothing about it emits.
         /// </summary>
-        /// <remarks>
-        /// For the unbaked-emitter pass: RADIOSITY_DYNAMIC emitters are outside the lightmap geometry, but their emission
-        /// still lands on the static world around them.
-        /// </remarks>
         internal static Vector3 ResolveMoverEmissive(Movers.MOVER_DESCRIPTOR mover)
         {
             if (mover?.RenderableElements == null)

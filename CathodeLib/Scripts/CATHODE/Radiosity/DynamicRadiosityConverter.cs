@@ -12,21 +12,6 @@ namespace CathodeLib.Radiosity
     /// Converts individual movers onto the engine's DYNAMIC radiosity path, so added or moved
     /// geometry is lit live from the volume probe field instead of needing a lightmap rebake.
     /// </summary>
-    /// <remarks>
-    /// <para>Dynamic radiosity IS the lightmap pipeline: the same relit probe atlas and shader decode, sampled at one
-    /// per-instance coordinate the engine derives from the volume probe hash at the instance's pivot (cbInstanceXSC's
-    /// RadiosityProbeTexcoordAndScale) instead of per-pixel lightmap UVs through MODEL_PARAMS. A dynamic instance needs
-    /// no atlas allocation, which is exactly what an edit-added instance does not have.</para>
-    /// <para>Retail's dynamic convention, reproduced per mover: a genuinely dynamic shader (bytecode reading
-    /// cb10[11].xy; a flag-flipped static shader still samples the atlas through its rect), a zeroed 16-byte lightmap
-    /// transform (the engine asserts on a rect plus the dynamic bit), and no RADIOSITY_INSTANCE_MAP row.</para>
-    /// <para>Materials are CLONED, never flipped in place (a material and its shader are shared by every retail user).
-    /// The clone uses the level's own compiled dynamic twin where one ships; otherwise a dynamic permutation is
-    /// SYNTHESISED with <see cref="DxbcUtils.PatchStaticToDynamic"/>, the transformation CA's compiler makes between
-    /// the permutations. Each converted mover first gets its own REDS run, LOD chains included, or the clone leaks onto
-    /// every retail mover sharing the run. The constants head is zeroed ONLY when the mover has a radiosity-class
-    /// element: on glass/FX movers those bytes are per-type parameters (tint).</para>
-    /// </remarks>
     internal static class DynamicRadiosityConverter
     {
         public sealed class Result

@@ -8,23 +8,6 @@ namespace CATHODE
     /// Minimal DXBC (D3D11 shader container) utilities: chunk parsing, the DXBC modified-MD5
     /// checksum, an SM5 token walker, and the static-to-dynamic radiosity pixel-shader patch.
     /// </summary>
-    /// <remarks>
-    /// <para>The patch applies the exact transformation CA's own compiler produces between the
-    /// static/dynamic radiosity permutations of a shader, discovered by diffing the shipped twin
-    /// pairs (same ubershader family, same features modulo the family's radiosity feature bits):
-    /// declare cbInstanceXSC at cb10 and retarget the two mangle-decode instructions from the
-    /// interpolated lightmap UV (v1.zw) to the per-instance RadiosityProbeTexcoordAndScale
-    /// (cb10[11].xy). Everything else in the shader - the whole sampling chain - is identical
-    /// between the permutations, because dynamic radiosity IS the lightmap pipeline sampled at
-    /// one engine-supplied coordinate per instance.</para>
-    /// <para>Golden-tested: patching CA's shipped static shaders reproduces their shipped
-    /// dynamic twins' SHEX to exactly one deliberate dword (the dcl_input_ps v1 mask stays xyzw
-    /// because the unpatched vertex shader still feeds it - harmless). The checksum
-    /// implementation verifies bit-exact against every shipped blob. The vertex shader and the
-    /// reflection (RDEF) chunk are left untouched: the engine binds cbInstanceXSC per instance
-    /// unconditionally (the VS reads it for the world matrix), and the extra lightmap-UV work
-    /// in the VS is dead once the PS ignores v1.zw.</para>
-    /// </remarks>
     public static class DxbcUtils
     {
         private static readonly uint[] K = Enumerable.Range(0, 64)
@@ -122,17 +105,6 @@ namespace CATHODE
         /// atlas, so there is nothing to convert), already declares cb10, or carries the idiom
         /// in a shape this matcher does not recognise (bail safely rather than guess).
         /// </summary>
-        /// <remarks>
-        /// The mangle-decode site is one mul (opcode 0x38) and one mad (0x32) whose immediate
-        /// operand holds 255.996094 (0x437fff00) in exactly two adjacent lanes. Across CA's
-        /// permutations the interpolated lightmap UV arrives in different input registers and
-        /// components (v1.zw, v4.xy, v6.xy...) and the active lanes move with the surrounding
-        /// register allocation, but the shape is invariant: the source swizzle at the two active
-        /// lanes selects the two components holding (u, v) - the lower-numbered component is u -
-        /// and the dynamic twin replaces that source with cb10[11] swizzled so x lands in u's
-        /// lane and y in v's. Verified against every shipped static/dynamic twin pair (golden
-        /// test) and every failure shape shwhy dumped on ChallengeMap3.
-        /// </remarks>
         public static byte[] PatchStaticToDynamic(byte[] ps)
         {
             if (ps == null || ps.Length < 36 || BitConverter.ToUInt32(ps, 0) != 0x43425844) return null;

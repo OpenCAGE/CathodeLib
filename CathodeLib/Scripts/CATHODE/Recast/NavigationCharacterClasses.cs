@@ -6,19 +6,6 @@ namespace CATHODE
     /// Converts an authored CHARACTER_CLASS_COMBINATION into the NAVIGATION_CHARACTER_CLASS_COMBINATION
     /// the navigation data stores.
     /// </summary>
-    /// <remarks>
-    /// These are two different enums and the values do NOT carry across. Scripting works in the game's
-    /// ten character classes (PLAYER, ALIEN, ANDROID, CIVILIAN, SECURITY, FACEHUGGER, INNOCENT,
-    /// ANDROID_HEAVY, MOTION_TRACKER, MELEE_HUMAN; ALL = 1023). Navigation works in the five Detour
-    /// cares about (PLAYER, ALIEN, ANDROID, HUMAN_NPC, FACEHUGGER; ALL = 31), and the field it goes in
-    /// is five bits wide - so writing the authored number through unchanged both means the wrong
-    /// classes and overflows.
-    ///
-    /// Verified against retail TECH_COMMS: a barrier authored MOTION_TRACKER (256) ships as NONE,
-    /// because navigation has no such class; one authored PLAYER_AND_ALIEN (35, which is
-    /// PLAYER|ALIEN|FACEHUGGER in game classes) ships as 19, which is exactly PLAYER|ALIEN|FACEHUGGER
-    /// in navigation classes. ALL (1023) maps to ALL (31).
-    /// </remarks>
     public static class NavigationCharacterClasses
     {
         //Game class bits, in CHARACTER_CLASS order

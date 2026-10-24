@@ -100,11 +100,6 @@ namespace CathodeLib.Ubershaders
         /// obtainable are the ones already shipped, so an editor should offer a pick-from-list
         /// instead of free checkboxes.
         /// </summary>
-        /// <remarks>
-        /// Deliberately derived rather than listed: the set of families the shipped table carries
-        /// is the single source of truth, so adding or removing an entry changes what the UI allows
-        /// without any second list needing to be kept in step.
-        /// </remarks>
         public static bool CanBuildArbitraryPermutations(SHADER_LIST family)
         {
             return UberShaderRecompiler.CanCompile(family);

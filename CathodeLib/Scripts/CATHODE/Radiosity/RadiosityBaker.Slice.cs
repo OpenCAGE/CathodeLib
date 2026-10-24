@@ -542,10 +542,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Report any slice array that exceeds the size its structure allows.
         /// </summary>
-        /// <remarks>
-        /// Retail sits well under every limit (Solace's worst: 38 of 64 input probe tiles, 75 of 128 input tree nodes); a
-        /// denser level crossing one shows up as corrupt lighting or a render-pass fault, not at bake time.
-        /// </remarks>
         private static void WarnOverEngineLimits(RadiosityRuntime.RuntimeDataSlice slice, int sliceIndex, Action<string> log)
         {
             if (log == null)
@@ -618,11 +614,6 @@ namespace CathodeLib.Radiosity
         /// Scatter candidate probes over every triangle of a slice, then thin them to a
         /// Poisson-disc spacing.
         /// </summary>
-        /// <remarks>
-        /// Retail's approach: far more candidates than wanted, laid down in proportion to triangle area
-        /// (<see cref="RadiosityTuning.InputProbeCandidatesPerSquareMetre"/>), then uniform exclusion down to an even
-        /// density, so emitter placement does not depend on how evenly the authored UVs pack.
-        /// </remarks>
         private static List<ProbePoint> ScatterInputProbes(
             RadiosityGeometry geometry,
             List<RadiosityGeometry.Instance> instances)
@@ -1026,12 +1017,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// Grow the rasterised UV islands a few texels into the rect around them.
         /// </summary>
-        /// <remarks>
-        /// Only the ring the bilinear filter reads is filled: the texels just outside an island are read at its edge, and
-        /// a black ring there is the dark fringe around every UV island. Filling the whole rect instead put probes on
-        /// surfaces the islands never map (a closed prop's inside, a panel's back), which solved to no influence and
-        /// rendered black (22.1% of our surface probes empty against retail's 7.4%).
-        /// </remarks>
         private static void DilateIntoUnclaimed(RadiosityGeometry.Instance instance, SurfaceTexel[] texels)
         {
             if (instance.AtlasWidth <= 0 || instance.AtlasHeight <= 0)
@@ -1267,10 +1252,6 @@ namespace CathodeLib.Radiosity
         /// <summary>
         /// How many of the instance's rect texels each mover's lightmap UVs actually reach.
         /// </summary>
-        /// <remarks>
-        /// The currency <see cref="RasteriseByUv"/> rations the rect in. A texel counts for every mover whose triangles
-        /// cover it (demand, not contention), by the rasteriser's own coverage rule.
-        /// </remarks>
         private static int[] MeasureFootprints(RadiosityGeometry geometry, RadiosityGeometry.Instance instance, int slots)
         {
             var counts = new int[Math.Max(1, slots)];
@@ -1684,10 +1665,6 @@ namespace CathodeLib.Radiosity
         /// slices stamp. An emissive surface the bake leaves dark stores near-black instead (its glow art is not a
         /// reflectance: CM3's WELDER_BLUE panels read 5-11 in retail's probe table against our ~(4,52,128)).
         /// </summary>
-        /// <remarks>
-        /// The discriminator is the bake's own lit decision, not whether a prior exists: under loose priors every fixture
-        /// class resolves a colour, which would paint it over exactly the dark panels this darkens.
-        /// </remarks>
         private static void ApplyEmissiveAlbedoConvention(
             Level level, SurfaceTexel[] texels, RetailLightPriors lightPriors, Action<string> log)
         {

@@ -18,12 +18,6 @@ namespace CathodeLib
     /// applied in turn to a destination level that starts out unmodified. Apply them in list order: where two
     /// copies change the same thing, the later one is kept and the clash is recorded.
     /// </summary>
-    /// <remarks>
-    /// Only what each copy changed travels, so edits to different composites, different entities, or different
-    /// parameters and links of one entity all survive together. New assets come over with the entities that use
-    /// them (through <see cref="CompositePorter"/>). Save the destination with <see cref="Level.SaveInstanced()"/>:
-    /// movers, collision, navigation and lighting are rebuilt from the combined scripts.
-    /// </remarks>
     public class LevelMerger
     {
         public class Conflict

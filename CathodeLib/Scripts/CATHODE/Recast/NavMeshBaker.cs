@@ -45,16 +45,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Bake the level's navmesh, retrying at a coarser vertical voxel if Recast cannot encode it.
         /// </summary>
-        /// <remarks>
-        /// Recast packs a span's neighbour link into six bits, so a column holding more than 62
-        /// walkable spans has no encodable connection and BuildCompactHeightfield throws outright.
-        /// SCI_AndroidLab has such a column at the authored 0.0625 m cell height (79 layers), and
-        /// because Instancing.RunOptionalBake swallows a failed bake the level was silently keeping
-        /// retail's NAV_MESH - scoring a meaningless 100% against itself. Doubling the cell height
-        /// merges the thin stacked spans and costs very little: at 0.125 m that level bakes 4,533
-        /// polys against retail's 4,450, and scores 97.2%. Only levels that would otherwise produce
-        /// NOTHING are affected - everything else succeeds on the first pass at the authored value.
-        /// </remarks>
         public static void BakeLevel(
             Level level,
             Instancing instancing,
@@ -570,13 +560,6 @@ namespace CathodeLib.NavMesh
         /// regions are built, so the contour follows the class boundary and a crawl space becomes
         /// its own polygons instead of being averaged into the room it opens onto.
         /// </summary>
-        /// <remarks>
-        /// This is what retail's data shows. Its deep-crouch regions are one or two polygons of
-        /// about half a square metre, far smaller than Recast merges to on its own, and the shape of
-        /// its classes says they come from a cell-level mark / filter / dilate pipeline that only
-        /// makes sense before polygonisation.
-        /// Everything here is <see cref="RcBuilder.Build"/> verbatim apart from the marking step.
-        /// </remarks>
         static RcBuilderResult BuildWithHeightClasses(
             RcSampleInputGeomProvider geom, RcBuilderConfig bcfg, NavMeshBakeSettings settings)
         {
@@ -648,14 +631,6 @@ namespace CathodeLib.NavMesh
         /// Fold each span's height class into its area id, keeping whatever barrier slot the convex
         /// volumes already put there, and grow each class outwards by the configured spread.
         /// </summary>
-        /// <remarks>
-        /// The spread is not decoration. Marked cell by cell and left alone, our deep-crouch surface
-        /// comes out at 32 m2 on ChallengeMap11 against retail's 52 - almost everything we mark is
-        /// right (1% spurious) but we mark two thirds of what retail does, because a clearance
-        /// measured at the cell is only under the table itself and retail's region runs out to where
-        /// a character stops fitting. See <see cref="NavMeshBakeSettings.HeightLimitedAreaSpread"/>
-        /// for why we grow 2 cells rather than 4.
-        /// </remarks>
         static void MarkHeightClassAreas(RcCompactHeightfield chf, NavMeshBakeSettings settings)
         {
             int spanCount = chf.spanCount;
@@ -864,17 +839,6 @@ namespace CathodeLib.NavMesh
         /// convex volume, so the contour builder cuts the navmesh along the barrier's own outline.
         /// Returns the id chosen per barrier, or -1 for one that could not be given a distinct id.
         /// </summary>
-        /// <remarks>
-        /// This is what makes a barrier's flags apply to the shape the designer drew rather than to
-        /// whichever polygons happened to overlap it. Recast never lets a region span two area ids
-        /// (see RcRegions.CanMergeWithRegion), so a 1x1 barrier produces a 1x1 hole in the polygon
-        /// layout and the area stamp lands on exactly those polys.
-        ///
-        /// There are only 62 usable ids and levels carry more barriers than that - SCI_Hub has 77 -
-        /// so ids are reused between barriers whose padded bounds do not overlap. Same-id barriers
-        /// are therefore too far apart to end up in one region, and the stamping pass can tell them
-        /// apart by position.
-        /// </remarks>
         static int[] AddBarrierConvexVolumes(
             RcSampleInputGeomProvider geom,
             List<CollisionNavMeshSoup.BarrierVolume> barriers,
@@ -1021,12 +985,6 @@ namespace CathodeLib.NavMesh
         /// <summary>
         /// Stamp each barrier's id and admittance onto the polygons Recast carved out for it.
         /// </summary>
-        /// <remarks>
-        /// The polygons come pre-cut to the barrier footprint by
-        /// <see cref="AddBarrierConvexVolumes"/>, so this is a lookup by area id rather than a
-        /// geometric test. Only barriers that could not be given an id of their own still go
-        /// through the old "does the poly overlap the volume" path, which over-stamps.
-        /// </remarks>
         static NavigationMesh.dt_area_t[] BuildPolyAreas(
             DtMeshTile tile,
             List<CollisionNavMeshSoup.BarrierVolume> barriers,
@@ -1147,11 +1105,6 @@ namespace CathodeLib.NavMesh
         /// <c>baseOffMeshLinks</c> does and the way retail data ships: four links per connection -
         /// ground-&gt;offmesh and offmesh-&gt;ground at each of the two endpoints.
         /// </summary>
-        /// <remarks>
-        /// Without these the off-mesh polys exist but are unreachable, so ladders, vents and
-        /// traversals silently stop working. Retail Solace has 58 connections and exactly
-        /// 58 * 4 = 232 links beyond its 1728 internal ones.
-        /// </remarks>
         static void ConnectOffMeshLinks(
             NavigationMesh.dtPoly[] polys,
             List<Vector3> verts,
@@ -1306,18 +1259,6 @@ namespace CathodeLib.NavMesh
         /// Grow the link array to the size Detour would have allocated, leaving the spare entries as a
         /// free list. Returns the pool size to advertise.
         /// </summary>
-        /// <remarks>
-        /// The pool is sized from the polygon EDGES, not from the links actually built - one per ground
-        /// poly edge, two per tile-boundary portal, four per off-mesh connection. Measured against the
-        /// shipped files that is exact on 17 of 19 tiles (the other two, TECH_COMMS and Solace, come out
-        /// 2 and 4 links larger than this, which are entries nothing in the file accounts for). The old
-        /// guess of used + 50% + 64 landed in the right ballpark but matched nothing.
-        ///
-        /// The spare entries are a FREE LIST: each points at the next and the last is DT_NULL_LINK, which
-        /// is how Detour expects to find an unused pool and how every shipped tile is written. Leaving
-        /// them all as DT_NULL_LINK - which is what this did - is a broken free list; a runtime that
-        /// trusts it rather than rebuilding gets one spare link and no more.
-        /// </remarks>
         static int PadLinkPool(List<NavigationMesh.dtLink> links, NavigationMesh.dtPoly[] polys, int groundPolyCount, int offMeshConCount)
         {
             int edges = 0, portals = 0;
@@ -1444,20 +1385,6 @@ namespace CathodeLib.NavMesh
         /// Height class from the share of a polygon's own SURFACE that is low, rather than from the
         /// single worst reading anywhere on it.
         /// </summary>
-        /// <remarks>
-        /// <para>Taking the minimum over the centroid, the vertices and every edge sample means one
-        /// low column condemns the whole polygon, and Recast merges open floor into polygons many
-        /// metres across - so a room with a desk in one corner came out entirely deep-crouch.
-        /// Measured against retail over 31 levels, our deep-crouch surface was 1,845 m2 against
-        /// retail's 797, and 62% of it is floor retail calls Standing. 262 of our 1,953 deep
-        /// polygons have essentially none of retail's deep floor on them and they carry 680 m2 of
-        /// that surplus.</para>
-        /// <para>Sampling the interior on the cell grid and asking what share is low fixes the
-        /// direction of the error without touching the clearance measurement itself. Retail
-        /// almost certainly marks the classes on the heightfield before the polygons are built -
-        /// retail's deep regions are one or two polygons of about half a square metre, far smaller
-        /// than Recast would merge to - so this is an approximation of that, not the thing itself.</para>
-        /// </remarks>
         static NavigationMesh.AreaHeight PolyHeightClass(
             RcCompactHeightfield chf,
             DtMeshData data,
@@ -1563,14 +1490,6 @@ namespace CathodeLib.NavMesh
         /// walkable span nearest the polygon's own surface, and the free height above that span.
         /// Positive infinity when nothing resolves, which classifies as Standing.
         /// </summary>
-        /// <remarks>
-        /// This was measured per cell rather than per polygon, and it took two things it should
-        /// not have. It read chf.spans[cell.index], the LOWEST span in the column, so a polygon on
-        /// an upper deck was judged by the headroom of the ground floor underneath it - which on a
-        /// multi-storey level is the gap up to that very deck, and reliably reads as a crouch. And
-        /// it did not skip spans the erosion pass had already killed, so the sliver of floor inside
-        /// a wall counted as surface someone stands on. Both inflate the crouch classes.
-        /// </remarks>
         static float PolyClearance(
             RcCompactHeightfield chf,
             DtMeshData data,
@@ -1989,13 +1908,6 @@ namespace CathodeLib.NavMesh
         /// Drop kept polys that are a prop or duct top rather than floor: walkable surface sits
         /// directly beneath them, close enough that the two cannot be separate storeys.
         /// </summary>
-        /// <remarks>
-        /// This used to compare every poly against the median Y of the whole tile, which works
-        /// on a single-deck level like BSP_TORRENS and decapitates everything else - SCI_Hub lost
-        /// all 236 of its upper-deck polys, so the Control Room and the rest of the upper floor
-        /// had no navmesh and therefore no sound nodes. The test is per-poly now: what matters is
-        /// the height above the surface immediately below, not above the level as a whole.
-        /// </remarks>
         static int StripElevatedPolys(DtMeshTile tile, NavMeshBakeSettings settings, bool[] keep)
         {
             if (keep == null)

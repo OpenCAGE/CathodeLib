@@ -7,13 +7,6 @@ namespace CathodeLib.Radiosity
     /// RadiosityBaker.BakeSliceOptions, and the state of one delta bake in <see cref="DeltaBakeState"/>. Changing a value
     /// changes the output: re-run the gate and the parity captures.
     /// </summary>
-    /// <remarks>
-    /// The values were measured against retail's own bakes and in the Sep-Oct 2026 parity campaign (in-baker rebakes,
-    /// mean RMSE over stable screenshot cameras against retail's captures). The full-bake profile (the retail-rule cut
-    /// with 8 forced openings, unit light scale, coarse clusters) scored 13 DLC / small levels 11.73 -> 10.14 and 29
-    /// campaign levels 12.95 -> 10.68; its hybrid visibility cut then 13 small levels 10.37 -> 10.00 and 14 big maps
-    /// 11.47 -> 10.81, for about 2.2x the bake time. The research fork keeps the switches they were chosen with.
-    /// </remarks>
     internal static class RadiosityTuning
     {
         // ---- Rects and slices ----------------------------------------------------------------

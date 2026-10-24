@@ -53,13 +53,6 @@ namespace CATHODE.Scripting.Refactor
     /// <summary>
     /// Brings a composite's script pages back in step with its links after a refactor has changed them.
     /// </summary>
-    /// <remarks>
-    /// The editor compiles a composite's links from its pages, and only shows the pages at all while
-    /// every link is drawn exactly once across them. So after a refactor the pages have to hold exactly
-    /// the composite's links: connections whose link has gone are dropped, and every link not yet drawn
-    /// is drawn - next to what it replaced where the refactor says what that was, otherwise beside a node
-    /// of one of its ends, otherwise on a page of its own laid out by <see cref="PageArranger"/>.
-    /// </remarks>
     internal sealed class PageRewriter
     {
         private const int ColumnWidth = 420;
