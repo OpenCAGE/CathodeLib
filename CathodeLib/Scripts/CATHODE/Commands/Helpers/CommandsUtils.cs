@@ -774,6 +774,11 @@ namespace CATHODE.Scripting
             }
             else
             {
+                //No value of its own, and a type that holds none (OBJECT, ZONE, ZONE_LINK, ANIMATION_INFO, NONE...): the pin only
+                //takes links. AddParameter(name, type) would fall back to a FLOAT 0, writing a wrongly typed value into the level
+                if (!HoldsValue(baseEntity.type))
+                    return;
+
                 if (pinInfo == null)
                 {
                     if (variants.HasFlag(ParameterVariant.PARAMETER))
@@ -797,6 +802,26 @@ namespace CATHODE.Scripting
                 }
             }
         }
+        /* The types Entity.AddParameter can make a value of (anything else falls back to FLOAT) */
+        private static bool HoldsValue(DataType type)
+        {
+            switch (type)
+            {
+                case DataType.STRING:
+                case DataType.FLOAT:
+                case DataType.INTEGER:
+                case DataType.BOOL:
+                case DataType.VECTOR:
+                case DataType.TRANSFORM:
+                case DataType.ENUM:
+                case DataType.ENUM_STRING:
+                case DataType.SPLINE:
+                case DataType.RESOURCE:
+                    return true;
+            }
+            return false;
+        }
+
         private void ApplyDefaultFunction(FunctionEntity baseEntity, Entity targetEntity, Composite composite, ParameterVariant variants, bool overwrite, bool includeInherited)
         {
             if (baseEntity.function.IsFunctionType)

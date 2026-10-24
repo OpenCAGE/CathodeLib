@@ -111,6 +111,12 @@ namespace CathodeLib
         private readonly List<(int SourceIndex, Models.CS2.Component.LOD.Submesh Submesh)> _importedSubmeshes = new List<(int, Models.CS2.Component.LOD.Submesh)>();
         private readonly HashSet<object> _modelsBefore;
 
+        /* The renderable runs of the destination composites an overwriting port replaced. A renderable ported again is
+           pointed back at its old run when it is the same one (RenderableElements.ImportEntry), rather than appended
+           alongside it: re-importing a composite grew REDS by its whole renderable set every time (Samuels +133), and
+           the old runs, which nothing used any more, were saved with the level. */
+        private readonly List<List<RenderableElements.Element>> _replacedRenderables = new List<List<RenderableElements.Element>>();
+
         public CompositePorter(Level source, Level destination)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -304,6 +310,29 @@ namespace CathodeLib
             }
         }
 
+        /* Every renderable run a composite's resources point at - its functions' own, and those in a "resource" parameter */
+        private static void CollectRenderableRuns(Composite composite, List<List<RenderableElements.Element>> runs)
+        {
+            foreach (FunctionEntity ent in composite.functions)
+            {
+                if (ent.resources != null)
+                    CollectRenderableRuns(ent.resources, runs);
+
+                Parameter resources = ent.GetParameter("resource");
+                if (resources?.content is cResource resourceParam && resourceParam.value != null)
+                    CollectRenderableRuns(resourceParam.value, runs);
+            }
+        }
+
+        private static void CollectRenderableRuns(List<ResourceReference> resourceRefs, List<List<RenderableElements.Element>> runs)
+        {
+            foreach (ResourceReference resourceRef in resourceRefs)
+            {
+                if (resourceRef?.resource_type == ResourceType.RENDERABLE_INSTANCE && resourceRef.RenderableInstance != null && resourceRef.RenderableInstance.Count != 0)
+                    runs.Add(resourceRef.RenderableInstance);
+            }
+        }
+
         private void PortRecursive(Composite composite)
         {
             //Only walk each composite once. Skipping the copy for one already handled is not enough:
@@ -319,7 +348,10 @@ namespace CathodeLib
             if (OverwriteComposites)
             {
                 if (dest != null)
+                {
+                    CollectRenderableRuns(dest, _replacedRenderables);
                     Destination.Commands.Entries.Remove(dest);
+                }
                 dest = null;
             }
 
@@ -651,7 +683,7 @@ namespace CathodeLib
                         break;
                     case ResourceType.RENDERABLE_INSTANCE:
                         List<RenderableElements.Element> sourceElements = resourceRefs[i].RenderableInstance;
-                        resourceRefs[i].RenderableInstance = Destination.RenderableElements.ImportEntry(sourceElements, Source.Models, OverwriteAssets);
+                        resourceRefs[i].RenderableInstance = Destination.RenderableElements.ImportEntry(sourceElements, Source.Models, OverwriteAssets, _replacedRenderables);
                         CollectImportedSubmeshes(sourceElements, resourceRefs[i].RenderableInstance);
                         RenderablesPorted++;
                         break;

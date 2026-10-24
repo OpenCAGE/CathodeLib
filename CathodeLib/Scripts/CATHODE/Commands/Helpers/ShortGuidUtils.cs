@@ -42,10 +42,14 @@ namespace CATHODE.Scripting
         /// </summary>
         private static ShortGuid HashToShortGuid(string value)
         {
+            return HashToShortGuid(Encoding.UTF8.GetBytes(value));
+        }
+        private static ShortGuid HashToShortGuid(byte[] value)
+        {
             SHA1 sha1 = _hasher;
             if (sha1 == null) sha1 = _hasher = SHA1.Create();
 
-            byte[] hash1 = sha1.ComputeHash(Encoding.UTF8.GetBytes(value));
+            byte[] hash1 = sha1.ComputeHash(value);
             byte[] arrangedHash = new byte[] {
                 hash1[3], hash1[2], hash1[1], hash1[0],
                 hash1[7], hash1[6], hash1[5], hash1[4],
@@ -55,14 +59,24 @@ namespace CATHODE.Scripting
 
             //Same characters BitConverter.ToString(...).Replace("-", "") produced, without the two
             //throwaway strings it took to get there.
-            char[] hex = new char[arrangedHash.Length * 2];
+            byte[] hex = new byte[arrangedHash.Length * 2];
             for (int i = 0; i < arrangedHash.Length; i++)
             {
-                hex[i * 2] = HexDigits[arrangedHash[i] >> 4];
-                hex[i * 2 + 1] = HexDigits[arrangedHash[i] & 0xF];
+                hex[i * 2] = (byte)HexDigits[arrangedHash[i] >> 4];
+                hex[i * 2 + 1] = (byte)HexDigits[arrangedHash[i] & 0xF];
             }
+            return HexToShortGuid(hex);
+        }
 
-            byte[] hash2 = sha1.ComputeHash(Encoding.UTF8.GetBytes(new string(hex)));
+        /// <summary>
+        /// The second half of the hash: SHA1 over a 128-bit GUID's uppercase hex, and the first four bytes of the result.
+        /// </summary>
+        private static ShortGuid HexToShortGuid(byte[] hex)
+        {
+            SHA1 sha1 = _hasher;
+            if (sha1 == null) sha1 = _hasher = SHA1.Create();
+
+            byte[] hash2 = sha1.ComputeHash(hex);
             return new ShortGuid(new byte[] { hash2[0], hash2[1], hash2[2], hash2[3] });
         }
         // Instancing Parallel.For touches Generate/GenerateRandom concurrently on net8+.
@@ -94,6 +108,36 @@ namespace CATHODE.Scripting
                     CacheUnlocked(guid, value);
             }
             return guid;
+        }
+
+        /// <summary>
+        /// Generate the ShortGuid of a string from the bytes a file holds it as (not cached). Use this where the
+        /// file's encoding is not UTF-8, e.g. the Windows-1252 text in COMMANDS.PAK, so the hash matches the bytes.
+        /// </summary>
+        internal static ShortGuid GenerateFromBytes(byte[] value)
+        {
+            return HashToShortGuid(value);
+        }
+
+        /// <summary>
+        /// Generate the ShortGuid COMMANDS.PAK stores beside a string parameter, from the bytes it is written as (not cached).
+        /// Text that is itself a GUID as 32 hex digits (as material parameters are) is taken as that GUID, so only the
+        /// second half of the hash is run, over its uppercase hex. Retail stores this for every such string.
+        /// </summary>
+        internal static ShortGuid GenerateForStringParameter(byte[] value)
+        {
+            if (value.Length != 32)
+                return HashToShortGuid(value);
+
+            byte[] hex = new byte[32];
+            for (int i = 0; i < 32; i++)
+            {
+                byte c = value[i];
+                if (c >= 'a' && c <= 'f') c -= 'a' - 'A';
+                else if (!(c >= '0' && c <= '9') && !(c >= 'A' && c <= 'F')) return HashToShortGuid(value);
+                hex[i] = c;
+            }
+            return HexToShortGuid(hex);
         }
 
         /// <summary>

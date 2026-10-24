@@ -65,7 +65,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     Composite composite = new Composite()
                                     {
                                         shortGUID = Utilities.Consume<ShortGuid>(reader, command_entries[i + 1].Item2),
-                                        name = Utilities.ReadString(reader, command_entries[i + 2].Item2)
+                                        name = Utilities.ReadStringWindows1252(reader, command_entries[i + 2].Item2)
                                     };
                                     if (!entityCache.ContainsKey(composite.shortGUID))
                                     {
@@ -390,7 +390,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                             break;
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_FILE_PATH:
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_STRING:
-                                            paramData = new cString(Utilities.ReadString(reader)); // ((cString)paramData).value.Length + 1 == length
+                                            paramData = new cString(Utilities.ReadStringWindows1252(reader)); // ((cString)paramData).value.Length + 1 == length
                                             break;
                                         case (uint)CommandTypes.COMMAND_IDENTIFIER_MASK & (uint)CommandTypes.DATA_BOOL:
                                             paramData = new cBool(reader.ReadBoolean());
@@ -564,8 +564,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                     commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_GUID | 4, offset));
 
                     offset = (int)bufferWriter.BaseStream.Position;
-                    Utilities.WriteString(composite.name, bufferWriter, true);
-                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(composite.name.Length + 1), offset));
+                    byte[] compositeName = Utilities.GetBytesWindows1252(composite.name);
+                    bufferWriter.Write(compositeName);
+                    bufferWriter.Write((byte)0x00);
+                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(compositeName.Length + 1), offset));
                 }
 
                 {
@@ -953,9 +955,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     break;
                                 case DataType.ENUM_STRING:
                                 case DataType.STRING:
-                                    cString st = (cString)paramEntry.content;
-                                    Utilities.WriteString(st.value, bufferWriter, true);
-                                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(st.value.Length + 1), offset));
+                                    byte[] st = Utilities.GetBytesWindows1252(((cString)paramEntry.content).value);
+                                    bufferWriter.Write(st);
+                                    bufferWriter.Write((byte)0x00);
+                                    commands.Add(new Tuple<uint, int>((uint)CommandTypes.DATA_STRING | (uint)(st.Length + 1), offset));
                                     break;
                                 case DataType.BOOL:
                                     bufferWriter.Write(((cBool)paramEntry.content).value);

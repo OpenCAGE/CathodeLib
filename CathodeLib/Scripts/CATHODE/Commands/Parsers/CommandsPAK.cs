@@ -72,7 +72,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     break;
                                 case DataType.STRING:
                                     reader_parallel.BaseStream.Position += 8;
-                                    parametersArr[i] = new cString(Utilities.ReadString(reader_parallel).Replace("\u0092", "'"));
+                                    parametersArr[i] = new cString(Utilities.ReadStringWindows1252(reader_parallel));
                                     Utilities.Align(reader_parallel, 4);
                                     break;
                                 case DataType.BOOL:
@@ -139,7 +139,7 @@ namespace CATHODE.Scripting.Internal.Parsers
 
                         //Read script ID and string name
                         reader_parallel.BaseStream.Position = (scriptStartOffset * 4) + 4;
-                        composite.name = Utilities.ReadString(reader_parallel);
+                        composite.name = Utilities.ReadStringWindows1252(reader_parallel);
                         Utilities.Align(reader_parallel, 4);
 
                         //Pull data from those offsets
@@ -651,10 +651,11 @@ namespace CATHODE.Scripting.Internal.Parsers
                                 byte[] stringStartRaw = BitConverter.GetBytes(stringStart);
                                 stringStartRaw[3] = 0x80;
                                 writer.Write(stringStartRaw);
-                                string str = ((cString)parameters[i]).value.Replace("\u0092", "'");
-                                writer.Write(ShortGuidUtils.Generate(str, false).AsUInt32);
-                                for (int x = 0; x < str.Length; x++) writer.Write(str[x]);
-                                writer.Write((char)0x00);
+                                //Windows-1252 text, beside the hash of exactly those bytes (see GenerateForStringParameter)
+                                byte[] str = Utilities.GetBytesWindows1252(((cString)parameters[i]).value);
+                                writer.Write(ShortGuidUtils.GenerateForStringParameter(str).AsUInt32);
+                                writer.Write(str);
+                                writer.Write((byte)0x00);
                                 Utilities.Align(writer, 4);
                                 break;
                             case DataType.BOOL:
@@ -714,9 +715,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                         int firstInst = -1;
                         int lastInst = -1;
 
-                        Utilities.Write<ShortGuid>(writer, ShortGuidUtils.Generate(Entries[i].name, false));
-                        for (int x = 0; x < Entries[i].name.Length; x++) writer.Write(Entries[i].name[x]);
-                        writer.Write((char)0x00);
+                        byte[] name = Utilities.GetBytesWindows1252(Entries[i].name);
+                        Utilities.Write<ShortGuid>(writer, ShortGuidUtils.GenerateFromBytes(name));
+                        writer.Write(name);
+                        writer.Write((byte)0x00);
                         Utilities.Align(writer, 4);
 
                         //Write data

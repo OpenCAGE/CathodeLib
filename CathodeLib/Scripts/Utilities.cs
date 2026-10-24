@@ -286,6 +286,105 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// Reads a string up to a trailing 0x00 byte as Windows-1252, the codepage of the game's script strings
+        /// (retail text has 0x92 for an apostrophe). Every byte comes back unchanged from <see cref="GetBytesWindows1252"/>,
+        /// so text read this way re-saves byte for byte.
+        /// </summary>
+        public static string ReadStringWindows1252(BinaryReader reader)
+        {
+            List<byte> bytes = new List<byte>();
+            while (true)
+            {
+                byte b = reader.ReadByte();
+                if (b == 0x00)
+                    break;
+                bytes.Add(b);
+            }
+            char[] chars = new char[bytes.Count];
+            for (int i = 0; i < chars.Length; i++)
+                chars[i] = bytes[i] >= 0x80 && bytes[i] < 0xA0 ? _windows1252[bytes[i] - 0x80] : (char)bytes[i];
+            return new string(chars);
+        }
+        public static string ReadStringWindows1252(BinaryReader reader, int position, bool resetPosition = true)
+        {
+            long startPos = reader.BaseStream.Position;
+            reader.BaseStream.Position = position;
+            string str = ReadStringWindows1252(reader);
+            if (resetPosition) reader.BaseStream.Position = startPos;
+            return str;
+        }
+
+        /// <summary>
+        /// Encodes a string as Windows-1252, without a trailing 0x00. C1 control characters keep their own byte value,
+        /// and a character the codepage cannot hold becomes '?' (<see cref="GetNonWindows1252Characters"/> lists them).
+        /// A null string is written as an empty one.
+        /// </summary>
+        public static byte[] GetBytesWindows1252(string str)
+        {
+            if (str == null)
+                return new byte[0];
+
+            //One byte per character, except a surrogate pair, which becomes a single '?'
+            byte[] bytes = new byte[str.Length];
+            int count = 0;
+            for (int i = 0; i < str.Length; i++)
+            {
+                char c = str[i];
+                if (c < 0x100)
+                {
+                    bytes[count++] = (byte)c;
+                    continue;
+                }
+                int index = Array.IndexOf(_windows1252, c);
+                if (index != -1)
+                {
+                    bytes[count++] = (byte)(0x80 + index);
+                    continue;
+                }
+                if (char.IsHighSurrogate(c) && i + 1 < str.Length && char.IsLowSurrogate(str[i + 1])) i++;
+                bytes[count++] = (byte)'?';
+            }
+            if (count != bytes.Length)
+                Array.Resize(ref bytes, count);
+            return bytes;
+        }
+
+        /// <summary>
+        /// The characters of a string that Windows-1252 cannot hold, each listed once (empty if it all fits). These are the
+        /// ones <see cref="GetBytesWindows1252"/> saves as '?'. A surrogate pair (an emoji, say) is listed as one character.
+        /// </summary>
+        public static List<string> GetNonWindows1252Characters(string str)
+        {
+            List<string> found = new List<string>();
+            if (str == null)
+                return found;
+
+            for (int i = 0; i < str.Length; i++)
+            {
+                char c = str[i];
+                if (c < 0x100 || Array.IndexOf(_windows1252, c) != -1)
+                    continue;
+                string character = c.ToString();
+                if (char.IsHighSurrogate(c) && i + 1 < str.Length && char.IsLowSurrogate(str[i + 1]))
+                {
+                    character = str.Substring(i, 2);
+                    i++;
+                }
+                if (!found.Contains(character))
+                    found.Add(character);
+            }
+            return found;
+        }
+
+        //Windows-1252 0x80-0x9F (the rest of it matches Latin-1). Its five unassigned bytes map to the C1 control of the same value.
+        //Written out rather than using Encoding.GetEncoding(1252), which needs a codepage provider registered on .NET Core.
+        private static readonly char[] _windows1252 = new char[]
+        {
+            '\u20AC', '\u0081', '\u201A', '\u0192', '\u201E', '\u2026', '\u2020', '\u2021', '\u02C6', '\u2030', '\u0160', '\u2039', '\u0152', '\u008D', '\u017D', '\u008F',
+            '\u0090', '\u2018', '\u2019', '\u201C', '\u201D', '\u2022', '\u2013', '\u2014', '\u02DC', '\u2122', '\u0161', '\u203A', '\u0153', '\u009D', '\u017E', '\u0178',
+        };
+
+        /// <summary>
         /// Removes the leading nulls from a byte array, useful for cleaning byte-aligned file extracts
         /// </summary>
         public static byte[] RemoveLeadingNulls(byte[] extracted_file)

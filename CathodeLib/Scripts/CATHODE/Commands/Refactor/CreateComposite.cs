@@ -83,6 +83,10 @@ namespace CATHODE.Scripting.Refactor
                 return "The name ends in a folder separator; give the composite itself a name.";
             if (path.Split('\\').Any(o => o.Trim().Length == 0))
                 return "The name has an empty folder in it.";
+            //A composite's name is used as a path (its folder in the browser, its file name when it's exported)
+            char bad = path.FirstOrDefault(c => System.IO.Path.GetInvalidPathChars().Contains(c));
+            if (bad != default(char))
+                return "A composite's name can't contain " + (char.IsControl(bad) ? "control characters" : "'" + bad + "'") + ".";
             string upper = path.ToUpperInvariant();
             if (upper.Contains("REQUIRED_ASSETS") || upper.Contains("TEMPLATE") || upper.Contains("\\PHYSICS\\") || upper.StartsWith("PHYSICS\\"))
                 return "Composites named with REQUIRED_ASSETS, TEMPLATE or a PHYSICS folder are never shown in the level; pick another name.";

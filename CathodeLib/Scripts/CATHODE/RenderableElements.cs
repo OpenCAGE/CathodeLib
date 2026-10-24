@@ -393,6 +393,43 @@ namespace CATHODE
         /// </summary>
         public List<Element> ImportEntry(List<Element> elements, Models sourceModels, bool overwriteExisting = false)
         {
+            return ImportEntry(elements, sourceModels, overwriteExisting, null);
+        }
+
+        /// <summary>
+        /// Copy an entry into the file, along with all child objects - or, when one of <paramref name="reuseRuns"/> is the
+        /// run the copy would make (the same models, materials and LODs), point at that run instead and take it off the list.
+        /// For a composite ported over its own earlier copy: the runs the replaced copy's renderables used are handed in.
+        /// Without them every such port appended a fresh set and left the old one behind, unused, growing the file by the
+        /// same amount each time.
+        /// </summary>
+        public List<Element> ImportEntry(List<Element> elements, Models sourceModels, bool overwriteExisting, List<List<Element>> reuseRuns)
+        {
+            if (elements == null)
+                return null;
+
+            List<Element> newElements = ResolveImport(elements, sourceModels, overwriteExisting);
+
+            if (reuseRuns != null)
+            {
+                for (int r = 0; r < reuseRuns.Count; r++)
+                {
+                    List<Element> run = reuseRuns[r];
+                    if (run == null || run.Count == 0 || run.Count != newElements.Count || !SameRun(run, newElements) || !IsRegisteredRun(run))
+                        continue;
+                    reuseRuns.RemoveAt(r);
+                    return new List<Element>(run);
+                }
+            }
+
+            AppendResolved(newElements);
+            return newElements;
+        }
+
+        /* The elements an import makes - their models and materials brought into this level's tables, their LODs made the
+           same way - without putting any of them in the table yet (AppendResolved does that) */
+        private List<Element> ResolveImport(List<Element> elements, Models sourceModels, bool overwriteExisting)
+        {
             if (elements == null)
                 return null;
 
@@ -403,23 +440,67 @@ namespace CATHODE
 
                 if (newElement.ModelLocation == PakLocation.GLOBAL || newElement.MaterialLocation == PakLocation.GLOBAL)
                     throw new Exception("Unexpected model/material location - GLOBAL is unsupported.");
-                
+
                 Models.CS2 sourceCs2 = sourceModels.FindModel(elements[i].Model);
                 Models.CS2 cs2 = _models.ImportEntry(sourceCs2, overwriteExisting); //We add the WHOLE cs2, if it doesn't exist, even though we only point to a submesh of it
                 newElement.Model = cs2?.GetCorrespondingSubmesh(sourceCs2, elements[i].Model);
                 newElement.Material = _materials.ImportEntry(newElement.Material, overwriteExisting);
 
                 newElements.Add(newElement);
-                Entries.Add(newElement);
             }
 
-            //Add LODs after so they're also sequential 
             for (int i = 0; i < elements.Count; i++)
             {
-                newElements[i].LODs = ImportEntry(newElements[i].LODs, sourceModels, overwriteExisting);
+                newElements[i].LODs = ResolveImport(newElements[i].LODs, sourceModels, overwriteExisting);
             }
 
             return newElements;
+        }
+
+        /* Into the table in the order an import always used - the run, then each element's LOD run after it - so every run
+           is contiguous */
+        private void AppendResolved(List<Element> elements)
+        {
+            if (elements == null)
+                return;
+
+            foreach (Element element in elements)
+                Entries.Add(element);
+            foreach (Element element in elements)
+                AppendResolved(element.LODs);
+        }
+
+        private static bool SameRun(List<Element> x, List<Element> y)
+        {
+            for (int i = 0; i < x.Count; i++)
+                if (x[i] != y[i])
+                    return false;
+            return true;
+        }
+
+        /* Whether these very elements sit together in the table, in this order */
+        private bool IsRegisteredRun(List<Element> run)
+        {
+            if (run[0] == null)
+                return false;
+
+            lock (_startsLock)
+            {
+                EnsureStartIndex();
+                List<int> starts;
+                if (!_startsByRef.TryGetValue(run[0], out starts))
+                    return false;
+                for (int s = 0; s < starts.Count; s++)
+                {
+                    int i = starts[s];
+                    bool all = true;
+                    for (int x = 1; x < run.Count; x++)
+                        if (i + x >= Entries.Count || !ReferenceEquals(Entries[i + x], run[x])) { all = false; break; }
+                    if (all)
+                        return true;
+                }
+                return false;
+            }
         }
         #endregion
 
