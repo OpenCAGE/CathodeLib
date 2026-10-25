@@ -213,6 +213,9 @@ namespace CATHODE.Scripting.Refactor
                 {
                     for (int i = 0; i < placing.Count; i++)
                         placing[i].Position = new Point(origin.X + arranged[i].X, origin.Y + arranged[i].Y);
+                    //Laid out afresh, the lines between them run straight from pin to pin: their reroute points were for the old places
+                    foreach ((int from, ShortGuid fromPin, PinSide fromSide, int to, ShortGuid toPin, PinSide toSide, ConnectionMeta meta) line in drawn)
+                        line.meta.RoutePoints = null;
                     return added;
                 }
 

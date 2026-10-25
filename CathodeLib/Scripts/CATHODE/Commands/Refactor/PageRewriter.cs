@@ -441,6 +441,7 @@ namespace CATHODE.Scripting.Refactor
                         ConnectedEntityGUID = c.ConnectedEntityGUID,
                         ConnectedParameterGUID = c.ConnectedParameterGUID,
                         ConnectedNodeID = c.ConnectedNodeID,
+                        RoutePoints = c.RoutePoints == null ? null : new List<System.Drawing.Point>(c.RoutePoints),
                     }).ToList(),
                     UnlinkedPins = node.UnlinkedPins.Select(u => new UnlinkedPinMeta()
                     {

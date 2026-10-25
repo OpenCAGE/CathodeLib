@@ -735,8 +735,9 @@ namespace CathodeLib
             if (count == 0)
                 return;
 
+            //Version 4 adds the connections' reroute points; a table with none is still written as version 3 (see Write)
             byte version = reader.ReadByte();
-            if (version != FlowgraphMeta.VERSION)
+            if (version != FlowgraphMeta.VERSION && version != FlowgraphMeta.VERSION_WITHOUT_ROUTES)
                 return;
 
             for (int i = 0; i < count; i++)
@@ -771,6 +772,16 @@ namespace CathodeLib
                         connection.ConnectedEntityGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedParameterGUID = Utilities.Consume<ShortGuid>(reader);
                         connection.ConnectedNodeID = reader.ReadInt32();
+                        if (version >= FlowgraphMeta.VERSION)
+                        {
+                            int routeCount = reader.ReadInt32();
+                            if (routeCount != 0)
+                            {
+                                connection.RoutePoints = new List<Point>(routeCount);
+                                for (int r = 0; r < routeCount; r++)
+                                    connection.RoutePoints.Add(new Point(reader.ReadInt32(), reader.ReadInt32()));
+                            }
+                        }
                         node.ConnectionsOut.Add(connection);
                     }
 
@@ -796,8 +807,11 @@ namespace CathodeLib
 
         public override void Write(BinaryWriter writer)
         {
+            //Reroute points need version 4: a table without any is written as version 3, as before, so an older OpenCAGE
+            //(which keeps no page of a version it doesn't know) still reads every page of a level that uses none
+            bool routes = flowgraphs.Any(f => f.Nodes.Any(n => n.ConnectionsOut.Any(c => c.RoutePoints != null && c.RoutePoints.Count != 0)));
             writer.Write(flowgraphs.Count);
-            writer.Write(FlowgraphMeta.VERSION);
+            writer.Write(routes ? FlowgraphMeta.VERSION : FlowgraphMeta.VERSION_WITHOUT_ROUTES);
             for (int i = 0; i < flowgraphs.Count; i++)
             {
                 Utilities.Write<ShortGuid>(writer, flowgraphs[i].CompositeGUID);
@@ -828,6 +842,16 @@ namespace CathodeLib
                         Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedEntityGUID);
                         Utilities.Write<ShortGuid>(writer, flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedParameterGUID);
                         writer.Write(flowgraphs[i].Nodes[x].ConnectionsOut[z].ConnectedNodeID);
+                        if (routes)
+                        {
+                            List<Point> route = flowgraphs[i].Nodes[x].ConnectionsOut[z].RoutePoints;
+                            writer.Write(route?.Count ?? 0);
+                            for (int r = 0; r < (route?.Count ?? 0); r++)
+                            {
+                                writer.Write(route[r].X);
+                                writer.Write(route[r].Y);
+                            }
+                        }
                     }
 
                     if (flowgraphs[i].Nodes[x].UnlinkedPins.Count == 0)
@@ -851,7 +875,9 @@ namespace CathodeLib
 
         public class FlowgraphMeta : IEquatable<FlowgraphMeta>
         {
-            public const byte VERSION = 3;
+            public const byte VERSION = 4;
+            //The version before connections had reroute points: still read, and still written when no connection has any
+            public const byte VERSION_WITHOUT_ROUTES = 3;
 
             public ShortGuid CompositeGUID;
             public string Name;
@@ -959,8 +985,17 @@ namespace CathodeLib
                     public ShortGuid ConnectedEntityGUID;
                     public ShortGuid ConnectedParameterGUID;
                     public int ConnectedNodeID;
+                    //Where the editor draws the connection's line through on its way, from this (feeding) end: null for
+                    //none. Only how the line is drawn - not part of what the connection is (see Equals).
+                    public List<Point> RoutePoints = null;
 
-                    public ConnectionMeta Clone() => (ConnectionMeta)MemberwiseClone();
+                    public ConnectionMeta Clone()
+                    {
+                        ConnectionMeta copy = (ConnectionMeta)MemberwiseClone();
+                        if (RoutePoints != null)
+                            copy.RoutePoints = new List<Point>(RoutePoints);
+                        return copy;
+                    }
 
                     public bool Equals(ConnectionMeta other)
                     {
