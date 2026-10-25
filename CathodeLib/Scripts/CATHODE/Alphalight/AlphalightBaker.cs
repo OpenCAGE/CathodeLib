@@ -186,7 +186,7 @@ namespace CathodeLib.Alphalight
         /// Does this material's ubershader have ALPHA_LIGHTING switched on? The feature lives at a
         /// different bit in each ubershader's FEATURES enum, so it is looked up by name.
         /// </summary>
-        private static bool UsesAlphaLighting(Materials.Material material)
+        internal static bool UsesAlphaLighting(Materials.Material material)
         {
             if (material?.Shader == null)
                 return false;

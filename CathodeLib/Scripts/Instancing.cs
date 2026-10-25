@@ -2943,6 +2943,7 @@ namespace CathodeLib
 
             if (!SkipAlphalightBake)
                 RunOptionalBake("alphalight", () => AlphalightBaker.BakeLevel(level, alphalightSettings, Console.WriteLine));
+            Phase("ApplyAlphaLightConstants", ApplyAlphaLightConstants);
 
             if (radiositySettings != null)
             {
@@ -4639,6 +4640,40 @@ namespace CathodeLib
                 result[key] = copy;
             }
             return result;
+        }
+
+        private void ApplyAlphaLightConstants()
+        {
+            int written = 0;
+            foreach (InstancedEntity entity in AllEntities)
+            {
+                Movers.MOVER_DESCRIPTOR mover = entity.Mover;
+                if (mover?.RenderConstants == null || mover.RenderableElements == null || mover.RenderableElements.Count == 0)
+                    continue;
+                if (!(entity.Entity is FunctionEntity function) || function.function.AsFunctionType != FunctionType.ModelReference)
+                    continue;
+                if (!(function.GetParameter(ShortGuids.alpha_light_offset_x)?.content is cFloat offsetX))
+                    continue;
+                if (!AlphalightBaker.UsesAlphaLighting(mover.RenderableElements[0].Material))
+                    continue;
+
+                Vector3 normal = (function.GetParameter(ShortGuids.alpha_light_average_normal)?.content as cVector3)?.value ?? Vector3.Zero;
+                float[] values =
+                {
+                    offsetX.value,
+                    (function.GetParameter(ShortGuids.alpha_light_offset_y)?.content as cFloat)?.value ?? 0.0f,
+                    (function.GetParameter(ShortGuids.alpha_light_scale_x)?.content as cFloat)?.value ?? 0.0f,
+                    (function.GetParameter(ShortGuids.alpha_light_scale_y)?.content as cFloat)?.value ?? 0.0f,
+                    normal.X, normal.Y, normal.Z
+                };
+                byte[] raw = mover.RenderConstants.RawBytes;
+                for (int i = 0; i < values.Length; i++)
+                    Array.Copy(BitConverter.GetBytes(values[i]), 0, raw, 16 + i * 4, 4);
+                mover.RenderConstants.SetRawBytes(raw);
+                written++;
+            }
+            if (written > 0)
+                Console.WriteLine("Instancing: wrote alphalight atlas boxes for " + written + " movers");
         }
 
         private void CarryRetailModelParams()
