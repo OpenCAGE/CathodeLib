@@ -325,6 +325,20 @@ namespace CATHODE
             else if (!_compressed && Path.GetExtension(_filepath).ToLower() == ".fzip")
                 _filepath = _filepath.Substring(0, _filepath.Length - 5);
 
+            //A submesh short of an input its material's vertex shader takes draws garbage or nothing in game, however the two
+            //came together (an import, a material swapped in or edited later): see ModelUtility.EnsureShaderInputs. And a
+            //skinned one whose bone list isn't its rig's bones in order sits on the wrong bones: see EnsureRigOrderBones. And
+            //a character shader reads its normals packed: see EnsurePackedBasis
+            for (int i = 0; i < Entries.Count; i++)
+                for (int z = 0; z < Entries[i].Components.Count; z++)
+                    for (int x = 0; x < Entries[i].Components[z].LODs.Count; x++)
+                        foreach (CS2.Component.LOD.Submesh submesh in Entries[i].Components[z].LODs[x].Submeshes)
+                        {
+                            submesh.EnsureRigOrderBones();
+                            submesh.EnsureShaderInputs();
+                            submesh.EnsurePackedBasis();
+                        }
+
             int submeshCount = 0;
             for (int i = 0; i < Entries.Count; i++)
                 for (int z = 0; z < Entries[i].Components.Count; z++)

@@ -28,8 +28,20 @@ namespace CATHODE.Scripting
         public Composite() { }
         public Composite(string name)
         {
-            shortGUID = ShortGuidUtils.GenerateRandom();
+            shortGUID = DisplayModelId(name) ?? ShortGuidUtils.GenerateRandom();
             this.name = name;
+        }
+
+        /* A character's model is found by name: the game hashes the string it is handed (Character.display_model,
+           RegisterCharacterModel) and takes the composite with that id, so every shipped "DisplayModel:<name>" has the hash
+           of <name> as its id. A random one leaves the character with no animated model, and the game crashes setting up
+           its animation. */
+        public static ShortGuid? DisplayModelId(string name)
+        {
+            const string prefix = "DisplayModel:";
+            if (name == null || name.Length <= prefix.Length || !name.StartsWith(prefix, StringComparison.Ordinal))
+                return null;
+            return ShortGuidUtils.Generate(name.Substring(prefix.Length));
         }
 
         public ShortGuid shortGUID;  //The id when this composite is used as an entity in another composite

@@ -333,6 +333,19 @@ namespace CATHODE
                 entry.BoneMappings = new List<ShortGuid>(template.BoneMappings);
                 entry.InverseBindPoses = new List<Matrix4x4>(template.InverseBindPoses);
                 entry.HavokToCathodeMappings = new List<Matrix4x4>(template.HavokToCathodeMappings);
+                //Helpers are points on the skeleton (EYETRACKER, weapon attachments), not the mesh: the player's
+                //animation looks EYETRACKER up as it starts
+                if (template.HelperMatrices != null)
+                    foreach (WeightedHelperData helper in template.HelperMatrices)
+                        entry.HelperMatrices.Add(new WeightedHelperData
+                        {
+                            HelperName = helper.HelperName,
+                            BindPosition = (float[])helper.BindPosition?.Clone(),
+                            BindNormal = (float[])helper.BindNormal?.Clone(),
+                            BindTangent = (float[])helper.BindTangent?.Clone(),
+                            Indicies = (byte[])helper.Indicies?.Clone(),
+                            Weights = (byte[])helper.Weights?.Clone(),
+                        });
                 how = "copied from an existing animated model on this skeleton";
                 return entry;
             }

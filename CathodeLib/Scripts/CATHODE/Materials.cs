@@ -318,16 +318,38 @@ namespace CATHODE
             using (MemoryStream stream = new MemoryStream(296))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
+                /* The game takes every slot up to the last used one as a texture: shipped materials never leave a gap (not one
+                   in TECH_HUB's 12,891), as a shader's samplers point at fixed slots. A slot emptied in the middle - a sampler
+                   cleared, its texture deleted - was written as row -1, which the game read from before the start of its
+                   texture table: a crash setting up the depth shader of an imported character (25 Oct 2026), luck elsewhere.
+                   Emptying a slot unbinds its sampler, so nothing samples it: it is written as one of the material's own
+                   textures instead, and the empty slots after the last used one as no texture at all, like the game's own. */
+                int Row(TexturePtr slot)
+                {
+                    if (slot?.Texture == null || slot.Location == TexturePtr.Source.NONE) return -1;
+                    Func<Textures.TEX4, int> rows = slot.Location == Source.LEVEL ? levelTextureRows : globalTextureRows;
+                    return rows == null ? -1 : rows(slot.Texture);
+                }
+                int lastUsed = -1;
+                TexturePtr filler = null;
+                for (int x = 0; x < 12 && x < material.TextureReferences.Count; x++)
+                {
+                    if (Row(material.TextureReferences[x]) < 0) continue;
+                    lastUsed = x;
+                    if (filler == null) filler = material.TextureReferences[x];
+                }
                 for (int x = 0; x < 12; x++)
                 {
                     TexturePtr tex = x >= material.TextureReferences.Count ? null : material.TextureReferences[x];
-                    if (tex == null || tex.Location == TexturePtr.Source.NONE)
+                    if (x > lastUsed)
                     {
                         writer.Write((Int16)(-1));
                         writer.Write((Int16)(-1));
                         continue;
                     }
-                    writer.Write((Int16)(tex.Location == Source.LEVEL ? levelTextureRows(tex.Texture) : globalTextureRows(tex.Texture)));
+                    if (Row(tex) < 0)
+                        tex = filler;
+                    writer.Write((Int16)Row(tex));
                     writer.Write((Int16)tex.Location);
                 }
 
@@ -401,6 +423,74 @@ namespace CATHODE
                 if (_writeIndexByRef.TryGetValue(material, out index)) return index;
                 return _writeIndex.TryGetValue(material, out index) ? index : -1;
             }
+        }
+
+        /* The game hands a shader's samplers the material's texture slots in order - its first sampler the first slot, and
+           so on - whatever the shader entry's remaps say: every shipped material has them compact and in order (29,399 over
+           three levels, not one otherwise). Clearing samplers or changing features leaves them sparse, which put the wrong
+           textures on the samplers past the first gap: a player model whose irradiance and environment samplers were fed
+           flat textures drew black (26 Oct 2026), and one whose first slot was empty crashed the game. */
+        /// <summary>
+        /// Lay out every material whose shader entry's sampler remaps aren't compact and in order the way the game reads
+        /// it: the k-th sampler the shader uses on slot k, each keeping the texture it had, the environment map index
+        /// following its texture, and slots nothing samples dropped. A shader entry several materials share is laid out
+        /// once and each of them rearranged to match. Call before saving the materials and the shaders. Returns how many
+        /// materials changed.
+        /// </summary>
+        public int NormaliseSamplerSlots()
+        {
+            int changed = 0;
+            foreach (IGrouping<Shaders.Shader, Material> group in Entries.Where(o => o?.Shader?.SamplerRemaps != null).GroupBy(o => o.Shader, ShaderReference.Instance))
+            {
+                List<int> remaps = group.Key.SamplerRemaps;
+                List<int> samplers = new List<int>();
+                for (int s = 0; s < remaps.Count; s++)
+                    if (remaps[s] != 255) samplers.Add(s);
+                bool inOrder = true;
+                for (int k = 0; k < samplers.Count; k++)
+                    if (remaps[samplers[k]] != k) inOrder = false;
+                if (inOrder)
+                    continue;
+
+                foreach (Material material in group)
+                {
+                    List<TexturePtr> laidOut = new List<TexturePtr>();
+                    foreach (int s in samplers)
+                    {
+                        int old = remaps[s];
+                        TexturePtr texture = old < material.TextureReferences.Count ? material.TextureReferences[old] : null;
+                        laidOut.Add(texture == null ? new TexturePtr() : new TexturePtr() { Texture = texture.Texture, Location = texture.Location });
+                    }
+                    //The environment map index points at a slot: where that texture went, or on the end when nothing samples it
+                    if (material.EnvironmentMapIndex != 255)
+                    {
+                        int k = samplers.FindIndex(s => remaps[s] == material.EnvironmentMapIndex);
+                        if (k >= 0)
+                            material.EnvironmentMapIndex = k;
+                        else if (material.EnvironmentMapIndex < material.TextureReferences.Count && laidOut.Count < 12)
+                        {
+                            TexturePtr kept = material.TextureReferences[material.EnvironmentMapIndex];
+                            laidOut.Add(kept == null ? new TexturePtr() : new TexturePtr() { Texture = kept.Texture, Location = kept.Location });
+                            material.EnvironmentMapIndex = laidOut.Count - 1;
+                        }
+                        else
+                            material.EnvironmentMapIndex = 255;
+                    }
+                    material.TextureReferences = laidOut;
+                    changed++;
+                }
+                for (int k = 0; k < samplers.Count; k++)
+                    remaps[samplers[k]] = k;
+            }
+            return changed;
+        }
+
+        //Shader entries by reference: two entries can be equal in content and still each be their own
+        private sealed class ShaderReference : IEqualityComparer<Shaders.Shader>
+        {
+            public static readonly ShaderReference Instance = new ShaderReference();
+            public bool Equals(Shaders.Shader x, Shaders.Shader y) { return ReferenceEquals(x, y); }
+            public int GetHashCode(Shaders.Shader shader) { return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(shader); }
         }
 
         /// <summary>
