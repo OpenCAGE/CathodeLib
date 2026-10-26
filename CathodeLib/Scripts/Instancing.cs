@@ -4944,6 +4944,7 @@ namespace CathodeLib
             if (entity != null)
             {
                 ApplyMoverFlags(mvr, entity, isTemplate);
+                mvr.IsTemplate = isTemplate || IsHiddenByAncestorTemplate(entity);
                 entity.Mover = mvr;
             }
 

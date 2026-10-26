@@ -493,6 +493,11 @@ namespace CATHODE
             /// sequential id on the rest.</summary>
             public int RuntimeIndex = -1;
 
+            /// <summary>Not saved: set by <see cref="Instancing"/> on a mover of template content (an is_template instance
+            /// or anything below one), which the game copies at runtime rather than placing. The radiosity bake leaves
+            /// these out. False on a mover loaded from disk.</summary>
+            public bool IsTemplate = false;
+
             [StructLayout(LayoutKind.Sequential, Pack = 1)]
             public class GPU_CONSTANTS : IEquatable<GPU_CONSTANTS>
             {

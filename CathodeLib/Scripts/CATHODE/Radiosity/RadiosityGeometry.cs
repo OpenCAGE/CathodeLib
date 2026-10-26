@@ -1096,6 +1096,11 @@ namespace CathodeLib.Radiosity
                 return false;
             if (mover.CullFlags.HasFlag(Movers.CullFlag.NO_RENDER))
                 return false;
+            // Template content is copied at runtime, never placed: retail bakes none of it (TECH_HUB's 12 glass-crack impact
+            // decal movers are in no radiosity row). Baked where Instancing put it - a placed NPC's weapons - it took the
+            // whole of HALO_FLOOD's bounce light to black (26 Oct 2026).
+            if (mover.IsTemplate)
+                return false;
             // Radiosity is a static bake; moving geometry is lit through the volume probes instead.
             if (mover.Flags != null && !mover.Flags.Stationary)
                 return false;

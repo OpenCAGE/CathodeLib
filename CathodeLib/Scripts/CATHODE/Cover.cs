@@ -100,10 +100,18 @@ namespace CATHODE
 
         override protected bool SaveInternal()
         {
+            //Never a 0x0 grid: the game indexes cell (XCells - 1) of it and crashes (see CoverBaker.BuildTraversalGrid)
+            if (Traversal.XCells <= 0 || Traversal.ZCells <= 0 || Traversal.Cells.Count != Traversal.XCells * Traversal.ZCells)
+            {
+                Traversal = new TraversalGrid() { MinX = Traversal.MinX, MinZ = Traversal.MinZ, UnitSize = Traversal.UnitSize > 0 ? Traversal.UnitSize : 4f, XCells = 1, ZCells = 1 };
+                Traversal.Cells.Add(new List<short>());
+                foreach (CoverSegment segment in Entries)
+                    Traversal.Cells[0].Add((short)segment.UID);
+            }
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(_filepath)))
             {
                 writer.BaseStream.SetLength(0);
-                writer.Write(846362211); 
+                writer.Write(846362211);
                 writer.Write(7); 
                 writer.Write((short)Entries.Count);
                 for (int i = 0; i < Entries.Count; i++)

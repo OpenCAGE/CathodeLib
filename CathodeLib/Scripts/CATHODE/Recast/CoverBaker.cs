@@ -2234,9 +2234,11 @@ namespace CathodeLib.NavMesh
         {
             if (cover.Entries.Count == 0)
             {
-                cover.Traversal.UnitSize = unitSize;
-                cover.Traversal.XCells = 0;
-                cover.Traversal.ZCells = 0;
+                //One empty cell, never none: the game's cover lookup clamps a query to the last cell (XCells - 1), so a 0x0
+                //grid wraps to 0xFFFFFFFF on a null cell array and crashes the moment a human NPC looks for cover (Matt's
+                //HALO_FLOOD, 26 Oct 2026). Job positions write their empty grids the same way.
+                cover.Traversal = new Cover.TraversalGrid() { MinX = 0f, MinZ = 0f, UnitSize = unitSize, XCells = 1, ZCells = 1 };
+                cover.Traversal.Cells.Add(new List<short>());
                 return;
             }
 
