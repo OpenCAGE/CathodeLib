@@ -99,9 +99,16 @@ namespace CathodeLib.Havok
             if (packfile.Tagfile != null)
                 return AddMeshCollisionProxyTagfile(packfile, positions, triangles, userData, filterInfo);
 
-            BuiltMesh built = MeshProxyBuilder.Build(positions, triangles);
-            uint meshOffset = AppendMeshShapeObject(packfile, built, userData);
-            uint compoundOffset = AppendCompoundShell(packfile, userData, Math.Max(1, BitsOf(built.MaxKeyValue)));
+            //A mesh too big for one compressed mesh is cut into parts, each an instance of the one compound
+            List<BuiltMesh> parts = BuildParts(positions, triangles);
+            List<uint> meshOffsets = new List<uint>();
+            int keyBits = 1;
+            foreach (BuiltMesh part in parts)
+            {
+                meshOffsets.Add(AppendMeshShapeObject(packfile, part, userData));
+                keyBits = Math.Max(keyBits, BitsOf(part.MaxKeyValue));
+            }
+            uint compoundOffset = AppendCompoundShell(packfile, userData, keyBits);
 
             //The new compound is last in the payload and in the object list, so its ordinal is the number of compounds
             //before it - the same rank a reload assigns. Only its own view is made: re-parsing them all would replace
@@ -116,26 +123,112 @@ namespace CathodeLib.Havok
 
             compound.DomainMin = new Vector4(float.MaxValue, float.MaxValue, float.MaxValue, 0f);
             compound.DomainMax = new Vector4(float.MinValue, float.MinValue, float.MinValue, 0f);
-            compound.AddInstance(new CompoundInstance
+            foreach (uint meshOffset in meshOffsets)
             {
-                Translation = new Vector4(0f, 0f, 0f, 0.5f),  //W = 0x3F000000: retail's template instance flag word, no bits set
-                Rotation = Quaternion.Identity,
-                Scale = new Vector4(1f, 1f, 1f, 0.5f),
-                FilterInfo = filterInfo,
-                ChildFilterInfoMask = 0,
-                UserData = userData,
-                ShapeDataOffset = meshOffset,
-                ShapeClassName = "hkpBvCompressedMeshShape",
-            });
+                compound.AddInstance(new CompoundInstance
+                {
+                    Translation = new Vector4(0f, 0f, 0f, 0.5f),  //W = 0x3F000000: retail's template instance flag word, no bits set
+                    Rotation = Quaternion.Identity,
+                    Scale = new Vector4(1f, 1f, 1f, 0.5f),
+                    FilterInfo = filterInfo,
+                    ChildFilterInfoMask = 0,
+                    UserData = userData,
+                    ShapeDataOffset = meshOffset,
+                    ShapeClassName = "hkpBvCompressedMeshShape",
+                });
+            }
             packfile.RewriteCompoundArrays(compound);
             packfile.EnsureProxyListCoversCompounds();
             packfile.RefreshCompoundShapeKeyBits();
 
             //The reader is the first oracle: what went in must come back out, triangle for triangle
+            int written = parts.Sum(o => o.PrimitiveCount);
             PreviewMesh check = packfile.BuildBakeMesh(compound);
-            if (check.TriangleCount != built.PrimitiveCount)
-                throw new InvalidOperationException("The new collision mesh reads back with " + check.TriangleCount + " triangles where " + built.PrimitiveCount + " were written.");
+            if (check.TriangleCount != written)
+                throw new InvalidOperationException("The new collision mesh reads back with " + check.TriangleCount + " triangles where " + written + " were written.");
             return compound;
+        }
+
+        /// <summary>Retail compounds hold 1 to 16 instances; a mesh needing more parts than this is refused.</summary>
+        const int CompoundMaxInstances = 16;
+
+        /// <summary>
+        /// The mesh as one compressed mesh, or - when it is too big for one (the shared-vertex index is 16-bit, the
+        /// section count 15-bit) - cut in two across its longest axis, again and again, until every part builds.
+        /// Parts are spatially compact, so the compound's tree over them stays tight.
+        /// </summary>
+        static List<BuiltMesh> BuildParts(IList<Vector3> positions, IList<int> triangles)
+        {
+            List<BuiltMesh> parts = new List<BuiltMesh>();
+            Stack<(IList<Vector3> positions, IList<int> triangles)> pending = new Stack<(IList<Vector3>, IList<int>)>();
+            pending.Push((positions, triangles));
+            while (pending.Count > 0)
+            {
+                (IList<Vector3> p, IList<int> t) = pending.Pop();
+                try
+                {
+                    parts.Add(MeshProxyBuilder.Build(p, t));
+                }
+                catch (MeshTooLargeException) when (t.Count >= 6)
+                {
+                    SplitInTwo(p, t, out (List<Vector3>, List<int>) low, out (List<Vector3>, List<int>) high);
+                    pending.Push(high);
+                    pending.Push(low);
+                }
+                if (parts.Count + pending.Count > CompoundMaxInstances)
+                    throw new ArgumentException("The mesh is too big for one collision proxy even cut into " + CompoundMaxInstances + " parts: simplify it, or split it over several entities.");
+            }
+            return parts;
+        }
+
+        /// <summary>The triangles cut in two halves by count, at the median centre along the longest axis of their centres; each half keeps only the vertices it uses.</summary>
+        static void SplitInTwo(IList<Vector3> positions, IList<int> triangles, out (List<Vector3>, List<int>) low, out (List<Vector3>, List<int>) high)
+        {
+            List<int> valid = new List<int>();
+            for (int t = 0; t + 2 < triangles.Count; t += 3)
+            {
+                int a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
+                if (a >= 0 && b >= 0 && c >= 0 && a < positions.Count && b < positions.Count && c < positions.Count)
+                    valid.Add(t);
+            }
+            Vector3[] centres = new Vector3[valid.Count];
+            Vector3 min = new Vector3(float.MaxValue), max = new Vector3(float.MinValue);
+            for (int i = 0; i < valid.Count; i++)
+            {
+                int t = valid[i];
+                centres[i] = (positions[triangles[t]] + positions[triangles[t + 1]] + positions[triangles[t + 2]]) / 3f;
+                if (!float.IsNaN(centres[i].X + centres[i].Y + centres[i].Z) && !float.IsInfinity(centres[i].X + centres[i].Y + centres[i].Z)) { min = Vector3.Min(min, centres[i]); max = Vector3.Max(max, centres[i]); }
+            }
+            Vector3 size = max - min;
+            int axis = size.X >= size.Y && size.X >= size.Z ? 0 : size.Y >= size.Z ? 1 : 2;
+            int[] order = Enumerable.Range(0, valid.Count).OrderBy(i => axis == 0 ? centres[i].X : axis == 1 ? centres[i].Y : centres[i].Z).ToArray();
+            int half = order.Length / 2;
+            low = Gather(positions, triangles, valid, order, 0, half);
+            high = Gather(positions, triangles, valid, order, half, order.Length);
+        }
+
+        static (List<Vector3>, List<int>) Gather(IList<Vector3> positions, IList<int> triangles, List<int> valid, int[] order, int from, int to)
+        {
+            List<Vector3> verts = new List<Vector3>();
+            List<int> indices = new List<int>((to - from) * 3);
+            Dictionary<int, int> remap = new Dictionary<int, int>();
+            for (int i = from; i < to; i++)
+            {
+                int t = valid[order[i]];
+                for (int k = 0; k < 3; k++)
+                {
+                    int source = triangles[t + k];
+                    if (!remap.TryGetValue(source, out int at)) { at = verts.Count; verts.Add(positions[source]); remap[source] = at; }
+                    indices.Add(at);
+                }
+            }
+            return (verts, indices);
+        }
+
+        /// <summary>A mesh one compressed mesh cannot hold (too many triangles, sections or shared vertices): <see cref="BuildParts"/> cuts it up.</summary>
+        sealed class MeshTooLargeException : ArgumentException
+        {
+            public MeshTooLargeException(string message) : base(message) { }
         }
 
         static int BitsOf(uint value)
@@ -843,7 +936,7 @@ namespace CathodeLib.Havok
                 if (indices.Count % 3 != 0)
                     throw new ArgumentException("The index list must hold three entries per triangle.", nameof(indices));
                 if (indices.Count / 3 > MeshMaxTriangles)
-                    throw new ArgumentException("Too many triangles for one collision mesh.", nameof(indices));
+                    throw new MeshTooLargeException("Too many triangles for one collision mesh.");
 
                 //Weld exact duplicates and drop what cannot collide: bad indices, non-finite points, empty triangles
                 List<Vector3> verts = new List<Vector3>();
@@ -875,7 +968,7 @@ namespace CathodeLib.Havok
 
                 List<List<int>> groups = Partition(tris, verts);
                 if (groups.Count > MeshMaxSections)
-                    throw new ArgumentException("Too many sections for one collision mesh.");
+                    throw new MeshTooLargeException("Too many sections for one collision mesh.");
 
                 //A vertex two sections use is kept once, in the shared table, so their edges meet exactly
                 Dictionary<int, int> sectionsUsing = new Dictionary<int, int>();
@@ -952,7 +1045,7 @@ namespace CathodeLib.Havok
                         {
                             slot = built.Shared.Count;
                             if (slot >= MeshMaxSharedVertices)
-                                throw new ArgumentException("Too many vertices shared between sections for one collision mesh (the shared-vertex index is 16-bit); split the mesh.");
+                                throw new MeshTooLargeException("Too many vertices shared between sections for one collision mesh (the shared-vertex index is 16-bit); split the mesh.");
                             ulong packed = QuantiseShared(verts[v], domain.Min, domain.Max);
                             built.Shared.Add(packed);
                             sharedDecoded.Add(DecompressSharedVertex21(packed, domain.Min, domain.Max));

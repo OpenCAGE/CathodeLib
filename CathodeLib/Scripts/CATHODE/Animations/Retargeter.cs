@@ -73,9 +73,10 @@ namespace CathodeLib
         ///
         /// Only rotation comes across. The target keeps its own bone offsets, which is what stops a
         /// tall character's limbs being squashed to a short one's proportions - and means a bone can
-        /// never change length, whatever the clip does. The exception is the root, which is where a
-        /// clip carries the character about; that travel comes through, scaled by how much bigger
-        /// the target is.
+        /// never change length, whatever the clip does. The exceptions are the root, which is where a
+        /// clip carries the character about, and the bones hung straight off it (the pelvis, the IK
+        /// targets), which carry the body's own travel - a sit, a crouch, a step; theirs comes through
+        /// too, scaled by how much bigger the target is. Without it a seated clip plays at standing height.
         /// </summary>
         public List<HavokPackfile.SampledTransform> Apply(List<HavokPackfile.SampledTransform> pose)
         {
@@ -99,7 +100,15 @@ namespace CathodeLib
                 if (source < 0 || source >= pose.Count || target < 0 || target >= result.Count) continue;
 
                 Vector3 travel = Vector3.Zero;
-                if (_to.Bones[target].ParentIndex < 0 && source < From.Bones.Count)
+                int parent = _to.Bones[target].ParentIndex;
+                bool carriesTravel = parent < 0 || _to.Bones[parent].ParentIndex < 0;
+                if (carriesTravel && source < From.Bones.Count && parent >= 0)
+                {
+                    //only when the source bone hangs off its root too, or its local offset means something else
+                    int sourceParent = From.Bones[source].ParentIndex;
+                    carriesTravel = sourceParent >= 0 && sourceParent < From.Bones.Count && From.Bones[sourceParent].ParentIndex < 0;
+                }
+                if (carriesTravel && source < From.Bones.Count)
                     travel = (pose[source].Translation - From.Bones[source].Position) * pair.Scale;
 
                 result[target] = new HavokPackfile.SampledTransform
