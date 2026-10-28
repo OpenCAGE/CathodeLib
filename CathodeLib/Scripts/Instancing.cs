@@ -2880,8 +2880,9 @@ namespace CathodeLib
             //Patch mode (the product default): the census that decides which movers were MOVED or ADDED
             //needs the PRISTINE mover state, harvested before instancing rebuilds the list. Without the
             //snapshots every instancing-manufactured mover whose GUID never joins the retail instance
-            //map would count as "new" and be pointlessly rebaked.
-            if (radiositySettings != null && radiositySettings.PatchRetailRuntime && level?.Movers?.Entries != null)
+            //map would count as "new" and be pointlessly rebaked. Keeping the radiosity without a bake
+            //re-binds it the same way, so it needs them too.
+            if (radiositySettings != null && (radiositySettings.PatchRetailRuntime || radiositySettings.KeepExisting) && level?.Movers?.Entries != null)
             {
                 if (radiositySettings.RetailModelParams == null)
                     radiositySettings.RetailModelParams = HarvestPristineModelParams(level);
@@ -2955,6 +2956,7 @@ namespace CathodeLib
                 RadiosityBaker.BakeResult radiosity = null;
                 Phase("bake: radiosity", () => radiosity = RadiosityBaker.BakeLevel(level, this, radiositySettings, Console.WriteLine));
                 RadiosityCleared = radiosity != null && radiosity.NothingToBake;
+                RadiosityResult = radiosity;
 
                 if (_level.Patched)
                     Utilities.ClearRadiosityPatchOnDisk(_level);
@@ -2971,6 +2973,9 @@ namespace CathodeLib
         /// the in-memory radiosity objects over that.
         /// </summary>
         public bool RadiosityCleared { get; private set; }
+
+        /// <summary>What the radiosity bake did (null when it was not asked for): baked, patched, or kept without a bake.</summary>
+        public RadiosityBaker.BakeResult RadiosityResult { get; private set; }
 
         /// <summary>
         /// Do not blank the level's radiosity files when instancing without radiosity settings.

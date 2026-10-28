@@ -12,10 +12,16 @@ namespace CathodeLib.Radiosity
     /// </summary>
     internal static class RadiosityPatcher
     {
+        /// <param name="keepOnly">
+        /// Bake nothing (<see cref="RadiosityBakeSettings.KeepExisting"/>): only re-bind the radiosity to the rebuilt movers so
+        /// it stays valid, and record the movers the delta would have baked in <see cref="RadiosityRuntime.PendingDeltaMovers"/>
+        /// for the next patch.
+        /// </param>
         public static RadiosityBaker.BakeResult PatchLevel(
             Level level,
             RadiosityBakeSettings settings,
-            Action<string> log = null)
+            Action<string> log = null,
+            bool keepOnly = false)
         {
             RadiosityRuntime runtime = level.RadiosityRuntime
                 ?? throw new InvalidOperationException("Level has no RADIOSITY_RUNTIME.BIN to patch.");
@@ -186,6 +192,42 @@ namespace CathodeLib.Radiosity
             }
 
             log?.Invoke("Radiosity patch census: deltaMovers=" + deltaMovers.Count + " (moved=" + movedMovers + ")");
+
+            // Movers an earlier save left waiting because it skipped the bake: that save wrote them into the pristine state,
+            // so the census can no longer tell they were moved or added - the record says so instead, and they join this
+            // delta. Skipping the bake again keeps them waiting, with this save's own delta added; nothing is baked.
+            HashSet<ulong> pending = runtime.PendingDeltaMovers;
+            int pendingJoined = 0;
+            if (keepOnly)
+            {
+                var waiting = new HashSet<ulong>();
+                for (int i = 0; i < level.Movers.Entries.Count; i++)
+                {
+                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[i];
+                    if (mover.Resource == null)
+                        continue;
+                    ulong key = MoverKey(mover);
+                    if (deltaMovers.Contains(i) || pending.Contains(key))
+                        waiting.Add(key);
+                }
+                runtime.PendingDeltaMovers = waiting;
+                log?.Invoke("Radiosity: bake skipped - the level's radiosity is kept as it was, re-bound to the rebuilt movers; " +
+                            waiting.Count + " moved or added mover(s) wait for the next bake");
+                deltaMovers.Clear();
+                movedDeltas.Clear();
+            }
+            else if (pending.Count > 0)
+            {
+                for (int i = 0; i < level.Movers.Entries.Count; i++)
+                {
+                    Movers.MOVER_DESCRIPTOR mover = level.Movers.Entries[i];
+                    if (mover.Resource == null || mover.RenderableElements == null || mover.RenderableElements.Count == 0)
+                        continue;
+                    if (pending.Contains(MoverKey(mover)) && deltaMovers.Add(i))
+                        pendingJoined++;
+                }
+                log?.Invoke("Radiosity patch census: " + pendingJoined + " mover(s) left waiting by a save that skipped the bake join the delta");
+            }
 
             // Rigid group move: when the moved movers overwhelmingly share one translation (a shifted room or level),
             // delta probes reference the retail lighting of the place the group CAME FROM. The minimum cohort guards
@@ -374,11 +416,18 @@ namespace CathodeLib.Radiosity
             timer.Lap("restore");
             log?.Invoke("Radiosity patch timing: " + timer);
 
+            // Everything waiting has been baked with this delta
+            if (!keepOnly)
+                runtime.PendingDeltaMovers.Clear();
+
             var result = new RadiosityBaker.BakeResult
             {
                 Slices = runtime.Slices.Count,
                 Instances = runtime.InstanceSliceIndices.Count,
-                Message = "Radiosity PATCH: slices kept=" + runtime.Slices.Count +
+                Kept = keepOnly,
+                PendingMovers = runtime.PendingDeltaMovers.Count,
+                Message = (keepOnly ? "Radiosity KEPT (bake skipped, " + runtime.PendingDeltaMovers.Count + " mover(s) waiting):" : "Radiosity PATCH:") +
+                          " slices kept=" + runtime.Slices.Count +
                           " lightRefs resolved=" + resolved + " orphaned=" + orphaned +
                           " (lights zeroed=" + zeroed + ")" +
                           " map rebound=" + mapFixed + " mapOrphaned=" + mapOrphaned +
@@ -387,10 +436,13 @@ namespace CathodeLib.Radiosity
                           " probeSliceIslands=" + probeIslands +
                           " deltaIslandsBaked=" + deltaIslands +
                           " modelParamsRestored=" + paramsRestored +
-                          (unmappedMovers > 0 ? "  [unmapped movers that predate the edit keep their shipped lighting; added ones are lit by the delta path]" : "")
+                          (keepOnly ? "  [moved movers keep the lighting of where they were; added ones have no lightmap until a bake]" :
+                           unmappedMovers > 0 ? "  [unmapped movers that predate the edit keep their shipped lighting; added ones are lit by the delta path]" : "")
             };
             log?.Invoke(result.Message);
             return result;
+        static ulong MoverKey(Movers.MOVER_DESCRIPTOR mover) =>
+            ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
         static bool Differs(System.Numerics.Matrix4x4 a, System.Numerics.Matrix4x4 b)
         {
             // Any element off by more than a hair counts: rotation and scale changes need the

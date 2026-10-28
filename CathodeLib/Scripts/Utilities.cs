@@ -775,6 +775,8 @@ namespace CathodeLib
                 File.Delete(renderable + "RADIOSITY_INSTANCE_MAP.TXT");
                 File.Delete(RadiosityRuntime.GetOwnershipMarkerPath(renderable + "RADIOSITY_RUNTIME.BIN"));
                 File.Delete(RadiosityRuntime.GetOwnershipMarkerPath(renderable + "RADIOSITY_RUNTIME.BIN.GZ"));
+                File.Delete(RadiosityRuntime.GetPendingDeltaPath(renderable + "RADIOSITY_RUNTIME.BIN"));
+                File.Delete(RadiosityRuntime.GetPendingDeltaPath(renderable + "RADIOSITY_RUNTIME.BIN.GZ"));
             }
         }
 

@@ -37,6 +37,14 @@ namespace CATHODE
         /// </summary>
         public bool FullyRegenerated = false;
 
+        /// <summary>
+        /// Movers (by resource GUID pair, composite instance &lt;&lt; 32 | resource) a save that skipped the radiosity bake left
+        /// moved or added without radiosity of their own. That save wrote them into the level, so a later bake can no longer
+        /// tell them from what the bake lit - this record is how it knows to light them. Kept beside the BIN in a sidecar the
+        /// game never reads (<see cref="GetPendingDeltaPath"/>); a full regeneration or a patch that bakes empties it.
+        /// </summary>
+        public HashSet<ulong> PendingDeltaMovers = new HashSet<ulong>();
+
         private Resources _resources;
 
         public RadiosityRuntime(string path, Resources resources) : base(path)
@@ -93,6 +101,7 @@ namespace CATHODE
             }
 
             FullyRegenerated = ReadOwnershipMarker(_filepath);
+            PendingDeltaMovers = ReadPendingDelta(_filepath);
             return true;
         }
 
@@ -155,6 +164,7 @@ namespace CATHODE
                 Utilities.GZIPCompress(_filepath);
 
             WriteOwnershipMarker(_filepath, FullyRegenerated);
+            WritePendingDelta(_filepath, PendingDeltaMovers);
             return true;
         }
 
@@ -229,6 +239,80 @@ namespace CATHODE
                     "version=1" + Environment.NewLine +
                     "generated=" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture) + Environment.NewLine +
                     OwnershipMarkerLengthKey + new FileInfo(runtimePath).Length.ToString(CultureInfo.InvariantCulture) + Environment.NewLine);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Where the <see cref="PendingDeltaMovers"/> record for a given RADIOSITY_RUNTIME.BIN (or .BIN.GZ) lives. A .META
+        /// sidecar, so a save swaps it in with the BIN. Nothing in the game reads it; deleting it only costs the next bake its
+        /// knowledge of what a skipped bake left unlit.
+        /// </summary>
+        public static string GetPendingDeltaPath(string runtimePath)
+        {
+            return string.IsNullOrEmpty(runtimePath) ? null : runtimePath + ".PENDING.META";
+        }
+
+        private static HashSet<ulong> ReadPendingDelta(string runtimePath)
+        {
+            HashSet<ulong> pending = new HashSet<ulong>();
+            string path = GetPendingDeltaPath(runtimePath);
+            if (path == null || !File.Exists(path) || !File.Exists(runtimePath))
+                return pending;
+
+            try
+            {
+                long actualLength = new FileInfo(runtimePath).Length;
+                bool lengthMatches = false;
+                List<ulong> keys = new List<ulong>();
+                foreach (string raw in File.ReadAllLines(path))
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal))
+                        continue;
+                    if (line.StartsWith(OwnershipMarkerLengthKey, StringComparison.Ordinal))
+                    {
+                        //As the ownership marker: a record left beside a BIN that has since been replaced describes another bake
+                        lengthMatches = long.TryParse(line.Substring(OwnershipMarkerLengthKey.Length).Trim(), NumberStyles.Integer,
+                                                      CultureInfo.InvariantCulture, out long recordedLength) && recordedLength == actualLength;
+                        continue;
+                    }
+                    if (ulong.TryParse(line, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ulong key))
+                        keys.Add(key);
+                }
+                if (lengthMatches)
+                    pending.UnionWith(keys);
+            }
+            catch { }
+
+            return pending;
+        }
+
+        private static void WritePendingDelta(string runtimePath, HashSet<ulong> pending)
+        {
+            string path = GetPendingDeltaPath(runtimePath);
+            if (path == null)
+                return;
+
+            try
+            {
+                if (pending == null || pending.Count == 0)
+                {
+                    File.Delete(path);
+                    return;
+                }
+
+                List<string> lines = new List<string>()
+                {
+                    "# OpenCAGE radiosity: models a save that skipped the radiosity bake left moved or added without lighting",
+                    "# of their own. The next save that bakes this level's radiosity lights them. The game never reads this",
+                    "# file and it is safe to delete.",
+                    "version=1",
+                    OwnershipMarkerLengthKey + new FileInfo(runtimePath).Length.ToString(CultureInfo.InvariantCulture),
+                };
+                foreach (ulong key in pending.OrderBy(o => o))
+                    lines.Add(key.ToString("X16", CultureInfo.InvariantCulture));
+                File.WriteAllLines(path, lines);
             }
             catch { }
         }

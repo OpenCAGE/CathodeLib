@@ -101,6 +101,15 @@ namespace CathodeLib.Radiosity
             public int StaleRectsCleared;
             public int CrossSliceFixups;
             public int DoorTransfers;
+
+            /// <summary>
+            /// The bake was skipped (<see cref="RadiosityBakeSettings.KeepExisting"/>): the level kept the radiosity it had,
+            /// re-bound to the rebuilt movers - or, with <see cref="NothingToBake"/>, it had none to keep.
+            /// </summary>
+            public bool Kept;
+            /// <summary>Movers left waiting for a bake (<see cref="RadiosityRuntime.PendingDeltaMovers"/>) after a <see cref="Kept"/> save.</summary>
+            public int PendingMovers;
+
             public string Message;
         }
 
@@ -122,6 +131,22 @@ namespace CathodeLib.Radiosity
                 throw new InvalidOperationException("Level is missing MODELS.MVR or RESOURCES.BIN.");
 
             settings ??= RadiosityBakeSettings.CreateDefault();
+
+            /* No bake: what the level has is kept and re-bound to the movers instancing rebuilt, so the game can still read
+             * it (the patch without its delta). A level with nothing to keep is left with no radiosity, as a level with no
+             * geometry is - never baked behind the caller's back. */
+            if (settings.KeepExisting)
+            {
+                if (level.RadiosityRuntime == null || level.RadiosityRuntime.Slices == null ||
+                    level.RadiosityRuntime.Slices.Count == 0)
+                {
+                    log?.Invoke("Radiosity: bake skipped, and the level has no radiosity to keep - it is saved without any");
+                    if (!Instancing.SkipRadiosityClear)
+                        Utilities.ClearRadiosityOnDisk(level);
+                    return new BakeResult() { NothingToBake = true, Kept = true, Message = "Radiosity bake skipped: the level had no radiosity to keep." };
+                }
+                return RadiosityPatcher.PatchLevel(level, settings, log, keepOnly: true);
+            }
 
             /* Delta mode: keep the shipped radiosity and patch only what the edit invalidated.
              * It is worth doing only while there is a retail bake underneath worth protecting -
@@ -208,6 +233,8 @@ namespace CathodeLib.Radiosity
             // Everything below replaces CA's bake wholesale, so from here the data is ours: later
             // saves regenerate it rather than patching a bake with nothing retail left in it.
             runtime.FullyRegenerated = true;
+            // ...and it lights every mover, so none is left waiting for a bake a save skipped.
+            runtime.PendingDeltaMovers.Clear();
             runtime.Slices.Clear();
             runtime.InstanceSliceIndices.Clear();
             runtime.InfluenceFixups.Clear();
