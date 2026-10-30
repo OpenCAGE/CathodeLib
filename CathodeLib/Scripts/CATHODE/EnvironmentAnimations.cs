@@ -473,7 +473,10 @@ namespace CATHODE
         public static List<string> HavokBoneNames(HavokPackfile packfile)
         {
             List<string> names = new List<string>();
-            if (packfile == null || !packfile.Loaded || packfile.IsTagfile) return names;
+            if (packfile == null || !packfile.Loaded) return names;
+
+            //the mobile and Switch ragdolls are tagfiles, which say where their own members are
+            if (packfile.IsTagfile) return packfile.Tagfile?.SkeletonBoneNames() ?? names;
 
             //hkaSkeleton for hk_2012.2.0, the layout Skeleton reads: header, m_name, then the parent / bone / pose arrays
             uint pointerSize = packfile.Header.PointerSize;

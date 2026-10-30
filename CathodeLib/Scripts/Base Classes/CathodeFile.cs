@@ -503,6 +503,9 @@ namespace CathodeLib
                         destination = Path.Combine(_directory, file);
                         if (File.Exists(destination))
                         {
+                            //Replaced under the name it has on disk, not the case the path asked for: the Mac, Linux and iOS builds
+                            //ship their files in lower case, and the case-sensitive file systems they run on can't find a renamed one
+                            destination = SpelledAsOnDisk(destination);
                             kept = source + KeptSuffix;
                             Retry(() =>
                             {
@@ -573,6 +576,22 @@ namespace CathodeLib
                     TryDelete(_folder);
                 lock (_inUse)
                     _inUse.Remove(_folder);
+            }
+
+            /// <summary>An existing file's path with its name spelled as it is on disk (the path as given if it can't be read).</summary>
+            private static string SpelledAsOnDisk(string path)
+            {
+                try
+                {
+                    string name = Path.GetFileName(path);
+                    foreach (string found in Directory.EnumerateFiles(Path.GetDirectoryName(path), name))
+                        if (string.Equals(Path.GetFileName(found), name, StringComparison.OrdinalIgnoreCase))
+                            return Path.Combine(Path.GetDirectoryName(path), Path.GetFileName(found));
+                }
+                catch
+                {
+                }
+                return path;
             }
 
             //A file another program has open for a moment (a virus scanner reading what was just written, say) is tried again

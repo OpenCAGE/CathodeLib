@@ -1014,6 +1014,34 @@ namespace CATHODE
             return target.Bones.Count != 0;
         }
 
+        /// <summary>
+        /// Every bone name of every hkaSkeleton in the file, in file order - what a ragdoll keeps where a skeleton file
+        /// ships its names stripped. The tagfile side of <see cref="EnvironmentAnimations.HavokBoneNames"/>.
+        /// </summary>
+        public List<string> SkeletonBoneNames()
+        {
+            List<string> names = new List<string>();
+            TagType skeletonType = Find("hkaSkeleton");
+            TagType boneType = Find("hkaBone");
+            if (skeletonType == null) return names;
+            int stride = boneType != null && boneType.Size > 0 ? boneType.Size : 16;
+            int nameAt = boneType == null ? 0 : Math.Max(0, boneType.OffsetOf("name"));
+
+            foreach (TagItem skeleton in _items.Where(o => o.Type != null && o.Type.Is("hkaSkeleton")))
+            {
+                TagItem bones = ArrayItem(skeleton.Offset, skeletonType.OffsetOf("bones"));
+                if (bones == null) continue;
+                for (int i = 0; i < bones.Count; i++)
+                {
+                    int bone = bones.Offset + i * stride;
+                    if (DataAt + bone + stride > Data.Length) break;
+                    string name = Text(bone, nameAt);
+                    if (!string.IsNullOrEmpty(name)) names.Add(name);
+                }
+            }
+            return names;
+        }
+
         private Vector4 Vector(int at)
         {
             return new Vector4(BitConverter.ToSingle(Data, at), BitConverter.ToSingle(Data, at + 4),

@@ -4150,6 +4150,17 @@ namespace CATHODE
                 ArrayStride = array,
             };
 
+            /* A packfile written for GCC or Clang (reusePaddingOptimization - the Linux and Mac builds' data\havok copies)
+             * packs hkaAnimation's first members into the four bytes of tail padding hkReferencedObject leaves on 64 bit, so
+             * the type, duration and track counts each sit four earlier than MSVC puts them. The pointer and array after them
+             * land on the same eight byte boundary either way, and no other member read here moves. */
+            if (Tagfile == null && Header.PointerSize == 8 && Header.PaddingOption != 0)
+            {
+                _animation.AnimationDuration -= 4;
+                _animation.AnimationTransformTracks -= 4;
+                _animation.AnimationFloatTracks -= 4;
+            }
+
             if (Tagfile == null)
                 return _animation;
 
@@ -4340,7 +4351,10 @@ namespace CATHODE
             /* Seven scalars, then the arrays - which on a 64 bit packfile have to start on an eight
              * byte boundary, so there are four bytes of padding in front of them. */
             uint arrays = spline + 28;
-            if (Header.PointerSize == 8) arrays = (arrays + 7u) & ~7u;
+            /* ...an eight byte boundary of the object, that is: retail starts every object on sixteen, so measuring from
+             * the start of __data__ gives the same answer there, but the Linux and Mac data\havok copies pack objects on
+             * four and would read every other clip's arrays four bytes early */
+            if (Header.PointerSize == 8) arrays = at + ((arrays - at + 7u) & ~7u);
 
             if (TryGetHkArray(arrays, out uint blockData, out int blockCount))
                 for (int i = 0; i < blockCount && blockData + (i * 4) + 4 <= DataPayload.Length; i++)
@@ -4878,17 +4892,33 @@ namespace CATHODE
         /* Every array this object points at, as data offset -> element count */
         /// <summary>
         /// Fill a mapper from the members the file names, rather than from what its arrays look like.
-        /// Only a tagfile can answer this; returns false when there is no schema to ask.
+        /// A tagfile is asked; a 2012 packfile has a fixed layout. Returns false for anything else.
         /// </summary>
         bool TryReadMapperByName(uint at, SkeletonMapper mapper)
         {
-            if (Tagfile == null)
+            int data, simple, unmapped, stride;
+            if (Tagfile != null)
+            {
+                data = Tagfile.OffsetOf("hkaSkeletonMapper", "mapping");
+                simple = Tagfile.OffsetOf("hkaSkeletonMapperData", "simpleMappings");
+                unmapped = Tagfile.OffsetOf("hkaSkeletonMapperData", "unmappedBones");
+                stride = Tagfile.SizeOf("hkaSkeletonMapperData::SimpleMapping");
+            }
+            else if ((Header.ContentsVersion ?? "").StartsWith("hk_2012"))
+            {
+                /* A packfile names nothing, but hk_2012's hkaSkeletonMapperData sits on the sixteen byte boundary after the
+                 * object header, and after its two skeleton pointers the simple mappings and unmapped bones are its fourth and
+                 * sixth arrays (the iOS tagfile's own type table agrees, and every PC fixup lands there: 60/84 and 80/112).
+                 * Telling the arrays apart by the gap to the next fixup instead dropped a short unmapped list whenever padding
+                 * made it look wider than two bytes an element - 22 of the 288 mappers that have one. */
+                int array = Header.PointerSize + 8;
+                data = 16;
+                simple = Header.PointerSize * 2 + array * 3;
+                unmapped = Header.PointerSize * 2 + array * 5;
+                stride = 64;
+            }
+            else
                 return false;
-
-            int data = Tagfile.OffsetOf("hkaSkeletonMapper", "mapping");
-            int simple = Tagfile.OffsetOf("hkaSkeletonMapperData", "simpleMappings");
-            int unmapped = Tagfile.OffsetOf("hkaSkeletonMapperData", "unmappedBones");
-            int stride = Tagfile.SizeOf("hkaSkeletonMapperData::SimpleMapping");
             if (data < 0 || simple < 0 || unmapped < 0 || stride <= 0)
                 return false;
 

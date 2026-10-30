@@ -1390,6 +1390,60 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// The Linux and Mac builds ship an ANIMATION.PAK identical to the PC's, and beside it a DATA\HAVOK folder of 1,214
+        /// sections converted ahead of time to the layout GCC and Clang build Havok with (reusePaddingOptimization), each
+        /// named by a key nobody has worked out - two sections with byte-identical Havok data get different keys, so it is
+        /// not their content. Which of those files hold this section's clips, matched on what they play: the compressed
+        /// streams are the PAK's byte for byte. Empty on every other build, and for the ten thousand or so sections with no copy.
+        /// Ask before rebuilding a section: afterwards it no longer matches its old copy.
+        /// </summary>
+        public List<string> PreconvertedCopiesOf(AnimClipDBSec section)
+        {
+            List<string> found = new List<string>();
+            if (section?.Havok == null) return found;
+            if (_preconverted == null)
+            {
+                _preconverted = new Dictionary<string, List<string>>();
+                string folder = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(_pak?.Filepath ?? "") ?? "") ?? "", "HAVOK");
+                if (_pak?.Filepath != null && Directory.Exists(folder))
+                {
+                    foreach (string file in Directory.GetFiles(folder, "*.pak"))
+                    {
+                        HavokPackfile copy;
+                        try { copy = new HavokPackfile(File.ReadAllBytes(file), file); }
+                        catch { continue; }
+                        if (!copy.Loaded) continue;
+                        string key = PlaysWhat(copy);
+                        if (key.Length == 0) continue;
+                        if (!_preconverted.TryGetValue(key, out List<string> files)) _preconverted[key] = files = new List<string>();
+                        files.Add(file);
+                    }
+                }
+            }
+            if (_preconverted.Count == 0) return found;
+            string wanted = PlaysWhat(section.Havok);
+            if (wanted.Length != 0 && _preconverted.TryGetValue(wanted, out List<string> matches)) found.AddRange(matches);
+            return found;
+        }
+        private Dictionary<string, List<string>> _preconverted;
+
+        /* What a packfile plays, independent of how its objects are laid out: per clip, the rig, frame and track counts
+         * and a hash of the compressed stream, in a fixed order */
+        private static string PlaysWhat(HavokPackfile packfile)
+        {
+            List<string> clips = new List<string>();
+            foreach (HavokPackfile.AnimationClip clip in packfile.GetAnimations())
+            {
+                ulong hash = 14695981039346656037UL;
+                for (long i = clip.DataOffset; i < (long)clip.DataOffset + clip.DataLength && i < packfile.DataPayload.Length; i++)
+                    hash = (hash ^ packfile.DataPayload[i]) * 1099511628211UL;
+                clips.Add(clip.SkeletonName + ":" + clip.FrameCount + ":" + clip.TransformTrackCount + ":" + clip.FloatTrackCount + ":" + clip.DataLength + ":" + hash.ToString("X16"));
+            }
+            clips.Sort(StringComparer.Ordinal);
+            return string.Join("|", clips);
+        }
+
+        /// <summary>
         /// Every clip reference, in any set, that plays out of this section (or another copy of it).
         /// </summary>
         public List<ClipReference> ClipsIn(AnimClipDBSec section)
