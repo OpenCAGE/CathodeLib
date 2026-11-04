@@ -904,6 +904,10 @@ namespace CATHODE.Scripting.Internal.Parsers
                                                     writer.Write(-1);
                                                     writer.Write(-1);
                                                     break;
+                                                default:
+                                                    writer.Write(-1);
+                                                    writer.Write(-1);
+                                                    break;
                                             }
                                         }
                                         break;

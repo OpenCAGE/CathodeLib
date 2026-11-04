@@ -6678,6 +6678,8 @@ namespace CathodeLib
                         mvr.RenderableElements = reds;
                         mvr.Resource = resource;
                         mvr.CullFlags |= Movers.CullFlag.NO_CAST_SHADOWS;
+                        if (GetBoolIncludingCustom(entity, ShortGuids.disable_size_culling))
+                            mvr.CullFlags |= Movers.CullFlag.NO_SIZE_CULLING;
                         mvr.Entity = entity.Handle;
                         ApplyMoverZones(mvr, entity);
                         mvr.LightingMasterID = entity.LightingMaster;
@@ -6920,6 +6922,23 @@ namespace CathodeLib
             File.Copy(sourcePath, destPath, true);
         }
 
+
+        //A bool the entity's type may not declare: its value (or a link into it) when the type has it, else one added to the entity
+        //itself. The entity template only carries the parameters the type declares, so Bools.Get alone reads an added one as false.
+        private static bool GetBoolIncludingCustom(InstancedEntity entity, ShortGuid name)
+        {
+            if (entity.Bools.Get(name))
+                return true;
+            Parameter p = entity.Entity?.GetParameter(name);
+            switch (p?.content)
+            {
+                case cBool b: return b.value;
+                case cInteger i: return i.value == 1;
+                case cFloat f: return f.value == 1.0f;
+                case cString s: return s.value != null && s.value.ToUpper() == "TRUE";
+            }
+            return false;
+        }
 
         //Utility for working out the emissive intensity multiplier for mover - not quite right yet, but a good match
         private static float ResolveModelReferenceEmissiveIntensity(InstancedEntity entity, bool isTemplate)
