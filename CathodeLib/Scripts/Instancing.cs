@@ -2060,7 +2060,13 @@ namespace CathodeLib
                         }
                     case FunctionType.TriggerSelect:
                         {
-                            if (TryResolveTriggerSelectObject<T>(out T selected))
+                            if (TryResolveTriggerSelectObject<T>(ShortGuids.index, out T selected))
+                                return selected;
+                            break;
+                        }
+                    case FunctionType.TriggerSelect_Direct:
+                        {
+                            if (TryResolveTriggerSelectObject<T>(ShortGuids.TriggeredIndex, out T selected))
                                 return selected;
                             break;
                         }
@@ -2212,10 +2218,10 @@ namespace CathodeLib
             return TryResolveOwnChildLink(objectPin, out value);
         }
 
-        private bool TryResolveTriggerSelectObject<T>(out T value)
+        private bool TryResolveTriggerSelectObject<T>(ShortGuid indexParameter, out T value)
         {
             value = default;
-            int index = Integers.Get(ShortGuids.index);
+            int index = Integers.Get(indexParameter);
             if (index < 0)
                 index = 0;
             if (index >= ShortGuids.TriggerSelectObjectPins.Length)

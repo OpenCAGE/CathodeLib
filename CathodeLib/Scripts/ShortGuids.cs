@@ -310,6 +310,7 @@ namespace CathodeLib
         public static readonly ShortGuid allowed_character_classes_when_closed = ShortGuidUtils.Generate("allowed_character_classes_when_closed");
         public static readonly ShortGuid reverb_name = ShortGuidUtils.Generate("reverb_name");
         public static readonly ShortGuid disable_collision = ShortGuidUtils.Generate("disable_collision");
+        public static readonly ShortGuid TriggeredIndex = ShortGuidUtils.Generate("TriggeredIndex");
 
         public static readonly ShortGuid[] States = new ShortGuid[]
         {
