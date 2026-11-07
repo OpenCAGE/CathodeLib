@@ -3867,6 +3867,15 @@ namespace CathodeLib
                 zones.Add(entity);
             }
 
+            //The zones the level has now, for the zone carry (KeepCarriedZones): a carried pair naming a zone that is gone is stale
+            _existingZoneIds = new HashSet<ShortGuid>();
+            foreach (InstancedEntity zone in zones)
+            {
+                ShortGuid id = ResolveZoneId(zone);
+                if (id != ShortGuid.Invalid)
+                    _existingZoneIds.Add(id);
+            }
+
             //Aliases and proxies of a Zone that carry 'composites' links of their own, which fill the Zone they point at
             _zoneLinkCarriers = FindLinkCarriers(FunctionType.Zone, ShortGuids.composites);
 
@@ -4099,6 +4108,33 @@ namespace CathodeLib
 
         //Aliases and proxies of a Zone that carry 'composites' links, by the Zone instance they point at (CalculateZones)
         private Dictionary<InstancedEntity, List<InstancedEntity>> _zoneLinkCarriers;
+
+        //The zone ids of the level's Zone entities as this build found them (CalculateZones)
+        private HashSet<ShortGuid> _existingZoneIds;
+
+        /// <summary>
+        /// Whether the zone pair a mover or collision row had on disk should replace the one this build computed. The carry keeps
+        /// retail's per-entity choice where our pass orders a contested pair differently - but it also kept every zone edit from
+        /// reaching content that was built before: content first built unzoned stayed in the global zone whatever zones were added
+        /// later (a level made in the editor, zoned afterwards, streamed nothing). So the carry only stands while the zones it names
+        /// still exist and still overlap what this build computed; content newly put in a zone, or moved to another, takes the
+        /// computed pair. Retail's own levels keep their carried pairs: their zones exist and our pass lands on at least one of them.
+        /// </summary>
+        private bool KeepCarriedZones(ShortGuid carriedPrimary, ShortGuid carriedSecondary, ShortGuid computedPrimary, ShortGuid computedSecondary)
+        {
+            bool Real(ShortGuid z) => z != ShortGuid.Invalid && z != GlobalZoneId;
+            bool carriedHasZone = Real(carriedPrimary) || Real(carriedSecondary);
+            bool computedHasZone = Real(computedPrimary) || Real(computedSecondary);
+            if (!carriedHasZone)
+                return !computedHasZone;
+            if (_existingZoneIds != null && ((Real(carriedPrimary) && !_existingZoneIds.Contains(carriedPrimary)) ||
+                                             (Real(carriedSecondary) && !_existingZoneIds.Contains(carriedSecondary))))
+                return false;
+            if (!computedHasZone)
+                return true;
+            return (Real(carriedPrimary) && (carriedPrimary == computedPrimary || carriedPrimary == computedSecondary)) ||
+                   (Real(carriedSecondary) && (carriedSecondary == computedPrimary || carriedSecondary == computedSecondary));
+        }
 
         //The 'composites' links on one entity - the Zone, or an alias or proxy of it - applied to the zone
         private void ApplyZoneLinksOf(InstancedEntity holder, ShortGuid zoneId, ShortGuid zoneSourceInstance, bool variablePinsOnly)
@@ -4795,7 +4831,7 @@ namespace CathodeLib
             // Zone carry (see SnapshotModelParams): retail's primary/secondary pair, all types.
             if (_retailZones != null && _retailZones.Count > 0)
             {
-                int zonesCarried = 0;
+                int zonesCarried = 0, zonesChanged = 0;
                 foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
                 {
                     if (m.Resource == null)
@@ -4805,6 +4841,11 @@ namespace CathodeLib
                         continue;
                     if (m.PrimaryZoneID != pristine.primary || m.SecondaryZoneID != pristine.secondary)
                     {
+                        if (!KeepCarriedZones(pristine.primary, pristine.secondary, m.PrimaryZoneID, m.SecondaryZoneID))
+                        {
+                            zonesChanged++;
+                            continue;
+                        }
                         m.PrimaryZoneID = pristine.primary;
                         m.SecondaryZoneID = pristine.secondary;
                         zonesCarried++;
@@ -4812,12 +4853,14 @@ namespace CathodeLib
                 }
                 if (zonesCarried > 0)
                     Console.WriteLine("Instancing: carried zones for " + zonesCarried + " movers");
+                if (zonesChanged > 0)
+                    Console.WriteLine("Instancing: " + zonesChanged + " movers take their newly computed zones (their zone membership changed)");
             }
 
             // Collision-row zone + state-flag carry (see SnapshotModelParams).
             if (_retailCollisionZones != null && _retailCollisionZones.Count > 0 && _level.CollisionMaps?.Entries != null)
             {
-                int colZonesCarried = 0, colFlagsCarried = 0, colLayersMoved = 0;
+                int colZonesCarried = 0, colZonesChanged = 0, colFlagsCarried = 0, colLayersMoved = 0;
                 foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
                 {
                     if (row?.Entity == null)
@@ -4825,10 +4868,17 @@ namespace CathodeLib
                     var ckey = (row.Entity.composite_instance_id.AsUInt32, row.Entity.entity_id.AsUInt32, row.ResourceGUID.AsUInt32);
                     if (!_retailCollisionZones.TryGetValue(ckey, out (ShortGuid zone, CollisionMaps.CollisionFlags flags) pristine))
                         continue;
+                    //The game finds the zone a camera or player is in from the collision row under it, so a row left in the
+                    //global zone by the carry keeps every zone around it from showing
                     if (row.ZoneID != pristine.zone)
                     {
-                        row.ZoneID = pristine.zone;
-                        colZonesCarried++;
+                        if (KeepCarriedZones(pristine.zone, ShortGuid.Invalid, row.ZoneID, ShortGuid.Invalid))
+                        {
+                            row.ZoneID = pristine.zone;
+                            colZonesCarried++;
+                        }
+                        else
+                            colZonesChanged++;
                     }
                     // State byte only (GHOSTED/PRE_GHOSTED/FROZEN/PRE_FROZEN/REMOVED/...): the low
                     // bits pick the Havok host at build time, so they must stay what the instance
@@ -4854,6 +4904,8 @@ namespace CathodeLib
                 }
                 if (colZonesCarried > 0)
                     Console.WriteLine("Instancing: carried collision-row zones for " + colZonesCarried + " rows");
+                if (colZonesChanged > 0)
+                    Console.WriteLine("Instancing: " + colZonesChanged + " collision rows take their newly computed zones (their zone membership changed)");
                 if (colFlagsCarried > 0)
                     Console.WriteLine("Instancing: carried collision-row flags for " + colFlagsCarried + " rows");
                 if (colLayersMoved > 0)
@@ -5178,6 +5230,31 @@ namespace CathodeLib
             return _materialFactory.WithModel(reds, submesh);
         }
         private readonly HashSet<RequiredModels.Model> _missingRequiredModels = new HashSet<RequiredModels.Model>();
+
+        //A CA_FOGPLANE material the level holds, to build an editor-made fog box's run from: a retail fog box's own
+        //(FOGBOX_...) by preference, else any. Looked up once per build.
+        private Materials.Material FogPlaneTemplate()
+        {
+            if (_fogPlaneTemplateLooked) return _fogPlaneTemplate;
+            _fogPlaneTemplateLooked = true;
+            List<Materials.Material> fog = _level?.Materials?.Entries?.Where(m => m?.Shader != null && m.Shader.Ubershader == SHADER_LIST.CA_FOGPLANE).ToList();
+            _fogPlaneTemplate = fog?.FirstOrDefault(m => m.Name != null && m.Name.StartsWith("FOGBOX_")) ?? fog?.FirstOrDefault();
+            return _fogPlaneTemplate;
+        }
+        private Materials.Material _fogPlaneTemplate;
+        private bool _fogPlaneTemplateLooked;
+
+        //A CA_FOGSPHERE material the level holds, for an editor-made fog sphere: a FOGSPHERE_ one by preference.
+        private Materials.Material FogSphereTemplate()
+        {
+            if (_fogSphereTemplateLooked) return _fogSphereTemplate;
+            _fogSphereTemplateLooked = true;
+            List<Materials.Material> fog = _level?.Materials?.Entries?.Where(m => m?.Shader != null && m.Shader.Ubershader == SHADER_LIST.CA_FOGSPHERE).ToList();
+            _fogSphereTemplate = fog?.FirstOrDefault(m => m.Name != null && m.Name.StartsWith("FOGSPHERE_")) ?? fog?.FirstOrDefault();
+            return _fogSphereTemplate;
+        }
+        private Materials.Material _fogSphereTemplate;
+        private bool _fogSphereTemplateLooked;
 
         private List<RenderableElements.Element> ApplyShaderFeatureMaterial(List<RenderableElements.Element> reds, InstancedEntity entity, long features)
         {
@@ -5766,6 +5843,22 @@ namespace CathodeLib
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        /* A fog box made in the editor has no renderable of its own (retail's carry their run on the entity),
+                           and a mover with no run is never written (AddMover) - so it built to nothing at all, whatever its
+                           parameters (found 5 Nov 2026: HH_START's HH_Haze had no mover). Give it what retail's have: the
+                           required box or plane mesh in a CA_FOGPLANE material, from any the level already holds; the
+                           feature material below then makes it the entity's own FOGBOX_ material, as for a retail one. */
+                        if ((reds == null || reds.Count == 0) && _materialFactory != null)
+                        {
+                            Materials.Material fogTemplate = FogPlaneTemplate();
+                            Models.CS2.Component.LOD.Submesh fogMesh = RequiredModels.Resolve(_level?.Models, type == FOG_BOX_TYPE.BOX
+                                ? RequiredModels.Model.REQUIRED_MODEL_FOGBOX
+                                : RequiredModels.Model.REQUIRED_MODEL_FOGPLANE);
+                            if (fogTemplate != null && fogMesh != null)
+                                reds = _materialFactory.BuildRun(fogMesh, fogTemplate);
+                            else
+                                Warn(DescribeForLog(entity) + ": a FogBox with no renderable of its own, and the level has no " + (fogTemplate == null ? "CA_FOGPLANE material" : "fog mesh") + " to build one from - it will not draw");
+                        }
                         reds = ApplyShaderFeatureMaterial(reds, entity, features);
                         //PLANE and BOX are two different meshes, not two ways of drawing one
                         reds = UseRequiredModel(reds, type == FOG_BOX_TYPE.BOX
@@ -5875,6 +5968,18 @@ namespace CathodeLib
                         Movers.MOVER_DESCRIPTOR mvr = new Movers.MOVER_DESCRIPTOR();
                         mvr.Transform = entity.CalculateWorldTransformMatrix();
                         List<RenderableElements.Element> reds = ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        /* As for FogBox above: a fog sphere made in the editor has no renderable of its own, so it built to no
+                           mover at all. Give it the required sphere mesh in a CA_FOGSPHERE material the level holds (every
+                           level has Required_Assets' pistol barrel glow); the feature material below makes it its own. */
+                        if ((reds == null || reds.Count == 0) && _materialFactory != null)
+                        {
+                            Materials.Material sphereTemplate = FogSphereTemplate();
+                            Models.CS2.Component.LOD.Submesh sphereMesh = RequiredModels.Resolve(_level?.Models, RequiredModels.Model.REQUIRED_MODEL_FOGSPHERE);
+                            if (sphereTemplate != null && sphereMesh != null)
+                                reds = _materialFactory.BuildRun(sphereMesh, sphereTemplate);
+                            else
+                                Warn(DescribeForLog(entity) + ": a FogSphere with no renderable of its own, and the level has no " + (sphereTemplate == null ? "CA_FOGSPHERE material" : "fog sphere mesh") + " to build one from - it will not draw");
+                        }
                         reds = ApplyShaderFeatureMaterial(reds, entity, features);
                         reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_FOGSPHERE);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
@@ -6042,8 +6147,10 @@ namespace CathodeLib
                         // shares one material - but the features above and the gobo are per-instance,
                         // freely rewritten by aliases anywhere up the tree. Give the instance the material
                         // its own resolved parameters call for, which is what retail ships.
-                        List<RenderableElements.Element> lightReds =
-                            ((FunctionEntity)entity.Entity).GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
+                        FunctionEntity lightEntity = (FunctionEntity)entity.Entity;
+                        List<RenderableElements.Element> lightReds;
+                        lock (lightEntity)
+                            lightReds = lightEntity.GetResource(ResourceType.RENDERABLE_INSTANCE, true)?.RenderableInstance;
                         mvr.RenderableElements = _materialFactory != null
                             ? _materialFactory.ApplyMaterial(lightReds, lightMaterial)
                             : lightReds;
@@ -6061,6 +6168,22 @@ namespace CathodeLib
                         //The deferred volume is per light TYPE - retail partitions point/spot/strip
                         //across the three proxy meshes with no overlap in 41,376 light movers.
                         mvr.RenderableElements = UseRequiredModel(mvr.RenderableElements, RequiredModels.ForLight(cpuConstants.Type));
+                        /* ...and the entity is given that run as its own RENDERABLE_INSTANCE, which is what tells the game the light
+                           is the mover above. Without one the game makes a light of its own for the entity at runtime as well, so
+                           every editor-made light was drawn TWICE in game (light.list: mover=N and mover=-1 at the same place) - twice
+                           the light, and a shadowed one spent two of the frame's shadow maps. Retail lights carry the run as an
+                           entity resource (one RENDERABLE_INSTANCE), and a retail light copied into a level is drawn once. Instancing
+                           runs before the level saves, so the commands written with these movers carry it; the next build finds it
+                           in lightReds and only re-applies the material. */
+                        if ((lightReds == null || lightReds.Count == 0) && mvr.RenderableElements != null && mvr.RenderableElements.Count > 0)
+                        {
+                            lock (lightEntity)
+                            {
+                                ResourceReference lightRun = lightEntity.AddResource(ResourceType.RENDERABLE_INSTANCE);
+                                if (lightRun.RenderableInstance == null || lightRun.RenderableInstance.Count == 0)
+                                    lightRun.RenderableInstance = mvr.RenderableElements;
+                            }
+                        }
                         mvr.Resource = resource;
                         if (entity.Bools.Get(ShortGuids.include_in_planar_reflections))
                             mvr.CullFlags |= Movers.CullFlag.INCLUDE_IN_REFLECTIVE;
