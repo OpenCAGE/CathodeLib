@@ -4118,28 +4118,38 @@ namespace CathodeLib
         //The zone ids of the level's Zone entities as this build found them (CalculateZones)
         private HashSet<ShortGuid> _existingZoneIds;
 
+        //The zone ids the level's movers and collision rows were in on disk, before this build (SnapshotModelParams)
+        private HashSet<ShortGuid> _diskZoneIds;
+
         /// <summary>
         /// Whether the zone pair a mover or collision row had on disk should replace the one this build computed. The carry keeps
-        /// retail's per-entity choice where our pass orders a contested pair differently - but it also kept every zone edit from
-        /// reaching content that was built before: content first built unzoned stayed in the global zone whatever zones were added
-        /// later (a level made in the editor, zoned afterwards, streamed nothing). So the carry only stands while the zones it names
-        /// still exist and still overlap what this build computed; content newly put in a zone, or moved to another, takes the
-        /// computed pair. Retail's own levels keep their carried pairs: their zones exist and our pass lands on at least one of them.
+        /// retail's per-entity choices, which our pass does not reproduce: the order of a contested pair, the global zone retail
+        /// gives Required_Assets spawn templates and many fog spheres, and the zone of content our pass files under another
+        /// (on 7 Nov 2026, a carry that yielded whenever the zones disagreed moved 245-360 retail movers a campaign level and
+        /// 1,701 on SALVAGEMODE1). But a carry that always stands kept every zone edit from reaching content built before: content
+        /// first built unzoned stayed in the global zone whatever zones were added later (a level made in the editor, zoned
+        /// afterwards, streamed nothing). So the computed pair is taken where the zones changed since the level was last built:
+        /// the carried pair names a zone the level no longer has (it was deleted), or the computed pair names a zone that nothing
+        /// on disk is in (it was added) and the content was unzoned or has left its old zone. Content that keeps its old zone and
+        /// also gains an unused one keeps what was built: on disk that looks exactly like retail's own empty zones that our pass
+        /// fills (ENVIRONMENT_HospitalLower's Zone_1, beside ZONE_AmbulanceBay, takes the Required_Assets hacking tool on
+        /// SCI_HOSPITALLOWER and SCI_ANDROIDLAB). So sharing content with a new zone (create_zone's default on_claimed 'share')
+        /// does not move it; taking it ('move') does. Otherwise what was built stands - all 36 shipped levels re-instance to
+        /// retail's zones (7 Nov 2026). Moving content between two zones that both existed at the last build is not seen here
+        /// either (the carried pair stands).
         /// </summary>
         private bool KeepCarriedZones(ShortGuid carriedPrimary, ShortGuid carriedSecondary, ShortGuid computedPrimary, ShortGuid computedSecondary)
         {
             bool Real(ShortGuid z) => z != ShortGuid.Invalid && z != GlobalZoneId;
-            bool carriedHasZone = Real(carriedPrimary) || Real(carriedSecondary);
-            bool computedHasZone = Real(computedPrimary) || Real(computedSecondary);
-            if (!carriedHasZone)
-                return !computedHasZone;
             if (_existingZoneIds != null && ((Real(carriedPrimary) && !_existingZoneIds.Contains(carriedPrimary)) ||
                                              (Real(carriedSecondary) && !_existingZoneIds.Contains(carriedSecondary))))
                 return false;
-            if (!computedHasZone)
+            bool Added(ShortGuid z) => Real(z) && z != carriedPrimary && z != carriedSecondary && _diskZoneIds != null && !_diskZoneIds.Contains(z);
+            if (!Added(computedPrimary) && !Added(computedSecondary))
                 return true;
-            return (Real(carriedPrimary) && (carriedPrimary == computedPrimary || carriedPrimary == computedSecondary)) ||
-                   (Real(carriedSecondary) && (carriedSecondary == computedPrimary || carriedSecondary == computedSecondary));
+            bool keepsOld = (Real(carriedPrimary) && (carriedPrimary == computedPrimary || carriedPrimary == computedSecondary)) ||
+                            (Real(carriedSecondary) && (carriedSecondary == computedPrimary || carriedSecondary == computedSecondary));
+            return keepsOld;
         }
 
         //The 'composites' links on one entity - the Zone, or an alias or proxy of it - applied to the zone
@@ -4587,6 +4597,18 @@ namespace CathodeLib
             // ShouldApplyFrozen best-guess for the state bits, and both differ from retail, so retail's
             // own answer is carried per row.
             _retailCollisionZones = new System.Collections.Generic.Dictionary<(uint, uint, uint), (ShortGuid, CollisionMaps.CollisionFlags)>();
+            // Every zone something on disk is in (KeepCarriedZones: a zone nothing is in was added since the last build)
+            _diskZoneIds = new HashSet<ShortGuid>();
+            foreach (Movers.MOVER_DESCRIPTOR m in _level.Movers.Entries)
+            {
+                if (m == null) continue;
+                _diskZoneIds.Add(m.PrimaryZoneID);
+                _diskZoneIds.Add(m.SecondaryZoneID);
+            }
+            if (_level.CollisionMaps?.Entries != null)
+                foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
+                    if (row != null)
+                        _diskZoneIds.Add(row.ZoneID);
             if (_level.CollisionMaps?.Entries != null)
                 foreach (CollisionMaps.COLLISION_MAPPING row in _level.CollisionMaps.Entries)
                 {
