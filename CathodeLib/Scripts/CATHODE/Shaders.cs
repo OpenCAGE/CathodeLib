@@ -167,6 +167,9 @@ namespace CATHODE
                 }
             }
 
+            //The index remap file isn't read for its entries (it's rebuilt on save), only for its container's layout
+            ReadLayout(GetIdxRemapPath());
+
             _poolVertex = VertexShaders;
             _poolPixel = PixelShaders;
             _poolHull = HullShaders;
@@ -196,18 +199,13 @@ namespace CATHODE
             List<byte[]> ComputeShaders = _poolCompute != null ? new List<byte[]>(_poolCompute) : new List<byte[]>();
             for (int i = 0; i < Entries.Count; i++)
             {
-                if (Entries[i].VertexShader != null && !VertexShaders.Contains(Entries[i].VertexShader))
-                    VertexShaders.Add(Entries[i].VertexShader);
-                if (Entries[i].PixelShader != null && !PixelShaders.Contains(Entries[i].PixelShader))
-                    PixelShaders.Add(Entries[i].PixelShader);
-                if (Entries[i].HullShader != null && !HullShaders.Contains(Entries[i].HullShader))
-                    HullShaders.Add(Entries[i].HullShader);
-                if (Entries[i].DomainShader != null && !DomainShaders.Contains(Entries[i].DomainShader))
-                    DomainShaders.Add(Entries[i].DomainShader);
-                if (Entries[i].GeometryShader != null && !GeometryShaders.Contains(Entries[i].GeometryShader))
-                    GeometryShaders.Add(Entries[i].GeometryShader);
-                if (Entries[i].ComputeShader != null && !ComputeShaders.Contains(Entries[i].ComputeShader))
-                    ComputeShaders.Add(Entries[i].ComputeShader);
+                //Bytecode the file already holds (a shader put back to what it was) is that copy, not another one
+                Entries[i].VertexShader = Pooled(VertexShaders, Entries[i].VertexShader);
+                Entries[i].PixelShader = Pooled(PixelShaders, Entries[i].PixelShader);
+                Entries[i].HullShader = Pooled(HullShaders, Entries[i].HullShader);
+                Entries[i].DomainShader = Pooled(DomainShaders, Entries[i].DomainShader);
+                Entries[i].GeometryShader = Pooled(GeometryShaders, Entries[i].GeometryShader);
+                Entries[i].ComputeShader = Pooled(ComputeShaders, Entries[i].ComputeShader);
             }
 
             //Write out all shader data
@@ -277,6 +275,18 @@ namespace CATHODE
             _writeList.Clear();
             _writeList.AddRange(Entries);
             return true;
+        }
+
+        /* The pool's own copy of this bytecode (the same array, or one with the same bytes), else the bytecode added to the pool */
+        private static byte[] Pooled(List<byte[]> pool, byte[] bytecode)
+        {
+            if (bytecode == null || pool.Contains(bytecode))
+                return bytecode;
+            foreach (byte[] existing in pool)
+                if (existing.Length == bytecode.Length && existing.SequenceEqual(bytecode))
+                    return existing;
+            pool.Add(bytecode);
+            return bytecode;
         }
 
         private byte[] SerializeShaderMetadata(Shader shader, int index, List<byte[]> vertexShaders, List<byte[]> pixelShaders, List<byte[]> hullShaders, List<byte[]> domainShaders, List<byte[]> geometryShaders, List<byte[]> computeShaders)
@@ -353,12 +363,48 @@ namespace CATHODE
             public byte[] Data;
         }
 
+        /* What a file's container held besides its entries: its header, each entry's 48-byte slot as it was (the game's own
+           tool left whatever was in memory in the fields it doesn't use) and any slots kept spare after the last entry, so a
+           file saved without changes is the file it was. Only the lengths, offsets and indexes are written over. */
+        private class PakLayout
+        {
+            public byte[] Header;
+            public List<byte[]> Slots = new List<byte[]>();
+        }
+        private readonly Dictionary<string, PakLayout> _layouts = new Dictionary<string, PakLayout>(StringComparer.OrdinalIgnoreCase);
+
+        private static string LayoutKey(string path) => Path.GetFileName(path).Replace(".GZ", "").Replace(".gz", "");
+
+        private void ReadLayout(BinaryReader reader, string path)
+        {
+            long start = reader.BaseStream.Position;
+            reader.BaseStream.Position = 0;
+            PakLayout layout = new PakLayout() { Header = reader.ReadBytes(32) };
+            int slots = BitConverter.ToInt32(layout.Header, 16);
+            for (int i = 0; i < slots; i++)
+                layout.Slots.Add(reader.ReadBytes(48));
+            _layouts[LayoutKey(path)] = layout;
+            reader.BaseStream.Position = start;
+        }
+
+        private void ReadLayout(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return;
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(File.ReadAllBytes(path))))
+                    ReadLayout(reader, path);
+            }
+            catch { }
+        }
+
         private List<ShaderPakEntry> Read(string path)
         {
             List<ShaderPakEntry> content = new List<ShaderPakEntry>();
             using (MemoryStream stream = _compressed ? Utilities.GZIPDecompress(new MemoryStream(File.ReadAllBytes(path))) : new MemoryStream(File.ReadAllBytes(path)))
             using (BinaryReader reader = new BinaryReader(stream))
             {
+                ReadLayout(reader, path);
                 reader.BaseStream.Position += 12;
                 int entryCount = reader.ReadInt32();
                 int entryCountActual = reader.ReadInt32();
@@ -392,9 +438,12 @@ namespace CATHODE
 
         private void Write(string path, List<ShaderPakEntry> content)
         {
+            _layouts.TryGetValue(LayoutKey(path), out PakLayout layout);
+            //Spare slots the file had are kept, as long as they're still spare
+            int slots = layout != null && layout.Slots.Count >= content.Count ? layout.Slots.Count : content.Count;
             using (BinaryWriter writer = new BinaryWriter(File.OpenWrite(path)))
             {
-                int contentOffset = 32 + (content.Count * 48);
+                int contentOffset = 32 + (slots * 48);
                 writer.BaseStream.SetLength(contentOffset);
                 writer.BaseStream.Position = contentOffset;
                 List<int> offsets = new List<int>();
@@ -410,30 +459,49 @@ namespace CATHODE
                 }
 
                 writer.BaseStream.Position = 32;
-                for (int i = 0; i < content.Count; i++)
+                for (int i = 0; i < slots; i++)
                 {
-                    writer.Write(new byte[8]);
-                    writer.Write(BitConverter.GetBytes(lengths[i]));
-                    writer.Write(BitConverter.GetBytes(lengthsAligned[i]));
-                    writer.Write(BitConverter.GetBytes(offsets[i]));
-
-                    writer.Write(new byte[5]);
-                    writer.Write(new byte[2] { 0x00, 0x01 });
-                    writer.Write(new byte[5]);
-
-                    writer.Write(BitConverter.GetBytes(content[i].BinIndex));
-                    writer.Write(new byte[12]);
+                    if (i >= content.Count)
+                    {
+                        writer.Write(layout.Slots[i]);
+                        continue;
+                    }
+                    byte[] slot;
+                    if (layout != null && i < layout.Slots.Count)
+                    {
+                        slot = (byte[])layout.Slots[i].Clone();
+                    }
+                    else
+                    {
+                        slot = new byte[48];
+                        slot[26] = 0x01;
+                    }
+                    Buffer.BlockCopy(BitConverter.GetBytes(lengths[i]), 0, slot, 8, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes(lengthsAligned[i]), 0, slot, 12, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes(offsets[i]), 0, slot, 16, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes(content[i].BinIndex), 0, slot, 32, 4);
+                    writer.Write(slot);
                 }
 
                 writer.BaseStream.Position = 0;
-                writer.Write(new byte[4]);
-                writer.Write(BitConverter.GetBytes(14));
-                writer.Write(BitConverter.GetBytes(3));
-                writer.Write(BitConverter.GetBytes(content.Count));
-                writer.Write(BitConverter.GetBytes(content.Count));
-                writer.Write(BitConverter.GetBytes(16));
-                writer.Write(BitConverter.GetBytes(1));
-                writer.Write(BitConverter.GetBytes(0));
+                if (layout != null)
+                {
+                    byte[] header = (byte[])layout.Header.Clone();
+                    Buffer.BlockCopy(BitConverter.GetBytes(content.Count), 0, header, 12, 4);
+                    Buffer.BlockCopy(BitConverter.GetBytes(slots), 0, header, 16, 4);
+                    writer.Write(header);
+                }
+                else
+                {
+                    writer.Write(new byte[4]);
+                    writer.Write(BitConverter.GetBytes(14));
+                    writer.Write(BitConverter.GetBytes(3));
+                    writer.Write(BitConverter.GetBytes(content.Count));
+                    writer.Write(BitConverter.GetBytes(content.Count));
+                    writer.Write(BitConverter.GetBytes(16));
+                    writer.Write(BitConverter.GetBytes(1));
+                    writer.Write(BitConverter.GetBytes(0));
+                }
             }
         }
         #endregion
