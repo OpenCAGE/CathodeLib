@@ -92,6 +92,8 @@ namespace CathodeLib
         public int ColourLutTexturesPorted { get; private set; }
         public int MaterialMappingsPorted { get; private set; }
         public int NamedMaterialsPorted { get; private set; }
+        /// <summary>Template proxy instances given this level's index for their material (the source's index named another, or none).</summary>
+        public int ProxyMaterialsRetargeted { get; private set; }
         public int CharacterCompositesPorted { get; private set; }
         public int AccessorySetsPorted { get; private set; }
         public int ResourcesSkipped { get; private set; }
@@ -783,8 +785,35 @@ namespace CathodeLib
             else if (src64 != null && dst32 == null)
                 Console.WriteLine("CompositePorter: destination level has no COLLISION.HKX64 - cannot import collision proxy.");
 
+            RetargetProxyMaterials(sourceProxy, dst32, imported32);
+            RetargetProxyMaterials(src64?.GetCompound(sourceProxy.ProxyIndex), dst64, imported64);
+
             //The mobile and Switch builds ship only the 64-bit file, so its proxy is the one the row must name
             return dst32 != null ? imported32 : imported64;
+        }
+
+        /* A template proxy names the render material its hits read their physical material from (footsteps, impacts) by
+           index - the SOURCE level's write index in LEVEL_MODELS.MTL. Copied verbatim it named whatever this level holds at
+           that index, or nothing. Each instance is given the index here of the same material, imported with it when this level
+           lacks it; Level.Save keeps it in step with the list from then on. An index that named nothing in the source becomes 0
+           (FALLBACK_MATERIAL), as retail's own stale ones would. */
+        private void RetargetProxyMaterials(HavokPackfile.StaticCompoundShape sourceProxy, HavokPackfile destination, HavokPackfile.StaticCompoundShape imported)
+        {
+            if (sourceProxy == null || destination == null || imported == null || Source.Materials == null || Destination.Materials == null || destination.IsWorldHost(imported))
+                return;
+            for (int i = 0; i < imported.Instances.Count && i < sourceProxy.Instances.Count; i++)
+            {
+                ulong sourceIndex = sourceProxy.Instances[i].UserData;
+                Materials.Material sourceMaterial = sourceProxy.Instances[i].Material ?? (sourceIndex <= int.MaxValue ? Source.Materials.GetAtWriteIndex((int)sourceIndex) : null);
+                Materials.Material here = sourceMaterial == null ? null : Destination.Materials.ImportEntry(sourceMaterial, OverwriteAssets);
+                int index = here == null ? 0 : Math.Max(0, Destination.Materials.GetWriteIndexOrPending(here));
+                if ((ulong)index != imported.Instances[i].UserData)
+                {
+                    destination.RetargetTemplateUserData(imported, i, (uint)index);
+                    ProxyMaterialsRetargeted++;
+                }
+                destination.BindTemplateMaterial(imported, i, here);
+            }
         }
 
         private void PortDynamicPhysicsSystem(ResourceReference resource)

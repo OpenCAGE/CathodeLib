@@ -242,6 +242,13 @@ namespace CATHODE
             /// <summary>Compound holding this instance (set by <see cref="StaticCompoundShape.AddInstance"/>).</summary>
             public StaticCompoundShape Owner;
 
+            /// <summary>
+            /// On a template proxy (not a world host): the render material <see cref="UserData"/> stands for, as an object, so a
+            /// save writes the index that material has then (Level.Save) - not the index it had when this was read, imported from
+            /// another level or made. Null: whatever the index names when the level is saved.
+            /// </summary>
+            public Materials.Material Material;
+
             /// <summary>Slot within <see cref="Owner"/> — this is the COLLISION.MAP Index.</summary>
             public int Index => Owner?.Instances.IndexOf(this) ?? -1;
         }
@@ -2700,6 +2707,7 @@ namespace CATHODE
              * hosts off that layout rather than guessing from instance counts - a size threshold
              * rejected Frontend's single-instance hosts and left it with nothing collidable. */
             List<StaticCompoundShape> owned = CompoundsOwnedByRigidBodies();
+            _hosts = new HashSet<StaticCompoundShape>(owned);
             if (owned.Count != 0)
             {
                 _worldHostPrimary = owned[0];
@@ -2720,6 +2728,103 @@ namespace CATHODE
                 return;
             _worldHostPrimary = hosts[0];
             _worldHostSecondary = hosts.Count > 1 ? hosts[1] : hosts[0];
+            _hosts.UnionWith(hosts.Take(2));
+        }
+
+        HashSet<StaticCompoundShape> _hosts = new HashSet<StaticCompoundShape>();
+
+        /// <summary>
+        /// Whether the compound is one of the world hosts (the compounds a rigid body carries - ballistic, spare, walkable), whose
+        /// instances are placed collision and whose instance userData is a COLLISION.MAP row index. Every other compound is a
+        /// template proxy: its instances' userData (with its own and its meshes') is the LEVEL_MODELS.MTL write index of the
+        /// render material whose physical material a hit on it reads.
+        /// </summary>
+        public bool IsWorldHost(StaticCompoundShape compound)
+        {
+            ResolveWorldHosts();
+            return compound != null && (_hosts.Contains(compound) || ReferenceEquals(compound, _worldHostPrimary) || ReferenceEquals(compound, _worldHostSecondary));
+        }
+
+        /// <summary>Where an hkpShape's own userData sits in its object (packfile layout): after the vtable, the reference count and the shape type.</summary>
+        int ShapeUserDataAt => Header.PointerSize == 8 ? 24 : 12;
+
+        /// <summary>The own userData of the shape object at <paramref name="shapeDataOffset"/> in the payload (a compound's, a mesh's), or null for a tagfile.</summary>
+        public uint? ReadShapeUserData(uint shapeDataOffset)
+        {
+            if (Tagfile != null || shapeDataOffset == 0 || shapeDataOffset + ShapeUserDataAt + 4 > DataPayload.Length)
+                return null;
+            return BitConverter.ToUInt32(DataPayload, (int)shapeDataOffset + ShapeUserDataAt);
+        }
+
+        /// <summary>
+        /// Give a template proxy instance a new userData (a material index) at once in the payload as well as on the object: its
+        /// instance record, its mesh's own userData and the compound's where those carried the same value - so it survives the
+        /// re-reads an import makes of every compound (which build new instance objects from the payload). Packfiles only for the
+        /// shapes' own fields; the instance's is written for both.
+        /// </summary>
+        public void RetargetTemplateUserData(StaticCompoundShape compound, int instanceIndex, uint userData)
+        {
+            if (compound == null || instanceIndex < 0 || instanceIndex >= compound.Instances.Count)
+                return;
+            CompoundInstance instance = compound.Instances[instanceIndex];
+            ulong before = instance.UserData;
+            if (ReadShapeUserData(instance.ShapeDataOffset) == before)
+                WriteShapeUserData(instance.ShapeDataOffset, userData);
+            if (instanceIndex == 0 && ReadShapeUserData(compound.DataOffset) == before)
+                WriteShapeUserData(compound.DataOffset, userData);
+            instance.UserData = userData;
+            int ptrSize = Header.PointerSize;
+            int at = (int)instance.DataOffset + 48 + ptrSize + 8;
+            if (Tagfile == null && at + ptrSize <= DataPayload.Length)
+            {
+                if (ptrSize == 8) WriteUInt64(DataPayload, at, userData);
+                else WriteUInt32(DataPayload, at, userData);
+            }
+        }
+
+        //Template instances made or imported this session, bound to their material by compound (payload offset) and slot: the instance
+        //objects themselves are built again from the payload by every import (RebuildTypedViewsFromObjects), so they cannot hold it
+        readonly Dictionary<(uint compound, int slot), Materials.Material> _templateMaterials = new Dictionary<(uint, int), Materials.Material>();
+
+        /// <summary>
+        /// Bind a template proxy instance made or imported this session to the render material its userData stands for, so the next
+        /// save writes the index that material is written at (Level.Save) whatever the list does meanwhile.
+        /// </summary>
+        public void BindTemplateMaterial(StaticCompoundShape compound, int slot, Materials.Material material)
+        {
+            if (compound == null || slot < 0 || material == null)
+                return;
+            lock (_templateMaterials)
+                _templateMaterials[(compound.DataOffset, slot)] = material;
+            if (slot < compound.Instances.Count)
+                compound.Instances[slot].Material = material;
+        }
+
+        /// <summary>The material <see cref="BindTemplateMaterial"/> bound the slot to, or null.</summary>
+        public Materials.Material BoundTemplateMaterial(StaticCompoundShape compound, int slot)
+        {
+            if (compound == null)
+                return null;
+            lock (_templateMaterials)
+                return _templateMaterials.TryGetValue((compound.DataOffset, slot), out Materials.Material material) ? material : null;
+        }
+
+        /// <summary>Forget the session's bindings (a save has written them as indices, which the instances are bound by from then on).</summary>
+        public void ClearTemplateMaterialBindings()
+        {
+            lock (_templateMaterials)
+                _templateMaterials.Clear();
+        }
+
+        /// <summary>Set the own userData of the shape object at <paramref name="shapeDataOffset"/> in place (packfiles only). False when it could not be.</summary>
+        public bool WriteShapeUserData(uint shapeDataOffset, uint userData)
+        {
+            if (Tagfile != null || shapeDataOffset == 0 || shapeDataOffset + ShapeUserDataAt + 8 > DataPayload.Length)
+                return false;
+            WriteUInt32(DataPayload, (int)shapeDataOffset + ShapeUserDataAt, userData);
+            if (Header.PointerSize == 8)
+                WriteUInt32(DataPayload, (int)shapeDataOffset + ShapeUserDataAt + 4, 0);
+            return true;
         }
 
         /// <summary>

@@ -2639,6 +2639,36 @@ namespace CathodeLib
         //Remaps declined because they would have moved the mover to a different instance list.
         private int _remapTypeReverts = 0;
 
+        //Entities whose collision template asked for WORLD and BALLISTIC storage on one row, built as WORLD rows (see ProcessEntity)
+        private readonly HashSet<(ShortGuid composite, ShortGuid entity)> _worldOnlyEntities = new HashSet<(ShortGuid, ShortGuid)>();
+        private readonly List<string> _worldOnlyNames = new List<string>();
+        private int _worldOnlyRows = 0;
+
+        private void NoteWorldOnly(InstancedEntity entity)
+        {
+            System.Threading.Interlocked.Increment(ref _worldOnlyRows);
+            ShortGuid composite = entity.Composite?.shortGUID ?? ShortGuid.Invalid;
+            lock (_worldOnlyEntities)
+            {
+                if (!_worldOnlyEntities.Add((composite, entity.Entity.shortGUID)) || _worldOnlyNames.Count >= 5)
+                    return;
+                string name = null;
+                try { name = _level.Commands?.Utils?.GetEntityName(entity.Composite, entity.Entity); }
+                catch { }
+                _worldOnlyNames.Add((entity.Composite?.name ?? "?") + " :: " + (name ?? entity.Entity.shortGUID.ToByteString()));
+            }
+        }
+
+        private void ReportWorldOnly()
+        {
+            if (_worldOnlyRows == 0)
+                return;
+            string message = _worldOnlyEntities.Count + " collision entit" + (_worldOnlyEntities.Count == 1 ? "y asks" : "ies ask") + " for WORLD and BALLISTIC collision on one row (" + _worldOnlyRows + " placed rows), which the game cannot use: " +
+                "they were built as WORLD rows only, so nothing on them gives bullet hits, footstep sounds or the zone the player is in. Give each its ballistic half as retail has it: OpenCAGE's Save & Build offers to " +
+                "(once a session), the MCP tool pair_collision does the whole level (dry_run lists them), and set_collision or setting the proxy again in the Resources dialog does one. " + string.Join("; ", _worldOnlyNames) + (_worldOnlyEntities.Count > _worldOnlyNames.Count ? "; ..." : "");
+            Warn(message);
+        }
+
         //Creates (or finds) the materials an instance needs that the authored data has no entry for.
         private MaterialFactory _materialFactory = null;
 
@@ -2919,6 +2949,7 @@ namespace CathodeLib
             if (_remapTypeReverts != 0)
                 Console.WriteLine("Instancing: kept the authored material on " + _remapTypeReverts +
                                   " mover(s) - the remap would have changed their renderable instance type.");
+            ReportWorldOnly();
             Phase("CarryRetailModelParams", CarryRetailModelParams);
 
             // Each of the four agent bakes is opted into by supplying its settings, the same way
@@ -3500,11 +3531,11 @@ namespace CathodeLib
                     hostMirror.Instances[slot].UserData = (ulong)i;
             }
 
-            /* The stamping above only reaches the instances a row points at. The engine reads UserData
-             * as a COLLISION.MAP row index on whatever leaf a ray actually lands on, including the ones
-             * inside per-mesh template compounds - and an imported compound carries the source level's
-             * indices across verbatim. A ray reaching such a leaf indexes past the end of the table and
-             * the Havok raycast task faults. */
+            /* The stamping above only reaches the instances a row points at. A world host instance's UserData is the
+             * COLLISION.MAP row the engine reports for a hit on it, so one left past the end of the table is pointed
+             * at row 0. Only the hosts: a template proxy's instances carry a material index instead (LEVEL_MODELS.MTL),
+             * which Level.Save keeps right - zeroing those whenever they exceeded the row count put every proxy made for
+             * a late material on FALLBACK_MATERIAL on a level with more materials than rows (Nov 2026). */
             ClampInstanceUserData(_collision?.Packfile, rows.Count);
             ClampInstanceUserData(_collisionMirror?.Packfile, rows.Count);
 
@@ -3538,8 +3569,9 @@ namespace CathodeLib
         }
 
         /// <summary>
-        /// Point any instance whose collision row index is outside the table at row 0. It reports the
-        /// wrong row, but it no longer reads off the end.
+        /// Point any world host instance whose collision row index is outside the table at row 0. It reports the
+        /// wrong row, but it no longer reads off the end. Template proxies are left alone: their userData is a
+        /// material's index, not a row's (see Level.SaveTemplateMaterials).
         /// </summary>
         static void ClampInstanceUserData(HavokPackfile packfile, int rowCount)
         {
@@ -3556,6 +3588,8 @@ namespace CathodeLib
             for (int c = 0; c < packfile.StaticCompoundShapes.Count; c++)
             {
                 HavokPackfile.StaticCompoundShape compound = packfile.StaticCompoundShapes[c];
+                if (!packfile.IsWorldHost(compound))
+                    continue;
                 for (int i = 0; i < compound.Instances.Count; i++)
                 {
                     if (compound.Instances[i].UserData < (ulong)rowCount)
@@ -6365,6 +6399,26 @@ namespace CathodeLib
                                         else
                                             flags |= (CollisionMaps.CollisionFlags)bodgeType;
                                         System.Threading.Interlocked.Increment(ref _collisionTypeCarried);
+                                    }
+                                    /* No retail row has both storage bits. The game picks the host a row's instance lives on
+                                     * from flags & 0xE0 (0x40 world, 0x80 ballistic, 0x20 landscape), so 0xC0 picks none: the
+                                     * engine cannot hide, move or refilter the instance, and the ballistic half asked for never
+                                     * existed - the instance goes on the world host with layer 3 either way (HostFor reads the
+                                     * WORLD bit, the layer the type), and the zone, footstep and camera-zone rays (layer 22)
+                                     * never hit it. That is what an editor's "WORLD + BALLISTIC" template (OpenCAGE's default for
+                                     * new collision before Nov 2026) built. Retail makes such a surface as two entities: a WORLD
+                                     * row and a BALLISTIC row on another entity with its own proxy (OpenCAGE's CollisionPairs).
+                                     * One entity never gets two rows, so this one is written as the WORLD row it was built as,
+                                     * and it is reported: re-running set_collision on the entity (or setting its proxy again in
+                                     * the Resources dialog) gives it the ballistic half. */
+                                    if ((flags & CollisionMaps.CollisionFlags.STORAGE_TYPE_MASK) == (CollisionMaps.CollisionFlags.WORLD | CollisionMaps.CollisionFlags.BALLISTIC))
+                                    {
+                                        flags &= ~CollisionMaps.CollisionFlags.BALLISTIC;
+                                        CollisionMaps.CollisionType worldType = (CollisionMaps.CollisionType)((uint)flags & (uint)CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK);
+                                        if (worldType == CollisionMaps.CollisionType.EVERYTHING || worldType == CollisionMaps.CollisionType.BALLISTICS)
+                                            flags = (flags & ~CollisionMaps.CollisionFlags.COLLISION_TYPE_MASK) | (CollisionMaps.CollisionFlags)CollisionMaps.CollisionType.STANDARD;
+                                        if (template.CollisionProxy != null)
+                                            NoteWorldOnly(entity);
                                     }
                                     if (deleteStandard && (flags & CollisionMaps.CollisionFlags.WORLD) != 0)
                                         emit = false;

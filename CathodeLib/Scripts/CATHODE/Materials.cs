@@ -504,6 +504,27 @@ namespace CATHODE
         }
 
         /// <summary>
+        /// The write index the next save gives a material: <see cref="GetWriteIndex"/> when it has one, else - added since the file
+        /// was loaded or last saved - where Save will write it (the first entry equal to it), as long as nothing before it is
+        /// removed meanwhile. -1 when it is not in <see cref="Entries"/>.
+        /// </summary>
+        public int GetWriteIndexOrPending(Material material)
+        {
+            if (material == null)
+                return -1;
+            int index = GetWriteIndex(material);
+            if (index >= 0)
+                return index;
+            for (int i = 0; i < Entries.Count; i++)
+                if (ReferenceEquals(Entries[i], material))
+                    return Entries.FindIndex(o => o != null && o == material) is int first && first >= 0 && first < i ? first : i;
+            for (int i = 0; i < Entries.Count; i++)
+                if (Entries[i] != null && Entries[i] == material)
+                    return i;
+            return -1;
+        }
+
+        /// <summary>
         /// Rebuild the write index from Entries without saving, in the order Save would write them, so
         /// indexes agree with a file written from this state. Entries added since the file was loaded
         /// or last saved have no index until one of the two happens.

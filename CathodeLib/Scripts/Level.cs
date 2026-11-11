@@ -263,6 +263,7 @@ namespace CathodeLib
                 () => { PathBarrierResources = new PathBarrierResources(world + "PATH_BARRIER_RESOURCES", Resources); OnLoadTick?.Invoke(); },
                 () => { CollisionMaps = new CollisionMaps(world + "COLLISION.MAP" + (compressed ? ".GZ" : ""), Materials, MaterialMappings, CollisionHKX ?? CollisionHKX64); OnLoadTick?.Invoke(); }
             );
+            BindTemplateMaterials();
 
             Parallel.Invoke(
 #if !(UNITY_EDITOR || UNITY_STANDALONE_WIN || GODOT)
@@ -454,7 +455,11 @@ namespace CathodeLib
                 () => { MaterialMappings.Save(); OnSaveTick?.Invoke(); }
             );
 
+            //The template proxies name their material by its MTL index: read as objects before the materials are written, then
+            //given the indices this save writes them at (see SaveTemplateMaterials)
+            BindTemplateMaterials();
             Materials.Save(); OnSaveTick?.Invoke();
+            SaveTemplateMaterials();
 
             Parallel.Invoke(
                 () => { Models.Save(); OnSaveTick?.Invoke(); },
@@ -524,6 +529,112 @@ namespace CathodeLib
             //TODO: save strings (?)
             OnSaveTick?.Invoke();
         }
+
+        #region Template proxy materials
+        /* A template proxy - every compound in the collision files but the world hosts - names the render material whose
+           physical material its hits read (footsteps, impacts) by that material's write index in LEVEL_MODELS.MTL: retail keeps
+           the one value on the compound, each instance and each mesh. The index goes stale whenever the material list moves
+           under it: a material deleted (or added) before it, a compound imported from a level whose materials differ, a proxy
+           made for a material that has no index until it is saved. So each template instance is bound to its material as an
+           object (CompoundInstance.Material), and every save writes the index that material is written at. An index that
+           names no material (a stale one: Frontend ships some) becomes 0, FALLBACK_MATERIAL - the engine's default. */
+
+        /// <summary>
+        /// Bind each template instance to its material: the one it was bound to when made or imported this session
+        /// (<see cref="HavokPackfile.BindTemplateMaterial"/>), else the one its userData names now - its mesh's userData where the two
+        /// differ and the mesh's names one (an older OpenCAGE zeroed the instance's alone; retail's are always equal) - in the list as
+        /// last loaded or saved, else (a proxy made for a material added since) at that place in <see cref="Materials.Entries"/>.
+        /// </summary>
+        private void BindTemplateMaterials()
+        {
+            if (Materials == null)
+                return;
+            Materials.Material Named(ulong index) => index > int.MaxValue ? null : Materials.GetAtWriteIndex((int)index) ?? ((int)index < Materials.Entries.Count ? Materials.Entries[(int)index] : null);
+            foreach (HavokPackfile hkx in new[] { CollisionHKX, CollisionHKX64 })
+            {
+                if (hkx?.StaticCompoundShapes == null)
+                    continue;
+                foreach (HavokPackfile.StaticCompoundShape compound in hkx.StaticCompoundShapes)
+                {
+                    if (compound == null || hkx.IsWorldHost(compound))
+                        continue;
+                    for (int slot = 0; slot < compound.Instances.Count; slot++)
+                    {
+                        HavokPackfile.CompoundInstance instance = compound.Instances[slot];
+                        if (instance == null)
+                            continue;
+                        Materials.Material bound = hkx.BoundTemplateMaterial(compound, slot);
+                        if (bound != null)
+                        {
+                            instance.Material = bound;
+                            continue;
+                        }
+                        if (instance.Material != null)
+                            continue;
+                        uint? mesh = hkx.ReadShapeUserData(instance.ShapeDataOffset);
+                        instance.Material = (mesh.HasValue && mesh.Value != instance.UserData ? Named(mesh.Value) : null) ?? Named(instance.UserData);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// After the materials are written: every template instance's userData (and its mesh's, and its compound's, where they
+        /// carried the same) becomes the index its material was written at - unchanged where that material still sits at the
+        /// index it has (retail stays byte for byte) - or 0 where it names no material any more.
+        /// </summary>
+        private void SaveTemplateMaterials()
+        {
+            if (Materials == null)
+                return;
+            int moved = 0, cleared = 0;
+            foreach (HavokPackfile hkx in new[] { CollisionHKX, CollisionHKX64 })
+            {
+                if (hkx?.StaticCompoundShapes == null)
+                    continue;
+                foreach (HavokPackfile.StaticCompoundShape compound in hkx.StaticCompoundShapes)
+                {
+                    if (compound == null || hkx.IsWorldHost(compound))
+                        continue;
+                    uint? compoundData = hkx.ReadShapeUserData(compound.DataOffset);
+                    uint? compoundAfter = null;
+                    foreach (HavokPackfile.CompoundInstance instance in compound.Instances)
+                    {
+                        if (instance == null)
+                            continue;
+                        ulong before = instance.UserData;
+                        uint after;
+                        if (instance.Material == null)
+                            after = 0;
+                        else if (before < (ulong)Materials.Entries.Count && ReferenceEquals(Materials.Entries[(int)before], instance.Material))
+                            after = (uint)before; //still where it was named: kept, even where an equal material sits earlier
+                        else
+                        {
+                            int index = Materials.GetWriteIndex(instance.Material);
+                            after = index >= 0 ? (uint)index : 0u;
+                            if (index < 0)
+                                instance.Material = null;
+                        }
+                        //The compound carries what its first instance does, the mesh what its instance does (as retail's always do)
+                        if (compoundAfter == null)
+                            compoundAfter = after;
+                        uint? mesh = hkx.ReadShapeUserData(instance.ShapeDataOffset);
+                        if (mesh.HasValue && mesh.Value != after)
+                            hkx.WriteShapeUserData(instance.ShapeDataOffset, after);
+                        if (after == before)
+                            continue;
+                        if (after == 0 && instance.Material == null) cleared++; else moved++;
+                        instance.UserData = after;
+                    }
+                    if (compoundAfter.HasValue && compoundData.HasValue && compoundAfter.Value != compoundData.Value)
+                        hkx.WriteShapeUserData(compound.DataOffset, compoundAfter.Value);
+                }
+                hkx.ClearTemplateMaterialBindings();
+            }
+            if (moved + cleared != 0)
+                Console.WriteLine("Level: template collision proxies - " + moved + " instance(s) given their material's index as written now, " + cleared + " naming no material set to 0 (FALLBACK_MATERIAL)");
+        }
+        #endregion
 
         /// <summary>
         /// Imports resources to the level from Global, making it easier to share around
