@@ -34,6 +34,16 @@ namespace CathodeLib
         public bool OverwriteComposites = true;
 
         /// <summary>
+        /// Composites whose destination copy stays even with <see cref="OverwriteComposites"/> on - the ones the user has
+        /// edited there, say. Each is treated as with overwrite off: kept, and walked into for nested composites.
+        /// </summary>
+        public HashSet<ShortGuid> KeepExisting = new HashSet<ShortGuid>();
+
+        /// <summary>The composites of <see cref="KeepExisting"/> the port reached and kept, in the order it reached them.</summary>
+        public IReadOnlyList<ShortGuid> KeptExisting => _kept;
+        private readonly List<ShortGuid> _kept = new List<ShortGuid>();
+
+        /// <summary>
         /// Models, textures, materials and other named assets replace destination entries with the
         /// same name. Off keeps existing destination assets with matching names.
         /// </summary>
@@ -346,8 +356,10 @@ namespace CathodeLib
             //Check to see if the composite already exists at our destination
             Composite dest = Destination.Commands.GetComposite(composite.shortGUID);
 
-            //If overwriting and there is an existing matching comp in the destination, delete it
-            if (OverwriteComposites)
+            //If overwriting and there is an existing matching comp in the destination, delete it - unless it is one to keep
+            if (OverwriteComposites && dest != null && KeepExisting != null && KeepExisting.Contains(composite.shortGUID))
+                _kept.Add(composite.shortGUID);
+            else if (OverwriteComposites)
             {
                 if (dest != null)
                 {
@@ -432,6 +444,10 @@ namespace CathodeLib
             {
                 foreach (Parameter parameter in entity.parameters)
                 {
+                    //Not the entity's own name (names are 'name' parameters): a LogicDelay called 'Wait' is no character, and would
+                    //otherwise pull in DisplayModel:WAIT
+                    if (parameter.name == ShortGuids.name)
+                        continue;
                     if (parameter.content is cString text && !string.IsNullOrEmpty(text.value) &&
                         _sourceDisplayModels.TryGetValue(text.value, out Composite displayModel))
                         PortCharacterComposite(displayModel);

@@ -262,6 +262,9 @@ namespace CathodeLib
                             case CustomTableType.ASSET_MODIFICATION_INFO:
                                 ((AssetModificationInfoTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.BRUSHES:
+                                ((BrushTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -378,6 +381,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.ASSET_MODIFICATION_INFO:
                         data = new AssetModificationInfoTable(reader);
+                        break;
+                    case CustomTableType.BRUSHES:
+                        data = new BrushTable(reader);
                         break;
                 }
             }
@@ -2192,6 +2198,78 @@ namespace CathodeLib
                 foreach (ShortGuid parameter in row.Value)
                     Utilities.Write<ShortGuid>(writer, parameter);
             }
+        }
+    }
+
+    /// <summary>
+    /// The brushes made in OpenCAGE (boxes, planes...), each a ModelReference entity drawing a model generated from it: the
+    /// definition of each, by composite and entity, so they stay editable after a save. The definition is the editor's own;
+    /// CathodeLib only keeps it with the level.
+    /// </summary>
+    public class BrushTable : CustomTable.Table
+    {
+        public BrushTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.BRUSHES;
+        }
+
+        public class Brush
+        {
+            public ShortGuid composite;
+            public ShortGuid entity;
+            public string definition;
+        }
+
+        //By composite, then entity
+        public Dictionary<ShortGuid, Dictionary<ShortGuid, string>> brushes = new Dictionary<ShortGuid, Dictionary<ShortGuid, string>>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            brushes.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int count = reader.ReadInt32();
+            for (int i = 0; i < count; i++)
+            {
+                ShortGuid composite = Utilities.Consume<ShortGuid>(reader);
+                ShortGuid entity = Utilities.Consume<ShortGuid>(reader);
+                string definition = reader.ReadString();
+                if (!brushes.TryGetValue(composite, out Dictionary<ShortGuid, string> entities))
+                    brushes.Add(composite, entities = new Dictionary<ShortGuid, string>());
+                entities[entity] = definition;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            List<Brush> rows = All();
+            writer.Write(rows.Count);
+            foreach (Brush row in rows)
+            {
+                Utilities.Write<ShortGuid>(writer, row.composite);
+                Utilities.Write<ShortGuid>(writer, row.entity);
+                writer.Write(row.definition ?? "");
+            }
+        }
+
+        /// <summary>Every brush, composite by composite.</summary>
+        public List<Brush> All()
+        {
+            List<Brush> rows = new List<Brush>();
+            foreach (KeyValuePair<ShortGuid, Dictionary<ShortGuid, string>> composite in brushes)
+                foreach (KeyValuePair<ShortGuid, string> entity in composite.Value)
+                    if (!string.IsNullOrEmpty(entity.Value))
+                        rows.Add(new Brush() { composite = composite.Key, entity = entity.Key, definition = entity.Value });
+            return rows;
         }
     }
 }

@@ -69,6 +69,9 @@ namespace CATHODE
         private uint _poseOffset, _parentsOffset, _bonesOffset;
         private uint _boneStride, _pointerSize, _lockOffset;
 
+        /* Where m_name's string sits in __data__ (packfiles only; 0 when unknown), for RenameInPlace */
+        private uint _nameAt;
+
         /* Whether the offsets above were found. A skeleton whose arrays could not be located is
          * written back exactly as it was loaded rather than patched blind. */
         private bool _patchable;
@@ -351,6 +354,7 @@ namespace CATHODE
             _poseOffset = _bonesOffset + array;
 
             Name = _packfile.TryResolveLocal(nameField, out uint nameAt) ? _packfile.ReadStringAt(nameAt) : "";
+            _nameAt = Name.Length != 0 ? nameAt : 0;
 
             if (!_packfile.TryGetHkArray(_parentsOffset, out uint parents, out int parentCount)) return false;
             if (!_packfile.TryGetHkArray(_bonesOffset, out uint bones, out int boneCount)) return false;
@@ -529,6 +533,36 @@ namespace CATHODE
                 WriteVector4(p + 16, new Vector4(bone.Rotation.X, bone.Rotation.Y, bone.Rotation.Z, bone.Rotation.W));
                 WriteVector4(p + 32, bone.Scale);
             }
+        }
+
+        /// <summary>
+        /// Rename the skeleton inside its Havok data (m_name), in place: the game finds an environment rig's animation by this name,
+        /// so a copied rig left with the original's name never animates. Only possible when the new name fits the bytes the old
+        /// string takes up (a packfile pads each string to 16 bytes) and nothing else starts inside them; false, changing nothing,
+        /// otherwise or for a tagfile.
+        /// </summary>
+        public bool RenameInPlace(string newName)
+        {
+            if (string.IsNullOrEmpty(newName) || _packfile == null || _packfile.Tagfile != null || _nameAt == 0) return false;
+            byte[] data = _packfile.DataPayload;
+            int start = (int)_nameAt;
+            int end = start;
+            while (end < data.Length && data[end] != 0) end++;
+            int room = end + 1 - start;
+            //the old string's padding: zeros up to the next 16 byte boundary of __data__, no fixup landing inside it
+            while (start + room < data.Length && (start + room) % 16 != 0 && data[start + room] == 0) room++;
+            if (_packfile.LocalFixups.Any(x => x.Dst > _nameAt && x.Dst < _nameAt + room)) return false;
+            byte[] name = System.Text.Encoding.ASCII.GetBytes(newName);
+            if (name.Length + 1 > room) return false;
+            uint at = _packfile.DataSectionOffset + _nameAt;
+            for (int i = 0; i < room; i++)
+            {
+                byte b = i < name.Length ? name[i] : (byte)0;
+                _havok[at + i] = b;
+                data[start + i] = b;
+            }
+            Name = newName;
+            return true;
         }
 
         private void WriteInt16(uint offset, short value)

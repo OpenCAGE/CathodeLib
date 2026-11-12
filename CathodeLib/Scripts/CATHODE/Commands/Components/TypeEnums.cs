@@ -1209,6 +1209,7 @@ namespace CATHODE.Scripting.Internal
         COMPOSITE_PREVIEWS,                     // Rendered previews (PNGs) of composites, by composite GUID
         COLOUR_PARAMETERS,                      // Vector composite parameters (VariableEntities) the editor shows as colours
         ASSET_MODIFICATION_INFO,                // When the user last changed each of the level's assets (models, textures, materials...), by kind and name
+        BRUSHES,                                // Brushes made in OpenCAGE (boxes, planes...): what each one is, by the ModelReference entity drawing it, so it stays editable
 
         //Add new entries here
 

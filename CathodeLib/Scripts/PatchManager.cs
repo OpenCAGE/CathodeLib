@@ -351,6 +351,99 @@ namespace CathodeLib
         }
 
         /// <summary>
+        /// The resident animation heap (ca_allocator 4: every character's resident clip sections, loaded per animation set) holds
+        /// 22,532,096 bytes. A set whose sections don't fit beside the ones already in it never loads, and its characters never
+        /// spawn - silently. AI.exe has a switch that doubles every ca_allocator's budget and allocation count,
+        /// g_animHeapsCanExceedBudget, never set in retail and read once, by allocate_heaps at start-up:
+        ///   movzx edx, byte ptr [g_animHeapsCanExceedBudget]   0F B6 15 [address]
+        ///   push edx                                           52
+        ///   call initialise_ca_allocators
+        /// The flag is in .bss (no byte of it in the file), so the read is patched instead, to pass true:
+        ///   push 1                                             6A 01
+        ///   cmp eax, [address]                                 3D [address]  (the address left as it is: harmless, and its relocation too)
+        ///   nop                                                90
+        /// Steam: allocate_heaps RVA 0x382110, flag RVA 0x12F0CC6; GOG: flag RVA 0x130AF06; Epic: flag RVA 0x130D1E6 (found by the
+        /// allocate_heaps signature, the flag read once in each build). Takes effect from the game's next start.
+        /// </summary>
+        public static bool PatchAnimHeapBudget(Platform platform, string pathToAI, bool allowLarger)
+        {
+            List<PatchBytes> patches = AnimHeapBudgetPatches(platform);
+            if (patches == null)
+                return false;
+            try
+            {
+                //Only over the exact bytes it expects, patched or not: another build's code at these offsets is left alone
+                if (ReadPatchState(pathToAI, patches) == null)
+                    return false;
+                WritePatches(pathToAI, patches, allowLarger);
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("PatchManager::PatchAnimHeapBudget - " + e.ToString());
+                return false;
+            }
+        }
+
+        /// <summary>Whether the game binary has the larger animation memory patch (<see cref="PatchAnimHeapBudget"/>): null when its bytes are neither.</summary>
+        public static bool? IsAnimHeapBudgetPatched(Platform platform, string pathToAI)
+        {
+            List<PatchBytes> patches = AnimHeapBudgetPatches(platform);
+            if (patches == null)
+                return null;
+            try { return ReadPatchState(pathToAI, patches); }
+            catch { return null; }
+        }
+
+        private static List<PatchBytes> AnimHeapBudgetPatches(Platform platform)
+        {
+            List<PatchBytes> patches = new List<PatchBytes>();
+            int offset;
+            switch (platform)
+            {
+                case Platform.STEAM:
+                    offset = 3675545; //0x381599
+                    break;
+                case Platform.EPIC_GAMES_STORE:
+                    offset = 3743977; //0x3920E9
+                    break;
+                case Platform.GOG:
+                    offset = 3675817; //0x3816A9
+                    break;
+                default:
+                    return null;
+            }
+            patches.Add(new PatchBytes(offset, new byte[] { 0x0F, 0xB6, 0x15 }, new byte[] { 0x6A, 0x01, 0x3D }));
+            patches.Add(new PatchBytes(offset + 7, new byte[] { 0x52 }, new byte[] { 0x90 }));
+            return patches;
+        }
+
+        /* True when every patch's bytes are its patched ones, false when every one is original, null otherwise (not this build) */
+        private static bool? ReadPatchState(string pathToAI, List<PatchBytes> patches)
+        {
+            bool allPatched = true, allOriginal = true;
+            using (FileStream reader = new FileStream(pathToAI + "/AI.exe", FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                foreach (PatchBytes patch in patches)
+                {
+                    byte[] current = new byte[patch.original.Length];
+                    reader.Position = patch.offset;
+                    int read = 0;
+                    while (read < current.Length)
+                    {
+                        int count = reader.Read(current, read, current.Length - read);
+                        if (count <= 0) break;
+                        read += count;
+                    }
+                    if (read != current.Length) return null;
+                    allPatched &= SameBytes(current, patch.patched);
+                    allOriginal &= SameBytes(current, patch.original);
+                }
+            }
+            return allPatched ? true : allOriginal ? false : (bool?)null;
+        }
+
+        /// <summary>
         /// Patch the cUI UI perf stats flag in the game binary
         /// </summary>
         public static bool PatchUIPerfFlag(Platform platform, string pathToAI, bool shouldShow)

@@ -120,6 +120,7 @@ namespace CATHODE.Scripting.Refactor
                     copy.aliases_dictionary.Add(entity.shortGUID, (AliasEntity)CopyOf(entity, resourceIds));
                 foreach (ProxyEntity entity in Source.proxies_dictionary.Values)
                     copy.proxies_dictionary.Add(entity.shortGUID, (ProxyEntity)CopyOf(entity, resourceIds));
+                ShortGuid skeletonWas = GiveDisplayModelSkeletonOwnId(copy, Source);
 
                 //A variable's pin type is kept by composite and variable id - in the level's own table, or for a vanilla
                 //composite the shipped one, which knows nothing of the copy: without it a pin draws as a plain parameter,
@@ -157,6 +158,11 @@ namespace CATHODE.Scripting.Refactor
                 }).ToList();
                 foreach (Entity entity in copy.GetEntities())
                     result.IdMap[entity.shortGUID] = entity.shortGUID;
+                if (skeletonWas != ShortGuid.Invalid)
+                {
+                    result.IdMap.Remove(copy.shortGUID);
+                    result.IdMap[skeletonWas] = copy.shortGUID;
+                }
                 result.Issues.AddRange(Issues);
                 return result;
             }
@@ -165,6 +171,42 @@ namespace CATHODE.Scripting.Refactor
                 tx.Revert();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// A display model's skeleton (its EnvironmentModelReference) shares the composite's id in every shipped level - the game finds
+        /// a character's model by its name's hash and the skeleton by the composite's id - so a "DisplayModel:..." copy gives its skeleton
+        /// its own id. Returns the id it had, or Invalid when nothing changed. The animated-model entry is level data, added by the editor.
+        /// </summary>
+        private static ShortGuid GiveDisplayModelSkeletonOwnId(Composite copy, Composite source)
+        {
+            if (Composite.DisplayModelId(copy.name) == null || copy.shortGUID == source.shortGUID)
+                return ShortGuid.Invalid;
+            if (!copy.functions_dictionary.TryGetValue(source.shortGUID, out FunctionEntity skeleton) || skeleton.function != FunctionType.EnvironmentModelReference)
+                return ShortGuid.Invalid;
+            if (copy.GetEntityByID(copy.shortGUID) != null)
+                return ShortGuid.Invalid;
+            ShortGuid old = skeleton.shortGUID;
+            copy.functions_dictionary.Remove(old);
+            skeleton.shortGUID = copy.shortGUID;
+            copy.functions_dictionary.Add(skeleton.shortGUID, skeleton);
+            foreach (Entity entity in copy.GetEntities())
+            {
+                for (int i = 0; i < entity.childLinks.Count; i++)
+                {
+                    if (entity.childLinks[i].linkedEntityID != old) continue;
+                    EntityConnector link = entity.childLinks[i];
+                    link.linkedEntityID = skeleton.shortGUID;
+                    entity.childLinks[i] = link;
+                }
+            }
+            foreach (AliasEntity alias in copy.aliases_dictionary.Values)
+                if (alias.alias?.path != null && alias.alias.path.Length != 0 && alias.alias.path[0] == old)
+                    alias.alias.path[0] = skeleton.shortGUID;
+            foreach (ResourceReference reference in skeleton.resources)
+                if (reference.resource_id == old)
+                    reference.resource_id = skeleton.shortGUID;
+            return old;
         }
 
         /// <summary>An entity of the original, copied with its id, links, parameters and paths, its resources sharing the level's objects.</summary>

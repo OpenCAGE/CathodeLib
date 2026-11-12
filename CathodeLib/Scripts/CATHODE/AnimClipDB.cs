@@ -60,6 +60,9 @@ namespace CATHODE
         /* The context name table lists names in an order the contexts themselves don't follow */
         private List<KeyValuePair<string, uint>> _contextNames = new List<KeyValuePair<string, uint>>();
 
+        /* The contexts as loaded, by name, so contexts added after them can be told from a reordered list */
+        private List<string> _loadedContextNames = new List<string>();
+
         /* Lookup pair order per table, in the order the tables appear. A handful of files list the
          * same clip name twice, and which copy comes first isn't derivable from the names. */
         private List<List<int>> _slotOrders = new List<List<int>>();
@@ -104,6 +107,7 @@ namespace CATHODE
                 }
 
                 _reserved3 = reader.ReadInt32();
+                _loadedContextNames = Contexts.Select(x => x.Name ?? "").ToList();
 
                 return true;
             }
@@ -165,10 +169,14 @@ namespace CATHODE
                 WriteClips(writer, Animations);
                 WriteBlendSets(writer, BlendSets);
 
-                //Rebuild the context name table from the load order where it still lines up
+                //Rebuild the context name table from the load order where it still lines up. Contexts added after the ones loaded
+                //(OpenCAGE's new contexts) are appended to it, so the shipped table - which names one slot twice and leaves another
+                //unnamed on MALE - goes out as it came in.
                 List<KeyValuePair<string, uint>> names = _contextNames.Count == Contexts.Count
                     ? _contextNames
-                    : Contexts.Select((x, i) => new KeyValuePair<string, uint>(x.Name ?? "", (uint)i)).ToList();
+                    : _contextNames.Count != 0 && _contextNames.Count < Contexts.Count && Contexts.Take(_contextNames.Count).Select(x => x.Name ?? "").SequenceEqual(_loadedContextNames)
+                        ? _contextNames.Concat(Contexts.Skip(_contextNames.Count).Select((x, i) => new KeyValuePair<string, uint>(x.Name ?? "", (uint)(_contextNames.Count + i)))).ToList()
+                        : Contexts.Select((x, i) => new KeyValuePair<string, uint>(x.Name ?? "", (uint)i)).ToList();
                 HashTable.Write(writer, names, x => x.Key, (w, x) => w.Write(x.Value), _strings, TakeSlotOrder());
 
                 for (int i = 0; i < Contexts.Count; i++)

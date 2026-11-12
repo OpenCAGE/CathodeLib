@@ -806,7 +806,7 @@ namespace CATHODE.Scripting.Internal.Parsers
                                     }
                                 case CompositeFileData.VARIABLES:
                                     {
-                                        var variables = Entries[i].variables_dictionary.Values.ToList();
+                                        var variables = Entries[i].variables_dictionary.Values.OrderBy(o => o.name.AsUInt32).ToList();
                                         scriptPointerOffsetInfo[x] = new OffsetPair(writer.BaseStream.Position, variables.Count);
                                         foreach (var variable in variables)
                                         {

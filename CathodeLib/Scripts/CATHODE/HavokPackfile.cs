@@ -2413,12 +2413,29 @@ namespace CATHODE
                 slots[i] = compound == null ? 0 : compound.DataOffset;
             }
 
+            //The room the last move left after the list, still free: the new slots go there and the list stays where it is
+            if (hadOld && existing > 0 && ProxyListRoomIsFree(oldArray, existing, wanted, stride))
+            {
+                for (int i = existing; i < wanted; i++)
+                {
+                    if (slots[i] == 0)
+                        continue;
+                    GlobalFixups.Add(new GlobalFixup { Src = (uint)(oldArray + i * stride), DstSectionIndex = 2, Dst = slots[i] });
+                }
+                WriteUInt32(DataPayload, sizePos, (uint)wanted);
+                WriteUInt32(DataPayload, sizePos + 4, (uint)wanted | 0x80000000u);
+                return;
+            }
+
+            int capacity = wanted + Math.Max(PackProxyListHeadroom, wanted / 8);
             int newArrOff = AlignPayload(DataPayload.Length, 16);
-            byte[] grown = new byte[newArrOff + wanted * stride];
+            byte[] grown = new byte[newArrOff + capacity * stride];
             Buffer.BlockCopy(DataPayload, 0, grown, 0, DataPayload.Length);
             if (hadOld && existing > 0 && oldArray + (uint)(existing * stride) <= (uint)DataPayload.Length)
                 Buffer.BlockCopy(DataPayload, (int)oldArray, grown, newArrOff, existing * stride);
             DataPayload = grown;
+            _packProxyListArray = (uint)newArrOff;
+            _packProxyListCapacity = capacity;
 
             if (hadOld)
             {
@@ -2446,6 +2463,38 @@ namespace CATHODE
                     Dst = slots[i],
                 });
             }
+        }
+
+        /* Room left after the packfile proxy list the last time it moved. Each move leaves a dead copy of the whole list (T x 16 bytes
+         * in HKX, T x 32 in HKX64), so a move reserves an eighth again (at least 64 slots) and N new proxies cost O(N), not O(N x T).
+         * The headroom is zeros no fixup names; CollisionCompactor trims it. Only a hint: the room is re-checked before use (still after
+         * this list's array, inside the payload, all zero, nothing pointing into or placed in it), else the list just moves again. */
+        uint _packProxyListArray;
+        int _packProxyListCapacity;
+        const int PackProxyListHeadroom = 64;
+
+        bool ProxyListRoomIsFree(uint array, int existing, int wanted, int stride)
+        {
+            if (array != _packProxyListArray || wanted > _packProxyListCapacity)
+                return false;
+            long roomStart = array + (long)existing * stride;
+            long roomEnd = array + (long)_packProxyListCapacity * stride;
+            long used = array + (long)wanted * stride;
+            if (roomEnd > DataPayload.Length)
+                return false;
+            for (long p = roomStart; p < used; p++)
+                if (DataPayload[p] != 0)
+                    return false;
+            for (int i = 0; i < LocalFixups.Count; i++)
+                if ((LocalFixups[i].Src >= roomStart && LocalFixups[i].Src < roomEnd) || (LocalFixups[i].Dst >= roomStart && LocalFixups[i].Dst < roomEnd))
+                    return false;
+            for (int i = 0; i < GlobalFixups.Count; i++)
+                if ((GlobalFixups[i].Src >= roomStart && GlobalFixups[i].Src < roomEnd) || (GlobalFixups[i].Dst >= roomStart && GlobalFixups[i].Dst < roomEnd))
+                    return false;
+            for (int i = 0; i < Objects.Count; i++)
+                if (Objects[i].DataOffset >= roomStart && Objects[i].DataOffset < roomEnd)
+                    return false;
+            return true;
         }
 
         /* Room left after the tagfile proxy list the last time it moved. Every proxy added appends its
@@ -3976,6 +4025,8 @@ namespace CATHODE
                     Objects[i].ProxyIndex = -1;
             }
 
+            //The compounds as they were, by payload offset: re-reading hands them back as the same objects (KeepCompoundIdentity)
+            List<StaticCompoundShape> previousCompounds = new List<StaticCompoundShape>(StaticCompoundShapes);
             StaticCompoundShapes.Clear();
             PhysicsSystems.Clear();
             for (int i = 0; i < Objects.Count; i++)
@@ -3994,6 +4045,7 @@ namespace CATHODE
 
             Dictionary<int, string> classNames = ParseClassNames(ClassnamesData);
             ParseStaticCompoundInstances(classNames);
+            KeepCompoundIdentity(previousCompounds);
             ParsePhysicsSystemIndexes();
             /* Clearing the cached hosts is not enough on its own - ResolveWorldHosts early-returns on
              * _worldHostsResolved, so leaving it set means the hosts stay null for the rest of the
@@ -4001,6 +4053,67 @@ namespace CATHODE
             _worldHostPrimary = null;
             _worldHostSecondary = null;
             _worldHostsResolved = false;
+        }
+
+        /// <summary>
+        /// After a re-read of the typed views (an import: <see cref="ImportStaticCompoundShape"/>), give back the compound and
+        /// instance objects that were already handed out, refreshed from the payload, in place of the new copies. COLLISION.MAP
+        /// rows, script resources, pickers and the collision compactor hold compounds by object: holding stale copies, they would
+        /// keep ordinals a compaction never renumbers, and rows would name other proxies. An import only appends, so a payload
+        /// offset still names the compound (and an instance record the instance) it did.
+        /// </summary>
+        void KeepCompoundIdentity(List<StaticCompoundShape> previous)
+        {
+            if (previous == null || previous.Count == 0)
+                return;
+            Dictionary<uint, StaticCompoundShape> byOffset = new Dictionary<uint, StaticCompoundShape>(previous.Count);
+            foreach (StaticCompoundShape compound in previous)
+                if (compound != null && compound.DataOffset != uint.MaxValue && !byOffset.ContainsKey(compound.DataOffset))
+                    byOffset[compound.DataOffset] = compound;
+
+            for (int c = 0; c < StaticCompoundShapes.Count; c++)
+            {
+                StaticCompoundShape fresh = StaticCompoundShapes[c];
+                if (fresh == null || !byOffset.TryGetValue(fresh.DataOffset, out StaticCompoundShape kept) || ReferenceEquals(kept, fresh))
+                    continue;
+                byOffset.Remove(fresh.DataOffset);
+
+                //Its instances: the object that held a record before holds it again, with what the payload says now (as a fresh read
+                //would) - the material a template instance was bound to this session stays on it
+                Dictionary<uint, CompoundInstance> keptInstances = new Dictionary<uint, CompoundInstance>(kept.Instances.Count);
+                foreach (CompoundInstance instance in kept.Instances)
+                    if (instance != null && !keptInstances.ContainsKey(instance.DataOffset))
+                        keptInstances[instance.DataOffset] = instance;
+                List<CompoundInstance> instances = new List<CompoundInstance>(fresh.Instances.Count);
+                foreach (CompoundInstance read in fresh.Instances)
+                {
+                    if (read != null && keptInstances.TryGetValue(read.DataOffset, out CompoundInstance same))
+                    {
+                        keptInstances.Remove(read.DataOffset);
+                        same.Translation = read.Translation;
+                        same.Rotation = read.Rotation;
+                        same.Scale = read.Scale;
+                        same.FilterInfo = read.FilterInfo;
+                        same.ChildFilterInfoMask = read.ChildFilterInfoMask;
+                        same.UserData = read.UserData;
+                        same.ShapeDataOffset = read.ShapeDataOffset;
+                        same.ShapeClassName = read.ShapeClassName;
+                        instances.Add(same);
+                    }
+                    else
+                        instances.Add(read);
+                }
+                foreach (CompoundInstance gone in keptInstances.Values)
+                    if (ReferenceEquals(gone.Owner, kept)) gone.Owner = null;
+                kept.Instances.Clear();
+                foreach (CompoundInstance instance in instances)
+                    kept.AddInstance(instance);
+
+                kept.ProxyIndex = fresh.ProxyIndex;
+                kept.DomainMin = fresh.DomainMin;
+                kept.DomainMax = fresh.DomainMax;
+                StaticCompoundShapes[c] = kept;
+            }
         }
         #endregion
 
@@ -4136,15 +4249,15 @@ namespace CATHODE
             int dataAbs = classAbs + ClassnamesData.Length;
 
 
-            int localBytes = LocalFixups.Count * 8;
-            int globalBytes = GlobalFixups.Count * 12;
-            int virtualBytes = VirtualFixups.Count * 12;
-            const int virtualTerminatorBytes = 4; // trailing 0xFFFFFFFF
-
+            /* Each fixup table is padded with 0xFF to a 16-byte boundary, as the shipped COLLISION.HKX, HKX64 and PHYSICS.HKX are:
+               the padding is the readers' 0xFFFFFFFF end mark, and a table that ends on a boundary has none. */
             int dataLocal = DataPayload.Length;
+            int localBytes = FixupTablePadded(dataAbs, dataLocal, LocalFixups.Count * 8);
             int dataGlobal = dataLocal + localBytes;
+            int globalBytes = FixupTablePadded(dataAbs, dataGlobal, GlobalFixups.Count * 12);
             int dataVirtual = dataGlobal + globalBytes;
-            int dataExports = dataVirtual + virtualBytes + virtualTerminatorBytes;
+            int virtualBytes = FixupTablePadded(dataAbs, dataVirtual, VirtualFixups.Count * 12);
+            int dataExports = dataVirtual + virtualBytes;
             int dataEnd = dataExports; // no exports/imports on AI collision files
 
             using (MemoryStream ms = new MemoryStream())
@@ -4178,21 +4291,36 @@ namespace CATHODE
                     writer.Write(LocalFixups[i].Src);
                     writer.Write(LocalFixups[i].Dst);
                 }
+                WriteFixupPadding(writer, localBytes - LocalFixups.Count * 8);
                 for (int i = 0; i < GlobalFixups.Count; i++)
                 {
                     writer.Write(GlobalFixups[i].Src);
                     writer.Write(GlobalFixups[i].DstSectionIndex);
                     writer.Write(GlobalFixups[i].Dst);
                 }
+                WriteFixupPadding(writer, globalBytes - GlobalFixups.Count * 12);
                 for (int i = 0; i < VirtualFixups.Count; i++)
                 {
                     writer.Write(VirtualFixups[i].Src);
                     writer.Write(VirtualFixups[i].SectionIndex);
                     writer.Write(VirtualFixups[i].NameOffset);
                 }
-                writer.Write(unchecked((int)0xFFFFFFFF));
+                WriteFixupPadding(writer, virtualBytes - VirtualFixups.Count * 12);
                 return ms.ToArray();
             }
+        }
+
+        /// <summary>A fixup table's size with its 0xFF padding: up to the next 16-byte boundary of the file (none when it ends on one).</summary>
+        static int FixupTablePadded(int dataAbs, int tableStart, int entryBytes)
+        {
+            int end = dataAbs + tableStart + entryBytes;
+            return entryBytes + ((16 - (end & 15)) & 15);
+        }
+
+        static void WriteFixupPadding(BinaryWriter writer, int bytes)
+        {
+            for (int i = 0; i < bytes; i++)
+                writer.Write((byte)0xFF);
         }
         #endregion
 
@@ -6433,6 +6561,43 @@ namespace CATHODE
 
             return inst;
         }
+
+        #region COLLISION_COMPACTION
+        /// <summary>Whether an instance rebuild (BeginInstanceRebuild ... CommitInstanceRebuild) is under way: a compaction waits for its commit.</summary>
+        internal bool InstanceRebuildPending => _rebuildTouched != null;
+
+        /// <summary>Write every compound's in-memory instance fields into the payload, as a save does first.</summary>
+        internal void FlushCompoundInstances() => WriteBackCompoundInstances();
+
+        /// <summary>
+        /// After <see cref="CathodeLib.Havok.CollisionCompactor"/> laid the payload out again: re-key what is held by payload offset (the
+        /// session's template material bindings, by compound - <paramref name="newCompoundOffset"/> gives uint.MaxValue for a compound that
+        /// went) and forget what cannot be (a rebuild's free boxes, a bake's or a port's caches, the bytes as loaded for SavePatched).
+        /// </summary>
+        internal void AfterCompaction(Func<uint, uint> newCompoundOffset)
+        {
+            lock (_templateMaterials)
+            {
+                List<KeyValuePair<(uint compound, int slot), Materials.Material>> bound = _templateMaterials.ToList();
+                _templateMaterials.Clear();
+                foreach (KeyValuePair<(uint compound, int slot), Materials.Material> entry in bound)
+                {
+                    uint at = newCompoundOffset(entry.Key.compound);
+                    if (at != uint.MaxValue)
+                        _templateMaterials[(at, entry.Key.slot)] = entry.Value;
+                }
+            }
+            _freeBoxShapes = null;
+            _bakeMeshShare = null;
+            _cachedRangeBoundaries = null;
+            _cachedGraphIndex = null;
+            _tagProxyListArray = 0;
+            _tagProxyListCapacity = 0;
+            _packProxyListArray = 0;
+            _packProxyListCapacity = 0;
+            _rawFile = null;
+        }
+        #endregion
 
         /// <summary>Original file bytes as loaded; see <see cref="SavePatched"/>.</summary>
         private byte[] _rawFile;

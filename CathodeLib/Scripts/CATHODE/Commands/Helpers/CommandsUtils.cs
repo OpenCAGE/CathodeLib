@@ -41,6 +41,7 @@ namespace CATHODE.Scripting
         private AssetModificationInfoTable _assetModificationInfo = new AssetModificationInfoTable();
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
         private ColourParameterTable _colourParameters = new ColourParameterTable();
+        private BrushTable _brushes = new BrushTable();
 
         public FlagTable Flags => _flagTable;
         private FlagTable _flagTable = new FlagTable();
@@ -2325,6 +2326,64 @@ namespace CATHODE.Scripting
         }
         #endregion
 
+        #region Brushes
+        /// <summary>
+        /// The definition of the brush an entity draws (a box, plane or mesh made in the editor), or null when it is not one.
+        /// The definition is the editor's own text; it is kept with the level.
+        /// </summary>
+        public string GetBrush(ShortGuid composite, ShortGuid entity)
+        {
+            if (_brushes.brushes.TryGetValue(composite, out Dictionary<ShortGuid, string> entities) && entities.TryGetValue(entity, out string definition))
+                return definition;
+            return null;
+        }
+
+        /// <summary>Record (or replace) the brush an entity draws; null or empty takes it off the table.</summary>
+        public void SetBrush(ShortGuid composite, ShortGuid entity, string definition)
+        {
+            if (string.IsNullOrEmpty(definition))
+            {
+                RemoveBrush(composite, entity);
+                return;
+            }
+            if (!_brushes.brushes.TryGetValue(composite, out Dictionary<ShortGuid, string> entities))
+                _brushes.brushes.Add(composite, entities = new Dictionary<ShortGuid, string>());
+            entities[entity] = definition;
+        }
+
+        /// <summary>Take an entity's brush off the table (the entity and its model are left as they are).</summary>
+        public void RemoveBrush(ShortGuid composite, ShortGuid entity)
+        {
+            if (!_brushes.brushes.TryGetValue(composite, out Dictionary<ShortGuid, string> entities))
+                return;
+            entities.Remove(entity);
+            if (entities.Count == 0)
+                _brushes.brushes.Remove(composite);
+        }
+
+        /// <summary>Every brush in the table (rows for entities since deleted included, until the next save).</summary>
+        public List<BrushTable.Brush> GetBrushes() => _brushes.All();
+
+        /// <summary>
+        /// The table as it is saved: without rows for composites and entities that are gone. The live table keeps them, so an
+        /// undone delete brings its brush back editable.
+        /// </summary>
+        private BrushTable PrunedBrushes()
+        {
+            BrushTable pruned = new BrushTable();
+            foreach (BrushTable.Brush row in _brushes.All())
+            {
+                Composite composite = _commands.GetComposite(row.composite);
+                if (composite == null || composite.GetEntityByID(row.entity) == null)
+                    continue;
+                if (!pruned.brushes.TryGetValue(row.composite, out Dictionary<ShortGuid, string> entities))
+                    pruned.brushes.Add(row.composite, entities = new Dictionary<ShortGuid, string>());
+                entities[row.entity] = row.definition;
+            }
+            return pruned;
+        }
+        #endregion
+
         #region Table Management
         /// <summary>
         /// Tell ShortGuidUtils about every id this script graph already uses, so a newly generated
@@ -2407,6 +2466,12 @@ namespace CATHODE.Scripting
                 _colourParameters = new ColourParameterTable();
             else
                 Console.WriteLine("Loaded colour parameters for " + _colourParameters.colour_parameters.Count + " composites!");
+
+            _brushes = (BrushTable)CustomTable.ReadTable(filepath, CustomTableType.BRUSHES);
+            if (_brushes == null)
+                _brushes = new BrushTable();
+            else
+                Console.WriteLine("Loaded " + _brushes.All().Count + " brushes!");
 
             _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
             if (_flagTable == null) _flagTable = new FlagTable();
@@ -2608,6 +2673,10 @@ namespace CATHODE.Scripting
             ColourParameterTable colourParameters = PrunedColourParameters();
             CustomTable.WriteTable(filepath, CustomTableType.COLOUR_PARAMETERS, colourParameters);
             Console.WriteLine("Saved colour parameters for " + colourParameters.colour_parameters.Count + " composites!");
+
+            BrushTable brushes = PrunedBrushes();
+            CustomTable.WriteTable(filepath, CustomTableType.BRUSHES, brushes);
+            Console.WriteLine("Saved " + brushes.All().Count + " brushes!");
 
             CustomTable.WriteTable(filepath, CustomTableType.FLAGS, _flagTable);
         }

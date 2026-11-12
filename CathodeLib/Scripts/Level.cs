@@ -126,6 +126,14 @@ namespace CathodeLib
         /// into a pak that is meant to carry only what was ported.
         /// </summary>
         public bool AbsorbGlobalTextures { get; set; } = true;
+
+        /// <summary>
+        /// Whether <see cref="SaveInstanced()"/> compacts the collision packfiles (<see cref="CathodeLib.Havok.CollisionCompactor"/>) between
+        /// the instancing pass and the write: unreferenced proxies added after the world hosts are dropped and dead payload space is
+        /// reclaimed, every reference renumbered. Off by default. A compaction that fails its checks leaves the files as they were
+        /// and the save goes ahead.
+        /// </summary>
+        public bool CompactCollisionOnSave { get; set; } = false;
         private Global _global;
 
         public string Filepath => _filepath;
@@ -378,6 +386,18 @@ namespace CathodeLib
         {
             //Generate instancing data with the given settings
             Instancing instancing = new Instancing(this, navMeshSettings, coverSettings, radiositySettings, jobPositionSettings, alphalightSettings, soundSettings);
+
+            //COLLISION.MAP holds only live rows now, so it is the moment to drop the proxies nothing names (see CompactCollisionOnSave)
+            if (CompactCollisionOnSave)
+            {
+                try
+                {
+                    CathodeLib.Havok.CollisionCompactor.LevelCompaction compaction = CathodeLib.Havok.CollisionCompactor.CompactCollision(this, new CathodeLib.Havok.CollisionCompactor.CompactionOptions() { DryRun = false });
+                    if (compaction.Refused != null)
+                        Console.WriteLine("Collision compaction skipped: " + compaction.Refused);
+                }
+                catch (Exception e) { Console.WriteLine("Collision compaction skipped, the files are as they were: " + e.Message); }
+            }
             Save();
 
             //If the user didn't enable radiosity, we should clear it out, else it'll point to the wrong movers.

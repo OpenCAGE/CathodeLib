@@ -357,6 +357,9 @@ namespace CathodeLib.NavMesh
                 // If seeds only reach a tiny island (common when ExclusiveMaster
                 // excludes large regions), fall through to island cull / keep exclusions.
                 int minKeep = Math.Max(settings.SeedFilterMinKeepPolys, (int)(polyCount * settings.SeedFilterMinKeepFraction));
+                // Capped at a quarter of the mesh: a small mesh (a greybox room) can't reach the fixed minimum, and the unseeded
+                // island cull, which sizes islands by poly count, could then keep a ceiling top over the floor. No change from 200 polys up.
+                minKeep = Math.Min(minKeep, Math.Max(1, polyCount / 4));
                 if (reachableCount >= minKeep)
                 {
                     if (keep == null)

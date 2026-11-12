@@ -122,7 +122,8 @@ namespace CathodeLib.NavMesh
         /// The seed flood is only trusted if it reaches at least this many polys, or this fraction
         /// of the mesh, whichever is larger. Below that the level is assumed to be seeded for a
         /// sub-region only (ExclusiveMaster levels do this) and the filter is skipped. Set both to
-        /// zero to always trust the seeds.
+        /// zero to always trust the seeds. Never more than a quarter of the mesh, though, so a
+        /// small level (under 200 polys) trusts seeds that reach a quarter of it.
         /// </summary>
         public int SeedFilterMinKeepPolys = 50;
 

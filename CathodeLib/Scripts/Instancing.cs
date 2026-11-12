@@ -3723,6 +3723,14 @@ namespace CathodeLib
             if (_collision == null || collisionProxy == null)
                 return null;
 
+            //A proxy a collision compaction removed (CollisionCompactor: ordinal -1, no payload offset) - an undo past the compaction
+            //brought back an entity naming it. No collision, rather than a host instance pointing at whatever sits there now.
+            if (collisionProxy.ProxyIndex < 0 || collisionProxy.DataOffset == uint.MaxValue)
+            {
+                Warn("an entity's collision names a proxy a collision compaction removed - it gets no collision until it is given one again");
+                return null;
+            }
+
             Matrix4x4 worldMatrix = entity.CalculateWorldTransformMatrix();
             if (!Matrix4x4.Decompose(worldMatrix, out Vector3 scale, out Quaternion rotation, out Vector3 position))
             {
