@@ -6,6 +6,7 @@ using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
 using CathodeLib.ObjectExtensions;
 using static CATHODE.HavokPackfile;
+using ReferenceEqualityComparer = CathodeLib.ObjectExtensions.ReferenceEqualityComparer; // net5+ also has System.Collections.Generic.ReferenceEqualityComparer
 
 namespace CathodeLib.Havok
 {
