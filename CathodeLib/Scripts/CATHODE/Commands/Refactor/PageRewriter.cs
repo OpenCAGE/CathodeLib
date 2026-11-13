@@ -422,7 +422,7 @@ namespace CATHODE.Scripting.Refactor
         /// <summary>A deep copy of a page, for the given composite.</summary>
         public static FlowgraphMeta Copy(FlowgraphMeta page, ShortGuid composite)
         {
-            return new FlowgraphMeta()
+            FlowgraphMeta copy = new FlowgraphMeta()
             {
                 CompositeGUID = composite,
                 Name = page.Name,
@@ -451,6 +451,8 @@ namespace CATHODE.Scripting.Refactor
                     }).ToList(),
                 }).ToList(),
             };
+            page.CopyExtrasTo(copy); //comment boxes and the like
+            return copy;
         }
 
         /// <summary>

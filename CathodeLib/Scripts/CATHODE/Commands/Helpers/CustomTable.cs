@@ -721,7 +721,7 @@ namespace CathodeLib
             public int modification_date; //unix timecode
         }
     }
-    public class CompositeFlowgraphTable : CustomTable.Table //NOTE TO SELF: use this same class for reading/writing the default data stored in the script editor
+    public partial class CompositeFlowgraphTable : CustomTable.Table //NOTE TO SELF: use this same class for reading/writing the default data stored in the script editor
     {
         public CompositeFlowgraphTable(BinaryReader reader = null) : base(reader)
         {
@@ -809,6 +809,7 @@ namespace CathodeLib
                 }
                 flowgraphs.Add(flowgraph);
             }
+            ReadExtensions(reader); //comment boxes etc, after the pages (CompositeFlowgraphTable.Extensions.cs)
         }
 
         public override void Write(BinaryWriter writer)
@@ -877,9 +878,10 @@ namespace CathodeLib
                     }
                 }
             }
+            WriteExtensions(writer); //nothing at all when no page has comment boxes etc
         }
 
-        public class FlowgraphMeta : IEquatable<FlowgraphMeta>
+        public partial class FlowgraphMeta : IEquatable<FlowgraphMeta>
         {
             public const byte VERSION = 4;
             //The version before connections had reroute points: still read, and still written when no connection has any
@@ -932,6 +934,7 @@ namespace CathodeLib
                     foreach (NodeMeta node in Nodes)
                         copy.Nodes.Add(node?.Clone());
                 }
+                CloneComments(copy);
                 return copy;
             }
 

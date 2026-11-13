@@ -234,6 +234,21 @@ namespace CathodeLib.NavMesh
         public bool CullElevatedPolyStrips = false;
 
         /// <summary>
+        /// Widest crack (metres) closed where it runs through a floor: a steep or downward-facing sliver at a threshold whose top
+        /// stays within the climb of the floor on both sides, or a seam with nothing in it at floor height (<see cref="NavMeshFloorRepair.FillCracks"/>).
+        /// Without it, erosion turns a one-cell sliver into a gap of twice the agent radius and the rooms either side split. 0 = off.
+        /// </summary>
+        public float MaxWalkableCrackWidth = 0.25f;
+
+        /// <summary>
+        /// Stand on near-flat collision that faces down where a character can walk onto it from a reachability seed. Havok
+        /// collision is double-sided, so a floor wound the wrong way holds the player up; Recast's single-sided test leaves it
+        /// out of the mesh. Ceilings and undersides nobody can reach stay out; without seeds it does nothing. Off by default:
+        /// shipped levels' navmeshes leave such floors out too.
+        /// </summary>
+        public bool WalkDownFacingFloors = false;
+
+        /// <summary>
         /// Clearance (metres) two barriers need between them before they may share a Recast area
         /// id. Recast only has 62 usable ids and a level can carry more barriers than that, so
         /// distant ones reuse a value; they must be far enough apart never to land in one region.

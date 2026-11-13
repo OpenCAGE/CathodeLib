@@ -26,7 +26,7 @@ namespace CATHODE.Scripting.Refactor
     /// data connections (a top pin to a bottom pin) sits right above or below the node it serves - where the
     /// shipped pages put them. Separate groups of connected nodes are packed side by side, unconnected nodes last.
     /// </summary>
-    public static class PageArranger
+    public static partial class PageArranger
     {
         /// <summary>A node to place.</summary>
         public struct Node

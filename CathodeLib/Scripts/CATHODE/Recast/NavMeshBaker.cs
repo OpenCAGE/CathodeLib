@@ -311,7 +311,7 @@ namespace CathodeLib.NavMesh
             var bcfg = new RcBuilderConfig(cfg, bmin, bmax);
             // Keep compact heightfield for crouch / deep-crouch clearance sampling.
             RcBuilderResult rcResult = settings.HeightLimitedMarkedBeforePolygons
-                ? BuildWithHeightClasses(geom, bcfg, settings)
+                ? BuildWithHeightClasses(geom, bcfg, settings, soup.ReachabilitySeeds)
                 : new RcBuilder().Build(geom, bcfg, keepInterResults: true);
             if (rcResult?.Mesh == null || rcResult.Mesh.npolys <= 0)
                 throw new InvalidOperationException("Recast produced an empty poly mesh.");
@@ -564,14 +564,16 @@ namespace CathodeLib.NavMesh
         /// its own polygons instead of being averaged into the room it opens onto.
         /// </summary>
         static RcBuilderResult BuildWithHeightClasses(
-            RcSampleInputGeomProvider geom, RcBuilderConfig bcfg, NavMeshBakeSettings settings)
+            RcSampleInputGeomProvider geom, RcBuilderConfig bcfg, NavMeshBakeSettings settings, List<Vector3> seeds)
         {
             RcConfig cfg = bcfg.cfg;
             var ctx = new RcContext();
 
-            RcHeightfield solid = RcVoxelizations.BuildSolidHeightfield(ctx, geom, bcfg);
+            RcHeightfield solid = NavMeshFloorRepair.BuildSolidHeightfield(ctx, geom, bcfg, seeds, settings.WalkDownFacingFloors);
             if (cfg.FilterLowHangingObstacles)
                 RcFilters.FilterLowHangingWalkableObstacles(ctx, cfg.WalkableClimb, solid);
+            if (settings.MaxWalkableCrackWidth > 0f)
+                NavMeshFloorRepair.FillCracks(solid, cfg.WalkableClimb, cfg.WalkableHeight, (int)MathF.Floor(settings.MaxWalkableCrackWidth / cfg.Cs + 0.001f));
             if (cfg.FilterLedgeSpans)
                 RcFilters.FilterLedgeSpans(ctx, cfg.WalkableHeight, cfg.WalkableClimb, solid);
             if (cfg.FilterWalkableLowHeightSpans)
