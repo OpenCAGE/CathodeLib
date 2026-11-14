@@ -74,7 +74,8 @@ namespace CathodeLib
         /// <summary>
         /// When the source is a composite package's scratch level: the level the package was exported from (its manifest's
         /// SourceLevel). Imported back into that level, a collision proxy carrying the very material indices the level's own copy
-        /// does is that copy, even where the package's material table says otherwise (see SameMaterials).
+        /// does is that copy, even where the package's own material table reads those indices as other materials: packages made
+        /// before ported proxies were given their new level's indices carry their source level's.
         /// </summary>
         public string PackagedFrom = null;
 

@@ -28,7 +28,7 @@ namespace CathodeLib.Havok
 
         sealed class Layout
         {
-            public byte[] Payload;
+            public WeakReference<byte[]> Payload;   //weak: an import replaces the array, and the old one must not be kept for this
             public int Locals, Globals, Objects;
             public uint[] BlockStarts;
             public uint[] FixupSrc;
@@ -43,7 +43,7 @@ namespace CathodeLib.Havok
         {
             lock (_layouts)
             {
-                if (_layouts.TryGetValue(hkx, out Layout cached) && ReferenceEquals(cached.Payload, hkx.DataPayload) &&
+                if (_layouts.TryGetValue(hkx, out Layout cached) && cached.Payload.TryGetTarget(out byte[] was) && ReferenceEquals(was, hkx.DataPayload) &&
                     cached.Locals == hkx.LocalFixups.Count && cached.Globals == hkx.GlobalFixups.Count && cached.Objects == hkx.Objects.Count)
                     return cached;
 
@@ -67,7 +67,7 @@ namespace CathodeLib.Havok
 
                 Layout layout = new Layout
                 {
-                    Payload = hkx.DataPayload,
+                    Payload = new WeakReference<byte[]>(hkx.DataPayload),
                     Locals = hkx.LocalFixups.Count,
                     Globals = hkx.GlobalFixups.Count,
                     Objects = hkx.Objects.Count,
@@ -120,7 +120,7 @@ namespace CathodeLib.Havok
             if (hkx == null || hkx.IsTagfile || hkx.DataPayload == null || root >= (uint)hkx.DataPayload.Length)
                 return null;
             Layout layout = LayoutOf(hkx);
-            byte[] payload = layout.Payload;
+            byte[] payload = hkx.DataPayload;
             int ptr = hkx.Header.PointerSize;
 
             List<(uint At, int Length)> masks = new List<(uint, int)>();
