@@ -1,6 +1,7 @@
 using CATHODE;
 using CATHODE.Scripting;
 using CATHODE.Scripting.Internal;
+using CathodeLib.Havok;
 using CathodeLib.ObjectExtensions;
 using System;
 using System.Collections.Generic;
@@ -20,7 +21,7 @@ namespace CathodeLib
     /// One instance is one source-to-destination pairing. It remembers what it has already visited, so
     /// a composite reachable down several paths is copied once and a cyclic reference terminates, and it
     /// shares the Havok remap caches, so a proxy or physics system referenced by several composites is
-    /// imported once.
+    /// imported once - and one the destination already holds with the same content is not imported at all.
     /// </summary>
     public class CompositePorter
     {
@@ -71,6 +72,13 @@ namespace CathodeLib
         public bool CarryEditHistory = true;
 
         /// <summary>
+        /// When the source is a composite package's scratch level: the level the package was exported from (its manifest's
+        /// SourceLevel). Imported back into that level, a collision proxy carrying the very material indices the level's own copy
+        /// does is that copy, even where the package's material table says otherwise (see SameMaterials).
+        /// </summary>
+        public string PackagedFrom = null;
+
+        /// <summary>
         /// Raised for each composite actually copied into the destination, with the source composite
         /// and its copy. OpenCAGE uses it to carry flowgraph layouts across, which live outside CathodeLib.
         /// </summary>
@@ -104,6 +112,10 @@ namespace CathodeLib
         public int NamedMaterialsPorted { get; private set; }
         /// <summary>Template proxy instances given this level's index for their material (the source's index named another, or none).</summary>
         public int ProxyMaterialsRetargeted { get; private set; }
+        /// <summary>Collision proxies the destination already held, with the same content and materials, used instead of a new copy.</summary>
+        public int CollisionProxiesReused => _proxiesReused.Count;
+        /// <summary>Physics systems the destination already held, with the same content, used instead of a new copy.</summary>
+        public int PhysicsSystemsReused => _systemsReused.Count;
         public int CharacterCompositesPorted { get; private set; }
         public int AccessorySetsPorted { get; private set; }
         public int ResourcesSkipped { get; private set; }
@@ -113,6 +125,24 @@ namespace CathodeLib
         private readonly Dictionary<uint, uint> _collisionRemap64 = new Dictionary<uint, uint>();
         private readonly Dictionary<uint, uint> _physicsRemap32 = new Dictionary<uint, uint>();
         private readonly Dictionary<uint, uint> _physicsRemap64 = new Dictionary<uint, uint>();
+
+        /* The destination's proxies and physics systems by content (HavokEquivalence). One an import would only copy again is reused:
+           appending every time stacked a copy of all their collision on each overwrite of a level's own composites (five TECH_HUB
+           sections took COLLISION.HKX from 9.5 to 75 MB). Indexed at the first import that needs it, then kept up to date with what
+           this porter brings in. A level holds identical twins, so the one the entity used before an overwrite comes first, then any
+           the overwritten composites used: numbers stay as they were, and no twin is left with nothing naming it. */
+        private Dictionary<string, List<HavokPackfile.StaticCompoundShape>> _heldProxies32, _heldProxies64;
+        private Dictionary<string, List<uint>> _heldSystems32, _heldSystems64;
+        private readonly Dictionary<uint, (HavokPackfile.StaticCompoundShape At32, HavokPackfile.StaticCompoundShape At64)> _proxiesDone = new Dictionary<uint, (HavokPackfile.StaticCompoundShape, HavokPackfile.StaticCompoundShape)>();
+        private readonly Dictionary<uint, (uint At32, uint At64)> _systemsDone = new Dictionary<uint, (uint, uint)>();
+        private readonly HashSet<uint> _proxiesReused = new HashSet<uint>();
+        private readonly HashSet<uint> _systemsReused = new HashSet<uint>();
+        private readonly HashSet<int> _replacedProxyOrdinals = new HashSet<int>();
+        private readonly HashSet<int> _replacedSystemIndices = new HashSet<int>();
+        private readonly Dictionary<(ShortGuid Composite, ShortGuid Entity), HashSet<int>> _replacedProxiesOf = new Dictionary<(ShortGuid, ShortGuid), HashSet<int>>();
+        private readonly Dictionary<(ShortGuid Composite, ShortGuid Entity), HashSet<int>> _replacedSystemsOf = new Dictionary<(ShortGuid, ShortGuid), HashSet<int>>();
+        //The entity whose resources are being brought across, while a composite is copied
+        private (ShortGuid Composite, ShortGuid Entity)? _portingEntity = null;
 
         /* Submesh.CollisionProxyIndex is persisted in the model file and names a compound by its place in
            COLLISION.HKX. Retail keeps it equal to the proxy the model's own collision mapping uses, on every
@@ -345,6 +375,49 @@ namespace CathodeLib
             }
         }
 
+        /* The collision proxies and physics systems a destination composite an overwriting port replaced used, by number, and by the
+           entity that used each */
+        private void CollectReplacedHavok(Composite composite)
+        {
+            foreach (FunctionEntity ent in composite.functions)
+            {
+                (ShortGuid, ShortGuid) owner = (composite.shortGUID, ent.shortGUID);
+                if (ent.resources != null)
+                    CollectReplacedHavok(ent.resources, owner);
+
+                Parameter resources = ent.GetParameter("resource");
+                if (resources?.content is cResource resourceParam && resourceParam.value != null)
+                    CollectReplacedHavok(resourceParam.value, owner);
+            }
+        }
+
+        private void CollectReplacedHavok(List<ResourceReference> resourceRefs, (ShortGuid, ShortGuid) owner)
+        {
+            foreach (ResourceReference resourceRef in resourceRefs)
+            {
+                if (resourceRef?.resource_type == ResourceType.COLLISION_MAPPING && resourceRef.CollisionMapping?.CollisionProxy != null)
+                    Note(_replacedProxyOrdinals, _replacedProxiesOf, owner, resourceRef.CollisionMapping.CollisionProxyIndex);
+                else if (resourceRef?.resource_type == ResourceType.DYNAMIC_PHYSICS_SYSTEM)
+                    Note(_replacedSystemIndices, _replacedSystemsOf, owner, resourceRef.PhysicsSystem?.SystemIndex ?? resourceRef.PhysicsSystemIndex);
+            }
+        }
+
+        private static void Note(HashSet<int> all, Dictionary<(ShortGuid, ShortGuid), HashSet<int>> byOwner, (ShortGuid, ShortGuid) owner, int number)
+        {
+            if (number < 0)
+                return;
+            all.Add(number);
+            if (!byOwner.TryGetValue(owner, out HashSet<int> numbers))
+                byOwner.Add(owner, numbers = new HashSet<int>());
+            numbers.Add(number);
+        }
+
+        /* What the entity whose resources are being ported used before the port replaced its composite, or null */
+        private HashSet<int> UsedBefore(Dictionary<(ShortGuid, ShortGuid), HashSet<int>> byOwner)
+        {
+            return _portingEntity != null && byOwner.TryGetValue(_portingEntity.Value, out HashSet<int> numbers) ? numbers : null;
+        }
+
         private void PortRecursive(Composite composite)
         {
             //Only walk each composite once. Skipping the copy for one already handled is not enough:
@@ -364,6 +437,7 @@ namespace CathodeLib
                 if (dest != null)
                 {
                     CollectRenderableRuns(dest, _replacedRenderables);
+                    CollectReplacedHavok(dest);
                     Destination.Commands.Entries.Remove(dest);
                 }
                 dest = null;
@@ -378,12 +452,14 @@ namespace CathodeLib
 
                 foreach (FunctionEntity ent in copiedComp.functions)
                 {
+                    _portingEntity = (copiedComp.shortGUID, ent.shortGUID);
                     if (ent.resources != null)
                         CopyResources(ent.resources);
 
                     Parameter resources = ent.GetParameter("resource");
                     if (resources?.content is cResource resourceParam && resourceParam.value != null)
                         CopyResources(resourceParam.value);
+                    _portingEntity = null;
 
                     PortEnvironmentMapTexture(ent);
                     PortColourLutTextures(ent);
@@ -772,6 +848,27 @@ namespace CathodeLib
             HavokPackfile dst32 = Destination.CollisionHKX;
             HavokPackfile dst64 = Destination.CollisionHKX64;
 
+            //The proxy this entity used before an overwrite, where it is the same; else what this source proxy became already; else any
+            HavokPackfile.StaticCompoundShape sourceProxy64 = src64?.GetCompound(sourceProxy.ProxyIndex);
+            HashSet<int> usedBefore = UsedBefore(_replacedProxiesOf);
+            HavokPackfile.StaticCompoundShape held32 = null, held64 = null;
+            string key32 = null, key64 = null;
+            if (usedBefore != null && FindHeldProxy(sourceProxy, sourceProxy64, usedBefore, out held32, out held64, out key32, out key64))
+            {
+                _proxiesReused.Add(sourceProxy.DataOffset);
+                if (!_proxiesDone.ContainsKey(sourceProxy.DataOffset))
+                    _proxiesDone[sourceProxy.DataOffset] = (held32, held64);
+                return dst32 != null ? held32 : held64;
+            }
+            if (_proxiesDone.TryGetValue(sourceProxy.DataOffset, out (HavokPackfile.StaticCompoundShape At32, HavokPackfile.StaticCompoundShape At64) done))
+                return dst32 != null ? done.At32 : done.At64;
+            if (FindHeldProxy(sourceProxy, sourceProxy64, null, out held32, out held64, out key32, out key64))
+            {
+                _proxiesReused.Add(sourceProxy.DataOffset);
+                _proxiesDone[sourceProxy.DataOffset] = (held32, held64);
+                return dst32 != null ? held32 : held64;
+            }
+
             HavokPackfile.StaticCompoundShape imported32 = null, imported64 = null;
             if (src32 != null && dst32 != null)
                 imported32 = dst32.ImportStaticCompoundShape(src32, sourceProxy, _collisionRemap32);
@@ -802,10 +899,125 @@ namespace CathodeLib
                 Console.WriteLine("CompositePorter: destination level has no COLLISION.HKX64 - cannot import collision proxy.");
 
             RetargetProxyMaterials(sourceProxy, dst32, imported32);
-            RetargetProxyMaterials(src64?.GetCompound(sourceProxy.ProxyIndex), dst64, imported64);
+            RetargetProxyMaterials(sourceProxy64, dst64, imported64);
+
+            //A later proxy with the same content uses this copy
+            Remember(_heldProxies32, key32, imported32);
+            Remember(_heldProxies64, key64, imported64);
 
             //The mobile and Switch builds ship only the 64-bit file, so its proxy is the one the row must name
-            return dst32 != null ? imported32 : imported64;
+            HavokPackfile.StaticCompoundShape lead = dst32 != null ? imported32 : imported64;
+            if (lead != null)
+                _proxiesDone[sourceProxy.DataOffset] = (imported32, imported64);
+            return lead;
+        }
+
+        /* A proxy the destination holds in place of the source's (one of only, when given): the same content in every width it has (at
+           one ordinal, as the two widths number proxies alike) and, instance by instance, the material the source's would be imported
+           with. Its keys come back either way, for Remember. */
+        private bool FindHeldProxy(HavokPackfile.StaticCompoundShape source32, HavokPackfile.StaticCompoundShape source64, ICollection<int> only,
+            out HavokPackfile.StaticCompoundShape held32, out HavokPackfile.StaticCompoundShape held64, out string key32, out string key64)
+        {
+            held32 = null; held64 = null; key32 = null; key64 = null;
+            HavokPackfile src32 = Source.CollisionHKX, src64 = Source.CollisionHKX64;
+            HavokPackfile dst32 = Destination.CollisionHKX, dst64 = Destination.CollisionHKX64;
+            bool with32 = src32 != null && dst32 != null && source32 != null;
+            bool with64 = src64 != null && dst64 != null && source64 != null;
+            if (with32) key32 = HavokEquivalence.KeyOf(src32, source32);
+            if (with64) key64 = HavokEquivalence.KeyOf(src64, source64);
+            if ((!with32 && !with64) || (with32 && key32 == null) || (with64 && key64 == null))
+                return false;
+            if (dst32 != null && dst64 != null && dst32.StaticCompoundShapes.Count != dst64.StaticCompoundShapes.Count)
+                return false;
+
+            if (with32 && _heldProxies32 == null)
+                _heldProxies32 = IndexHeldProxies(dst32);
+            if (with64 && _heldProxies64 == null)
+                _heldProxies64 = IndexHeldProxies(dst64);
+            List<HavokPackfile.StaticCompoundShape> candidates = with32 ? Held(_heldProxies32, key32) : Held(_heldProxies64, key64);
+            if (candidates == null)
+                return false;
+
+            foreach (HavokPackfile.StaticCompoundShape candidate in candidates
+                .Where(o => o.ProxyIndex >= 0 && (only == null || only.Contains(o.ProxyIndex)))
+                .OrderBy(o => _replacedProxyOrdinals.Contains(o.ProxyIndex) ? 0 : 1)
+                .ThenBy(o => o.ProxyIndex)
+                .ToList())
+            {
+                HavokPackfile.StaticCompoundShape at32 = with32 ? candidate : null;
+                HavokPackfile.StaticCompoundShape at64 = with32 ? null : candidate;
+                if (with32 && with64)
+                {
+                    at64 = Held(_heldProxies64, key64)?.FirstOrDefault(o => o.ProxyIndex == candidate.ProxyIndex);
+                    if (at64 == null)
+                        continue;
+                }
+                if (at32 != null && !SameMaterials(src32, source32, dst32, at32))
+                    continue;
+                if (at64 != null && !SameMaterials(src64, source64, dst64, at64))
+                    continue;
+                held32 = at32;
+                held64 = at64;
+                return true;
+            }
+            return false;
+        }
+
+        private static Dictionary<string, List<HavokPackfile.StaticCompoundShape>> IndexHeldProxies(HavokPackfile hkx)
+        {
+            Dictionary<string, List<HavokPackfile.StaticCompoundShape>> index = new Dictionary<string, List<HavokPackfile.StaticCompoundShape>>();
+            foreach (HavokPackfile.StaticCompoundShape compound in hkx.StaticCompoundShapes)
+            {
+                if (compound != null && compound.ProxyIndex >= 0 && !hkx.IsWorldHost(compound))
+                    Remember(index, HavokEquivalence.KeyOf(hkx, compound), compound);
+            }
+            return index;
+        }
+
+        private static void Remember<T>(Dictionary<string, List<T>> index, string key, T value)
+        {
+            if (index == null || key == null || value == null)
+                return;
+            if (!index.TryGetValue(key, out List<T> list))
+                index.Add(key, list = new List<T>());
+            if (!list.Contains(value))
+                list.Add(value);
+        }
+
+        private static List<T> Held<T>(Dictionary<string, List<T>> index, string key)
+        {
+            return index != null && key != null && index.TryGetValue(key, out List<T> list) ? list : null;
+        }
+
+        /* The key leaves the material indices out (a template proxy names its render material by index, which differs per level), so
+           a held proxy only stands in where each instance has the material the source's would be given here (RetargetProxyMaterials):
+           the same one, or one identical to it. Or, back in the level a package came from, where the indices are the very numbers
+           its own copy carries: a package exported before ported proxies were retargeted holds that level's indices, which name
+           other materials (or none) in the package's own table - retargeting a copy by that table would give it those. */
+        private bool SameMaterials(HavokPackfile sourceFile, HavokPackfile.StaticCompoundShape sourceProxy, HavokPackfile heldFile, HavokPackfile.StaticCompoundShape held)
+        {
+            if (sourceProxy.Instances.Count != held.Instances.Count)
+                return false;
+            if (PackagedFrom != null && string.Equals(PackagedFrom, Destination.Name, StringComparison.OrdinalIgnoreCase) &&
+                HavokEquivalence.SameTemplateUserData(sourceFile, sourceProxy, heldFile, held))
+                return true;
+            for (int i = 0; i < held.Instances.Count; i++)
+            {
+                HavokPackfile.CompoundInstance source = sourceProxy.Instances[i];
+                HavokPackfile.CompoundInstance here = held.Instances[i];
+                if (Source.Materials == null || Destination.Materials == null)
+                {
+                    if (source.UserData != here.UserData)
+                        return false;
+                    continue;
+                }
+                Materials.Material sourceMaterial = source.Material ?? (source.UserData <= int.MaxValue ? Source.Materials.GetAtWriteIndex((int)source.UserData) : null);
+                Materials.Material wanted = sourceMaterial == null ? null : Destination.Materials.ImportEntry(sourceMaterial, OverwriteAssets);
+                Materials.Material has = here.Material ?? (here.UserData <= int.MaxValue ? Destination.Materials.GetAtWriteIndex((int)here.UserData) : null);
+                if (wanted == null ? here.UserData != 0 : has == null || (!ReferenceEquals(wanted, has) && wanted != has))
+                    return false;
+            }
+            return true;
         }
 
         /* A template proxy names the render material its hits read their physical material from (footsteps, impacts) by
@@ -859,6 +1071,32 @@ namespace CathodeLib
             HavokPackfile dst32 = Destination.PhysicsHKX;
             HavokPackfile dst64 = Destination.PhysicsHKX64;
 
+            //As for proxies: what this entity used before an overwrite, else what this source system became already, else any. A system
+            //object goes stale at every import (the views are read again), so what is kept is where it sits
+            HavokPackfile.PhysicsSystem sourceSystem64 = src64?.GetPhysicsSystem(sourceSystem.SystemIndex);
+            HashSet<int> usedBefore = UsedBefore(_replacedSystemsOf);
+            HavokPackfile.PhysicsSystem held32 = null, held64 = null;
+            string key32 = null, key64 = null;
+            if (usedBefore != null && FindHeldSystem(sourceSystem, sourceSystem64, usedBefore, out held32, out held64, out key32, out key64))
+            {
+                _systemsReused.Add(sourceSystem.DataOffset);
+                if (!_systemsDone.ContainsKey(sourceSystem.DataOffset))
+                    _systemsDone[sourceSystem.DataOffset] = (held32?.DataOffset ?? 0, held64?.DataOffset ?? 0);
+                return dst32 != null ? held32 : held64;
+            }
+            if (_systemsDone.TryGetValue(sourceSystem.DataOffset, out (uint At32, uint At64) done))
+            {
+                HavokPackfile.PhysicsSystem again = dst32 != null ? SystemAt(dst32, done.At32) : SystemAt(dst64, done.At64);
+                if (again != null)
+                    return again;
+            }
+            if (FindHeldSystem(sourceSystem, sourceSystem64, null, out held32, out held64, out key32, out key64))
+            {
+                _systemsReused.Add(sourceSystem.DataOffset);
+                _systemsDone[sourceSystem.DataOffset] = (held32?.DataOffset ?? 0, held64?.DataOffset ?? 0);
+                return dst32 != null ? held32 : held64;
+            }
+
             HavokPackfile.PhysicsSystem imported32 = null, imported64 = null;
             if (src32 != null && dst32 != null)
                 imported32 = dst32.ImportPhysicsSystem(src32, sourceSystem, _physicsRemap32);
@@ -887,7 +1125,88 @@ namespace CathodeLib
             else if (src64 != null && dst32 == null)
                 Console.WriteLine("CompositePorter: destination level has no PHYSICS.HKX64 - cannot import physics system.");
 
-            return dst32 != null ? imported32 : imported64;
+            if (imported32 != null)
+                Remember(_heldSystems32, key32, imported32.DataOffset);
+            if (imported64 != null)
+                Remember(_heldSystems64, key64, imported64.DataOffset);
+
+            HavokPackfile.PhysicsSystem lead = dst32 != null ? imported32 : imported64;
+            if (lead != null)
+                _systemsDone[sourceSystem.DataOffset] = (imported32?.DataOffset ?? 0, imported64?.DataOffset ?? 0);
+            return lead;
+        }
+
+        /* A system the destination holds in place of the source's: the same content in every width it has, at one index (PHYSICS.MAP
+           and the script name a system by its place in hkpPhysicsData.systems, alike in both widths). Retail places one system many
+           times over, so sharing it is how the game already works. One of only, when given. Its keys come back either way, for
+           Remember. */
+        private bool FindHeldSystem(HavokPackfile.PhysicsSystem source32, HavokPackfile.PhysicsSystem source64, ICollection<int> only,
+            out HavokPackfile.PhysicsSystem held32, out HavokPackfile.PhysicsSystem held64, out string key32, out string key64)
+        {
+            held32 = null; held64 = null; key32 = null; key64 = null;
+            HavokPackfile src32 = Source.PhysicsHKX, src64 = Source.PhysicsHKX64;
+            HavokPackfile dst32 = Destination.PhysicsHKX, dst64 = Destination.PhysicsHKX64;
+            bool with32 = src32 != null && dst32 != null && source32 != null;
+            bool with64 = src64 != null && dst64 != null && source64 != null;
+            if (with32) key32 = HavokEquivalence.KeyOf(src32, source32);
+            if (with64) key64 = HavokEquivalence.KeyOf(src64, source64);
+            if ((!with32 && !with64) || (with32 && key32 == null) || (with64 && key64 == null))
+                return false;
+            if (dst32 != null && dst64 != null && dst32.PhysicsSystems.Count != dst64.PhysicsSystems.Count)
+                return false;
+
+            if (with32 && _heldSystems32 == null)
+                _heldSystems32 = IndexHeldSystems(dst32);
+            if (with64 && _heldSystems64 == null)
+                _heldSystems64 = IndexHeldSystems(dst64);
+            List<uint> candidates = with32 ? Held(_heldSystems32, key32) : Held(_heldSystems64, key64);
+            if (candidates == null)
+                return false;
+            HavokPackfile lead = with32 ? dst32 : dst64;
+            List<uint> other = with32 && with64 ? Held(_heldSystems64, key64) : null;
+            if (with32 && with64 && other == null)
+                return false;
+
+            foreach (HavokPackfile.PhysicsSystem candidate in candidates
+                .Select(o => SystemAt(lead, o))
+                .Where(o => o != null && o.SystemIndex >= 0 && (only == null || only.Contains(o.SystemIndex)))
+                .OrderBy(o => _replacedSystemIndices.Contains(o.SystemIndex) ? 0 : 1)
+                .ThenBy(o => o.SystemIndex)
+                .ToList())
+            {
+                HavokPackfile.PhysicsSystem at64 = with32 ? null : candidate;
+                if (with32 && with64)
+                {
+                    at64 = dst64.GetPhysicsSystem(candidate.SystemIndex);
+                    if (at64 == null || !other.Contains(at64.DataOffset))
+                        continue;
+                }
+                held32 = with32 ? candidate : null;
+                held64 = at64;
+                return true;
+            }
+            return false;
+        }
+
+        private static Dictionary<string, List<uint>> IndexHeldSystems(HavokPackfile hkx)
+        {
+            Dictionary<string, List<uint>> index = new Dictionary<string, List<uint>>();
+            foreach (HavokPackfile.PhysicsSystem system in hkx.PhysicsSystems)
+            {
+                if (system != null && system.SystemIndex >= 0)
+                    Remember(index, HavokEquivalence.KeyOf(hkx, system), system.DataOffset);
+            }
+            return index;
+        }
+
+        private static HavokPackfile.PhysicsSystem SystemAt(HavokPackfile hkx, uint dataOffset)
+        {
+            if (hkx == null)
+                return null;
+            foreach (HavokPackfile.PhysicsSystem system in hkx.PhysicsSystems)
+                if (system != null && system.DataOffset == dataOffset)
+                    return system;
+            return null;
         }
     }
 }

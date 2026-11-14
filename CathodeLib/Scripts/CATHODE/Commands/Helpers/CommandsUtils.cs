@@ -390,6 +390,61 @@ namespace CATHODE.Scripting
         }
 
         /// <summary>
+        /// An instance of a composite this script doesn't have: the entity's function is neither a function type nor the ID of a
+        /// composite here (the composite was deleted, or a ported script instanced one that didn't come with it). Like a dead proxy
+        /// it is kept, so bringing the composite back under the same ID makes it an instance again.
+        /// </summary>
+        public bool IsMissingCompositeInstance(FunctionEntity entity)
+        {
+            return entity != null && !entity.function.IsFunctionType && _commands.GetComposite(entity.function) == null;
+        }
+
+        /// <summary>
+        /// Whether a stored path (an alias, a TriggerSequence entry, a CAGEAnimation binding), read from the composite holding it
+        /// or from the root as ResolveEntityPath reads it, passes through an instance of a missing composite before its last hop:
+        /// what it names is inside that composite, so it resolves again once the composite is back.
+        /// </summary>
+        public bool WalksIntoMissingComposite(ShortGuid[] hierarchy, Composite composite)
+        {
+            return StopsAtMissingComposite(hierarchy, composite) || StopsAtMissingComposite(hierarchy, _commands.EntryPoints?[0]);
+        }
+        private bool StopsAtMissingComposite(ShortGuid[] hierarchy, Composite start)
+        {
+            if (hierarchy == null || start == null)
+                return false;
+            int hops = hierarchy.Length - (hierarchy.Length != 0 && hierarchy[hierarchy.Length - 1] == ShortGuid.Invalid ? 1 : 0);
+            Composite current = start;
+            for (int i = 0; i < hops - 1; i++)
+            {
+                if (!(current.GetEntityByID(hierarchy[i]) is FunctionEntity function) || function.function.IsFunctionType)
+                    return false;
+                current = _commands.GetComposite(function.function);
+                if (current == null)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The instances of missing composites across every composite, keyed by composite - see IsMissingCompositeInstance.
+        /// </summary>
+        public Dictionary<Composite, List<FunctionEntity>> GetMissingCompositeInstances(IEnumerable<Composite> composites)
+        {
+            Dictionary<Composite, List<FunctionEntity>> missing = new Dictionary<Composite, List<FunctionEntity>>();
+            if (composites == null)
+                return missing;
+            foreach (Composite composite in composites)
+            {
+                if (composite == null)
+                    continue;
+                List<FunctionEntity> instances = composite.functions.Where(IsMissingCompositeInstance).ToList();
+                if (instances.Count != 0)
+                    missing.Add(composite, instances);
+            }
+            return missing;
+        }
+
+        /// <summary>
         /// Checks a resolved alias or proxy to get the pointed Entity and Composite
         /// </summary>
         public (Composite, Entity) GetResolvedTarget(List<Tuple<Composite, Entity>> path)
@@ -476,20 +531,10 @@ namespace CATHODE.Scripting
             int originalLinkCount = 0;
             int originalFuncCount = 0;
 
-            // Functions must be a valid FunctionType, or point to a Composite that exists
-            var functionsToRemove = new List<ShortGuid>();
-            foreach (var kvp in composite.functions_dictionary)
-            {
-                if (!(kvp.Value.function.IsFunctionType || _commands.GetComposite(kvp.Value.function) != null))
-                {
-                    functionsToRemove.Add(kvp.Key);
-                }
-            }
+            // Instances of composites this script doesn't have are deliberately kept, links and all, as dead proxies are (see
+            // IsMissingCompositeInstance): importing the composite under its ID makes them instances again, and the game skips
+            // them meanwhile - retail ships a few dozen
             originalFuncCount = composite.functions_dictionary.Count;
-            foreach (var guid in functionsToRemove)
-            {
-                composite.functions_dictionary.Remove(guid);
-            }
 
             // Aliases must point to an entity that still exists.
             //
@@ -503,8 +548,9 @@ namespace CATHODE.Scripting
             foreach (var kvp in composite.aliases_dictionary)
             {
                 // An alias is normally local, but retail writes a handful root-relative, and deleting
-                // something a valid reading still reaches is not a tidy-up, it is data loss.
-                if (!CouldResolve(ResolveEntityPath(kvp.Value?.alias?.path, composite)))
+                // something a valid reading still reaches is not a tidy-up, it is data loss. One into
+                // a kept instance of a missing composite stays with it.
+                if (!CouldResolve(ResolveEntityPath(kvp.Value?.alias?.path, composite)) && !WalksIntoMissingComposite(kvp.Value?.alias?.path, composite))
                 {
                     aliasesToRemove.Add(kvp.Key);
                 }
@@ -529,7 +575,7 @@ namespace CATHODE.Scripting
                         var sequenceToRemove = new List<TriggerSequence.SequenceEntry>();
                         foreach (var entry in trig.sequence)
                         {
-                            if (!CouldResolve(ResolveEntityPath(entry.connectedEntity.path, composite)))
+                            if (!CouldResolve(ResolveEntityPath(entry.connectedEntity.path, composite)) && !WalksIntoMissingComposite(entry.connectedEntity.path, composite))
                             {
                                 sequenceToRemove.Add(entry);
                             }
@@ -550,7 +596,7 @@ namespace CATHODE.Scripting
                             //TODO: Worth also removing connections that have no event/float tracks?
                             //List<CAGEAnimation.FloatTrack> floatTracks = anim.animations.FindAll(o => o.shortGUID == connection.target_track);
                             //List<CAGEAnimation.EventTrack> eventTracks = anim.events.FindAll(o => o.shortGUID == connection.target_track);
-                            if (!CouldResolve(ResolveEntityPath(connection.connectedEntity.path, composite)))
+                            if (!CouldResolve(ResolveEntityPath(connection.connectedEntity.path, composite)) && !WalksIntoMissingComposite(connection.connectedEntity.path, composite))
                             {
                                 connectionsToRemove.Add(connection);
                             }
