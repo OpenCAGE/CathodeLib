@@ -351,19 +351,18 @@ namespace CathodeLib
         }
 
         /// <summary>
-        /// The resident animation heap (ca_allocator 4: every character's resident clip sections, loaded per animation set) holds
-        /// 22,532,096 bytes. A set whose sections don't fit beside the ones already in it never loads, and its characters never
-        /// spawn - silently. AI.exe has a switch that doubles every ca_allocator's budget and allocation count,
-        /// g_animHeapsCanExceedBudget, never set in retail and read once, by allocate_heaps at start-up:
-        ///   movzx edx, byte ptr [g_animHeapsCanExceedBudget]   0F B6 15 [address]
+        /// The resident animation heap (every character's resident clip sections, loaded per animation set) holds 22,532,096 bytes.
+        /// A set whose sections don't fit beside the ones already in it never loads, and its characters never spawn - silently. The
+        /// game has a switch that doubles every animation heap's budget and allocation count, never set in retail and read once at
+        /// start-up, where it is pushed as an argument:
+        ///   movzx edx, byte ptr [flag]                         0F B6 15 [address]
         ///   push edx                                           52
-        ///   call initialise_ca_allocators
-        /// The flag is in .bss (no byte of it in the file), so the read is patched instead, to pass true:
+        /// The flag lives in uninitialised data (no byte of it in the file), so the read is patched instead, to pass true:
         ///   push 1                                             6A 01
         ///   cmp eax, [address]                                 3D [address]  (the address left as it is: harmless, and its relocation too)
         ///   nop                                                90
-        /// Steam: allocate_heaps RVA 0x382110, flag RVA 0x12F0CC6; GOG: flag RVA 0x130AF06; Epic: flag RVA 0x130D1E6 (found by the
-        /// allocate_heaps signature, the flag read once in each build). Takes effect from the game's next start.
+        /// Flag RVA: Steam 0x12F0CC6, GOG 0x130AF06, Epic 0x130D1E6 (the read is at the file offsets below). Takes effect from the
+        /// game's next start.
         /// </summary>
         public static bool PatchAnimHeapBudget(Platform platform, string pathToAI, bool allowLarger)
         {

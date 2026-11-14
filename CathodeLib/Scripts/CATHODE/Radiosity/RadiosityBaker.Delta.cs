@@ -593,8 +593,8 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>Fold an appended slice bake's visibility grids into the runtime's shared 256-entry palette: match by
-        /// content, take over zero-padding entries from the end for new grids, and snap to the nearest entry once the
-        /// slots are full.</summary>
+        /// content, take over zero-padding entries no slice uses (from the end) for new grids, and snap to the nearest
+        /// entry once the slots are full.</summary>
         private static void FoldVisPaletteIntoRuntime(RadiosityRuntime runtime, SliceBake bake, Action<string> log = null)
         {
             if (bake.VisFaceGrids != null && bake.VisFaceGrids.Count > 0 && runtime.VolumeProbeVisPalette != null)
@@ -607,6 +607,19 @@ namespace CathodeLib.Radiosity
                 int nextFree = palette.Count - 1;
                 bool IsZero(byte[] g) { foreach (byte b in g) if (b != 0) return false; return true; }
 
+                // An all-zero grid is also a real entry - blocked in every direction, which retail gives the volume probe
+                // faces of enclosed spaces (SCI_HUB entry 66: about a third of its faces). Only an entry no slice points at
+                // is padding: overwriting a used one relit every probe sharing it.
+                var used = new bool[palette.Count];
+                foreach (RadiosityRuntime.RuntimeDataSlice existing in runtime.Slices)
+                    if (existing?.VolumeProbeHash?.Items != null)
+                        foreach (RadiosityRuntime.VolumeProbeHash.Probe probe in existing.VolumeProbeHash.Items)
+                            if (probe?.VisPaletteEntries != null)
+                                foreach (byte entry in probe.VisPaletteEntries)
+                                    if (entry < used.Length)
+                                        used[entry] = true;
+                bool IsFree(int i) => palette[i]?.Grid != null && IsZero(palette[i].Grid) && !used[i];
+
                 // Snapping needs the raw grids; build the view once rather than per grid.
                 var raw = new List<byte[]>(palette.Count);
                 foreach (RadiosityRuntime.VolumeProbeVisSlice e in palette)
@@ -618,7 +631,7 @@ namespace CathodeLib.Radiosity
                     byte[] grid = bake.VisFaceGrids[g];
                     string key = Convert.ToBase64String(grid);
                     if (byContent.TryGetValue(key, out int existing)) { bake.VisFaceIndices[g] = (byte)existing; matched++; continue; }
-                    while (nextFree > 0 && (palette[nextFree]?.Grid == null || !IsZero(palette[nextFree].Grid))) nextFree--;
+                    while (nextFree > 0 && !IsFree(nextFree)) nextFree--;
                     if (nextFree > 0)
                     {
                         palette[nextFree] = new RadiosityRuntime.VolumeProbeVisSlice { Grid = grid };
