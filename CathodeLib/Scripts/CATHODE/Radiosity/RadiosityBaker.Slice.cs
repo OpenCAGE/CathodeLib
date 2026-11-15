@@ -18,17 +18,23 @@ namespace CathodeLib.Radiosity
         {
             private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
             private readonly System.Text.StringBuilder _phases = new System.Text.StringBuilder();
+            private double _cpu = CpuSeconds();
 
             /// <summary>Seconds from the timer's start to the latest lap.</summary>
             public double Total { get; private set; }
 
+            private static double CpuSeconds() => System.Diagnostics.Process.GetCurrentProcess().TotalProcessorTime.TotalSeconds;
+
             public void Lap(string phase, string detail = null)
             {
-                double now = _clock.Elapsed.TotalSeconds;
+                double now = _clock.Elapsed.TotalSeconds, cpu = CpuSeconds();
                 _phases.Append(phase).Append(' ').Append(Format(now - Total));
+                // Cores in use over the phase (the whole process's, so the timers of slices baking side by side overlap)
+                if (now - Total >= 0.5) _phases.Append(" x").Append(((cpu - _cpu) / (now - Total)).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
                 if (detail != null) _phases.Append(" (").Append(detail).Append(')');
                 _phases.Append(' ');
                 Total = now;
+                _cpu = cpu;
             }
 
             /// <summary>The phases so far and their total, e.g. "collect 1.20s build 0.31s total 1.51s".</summary>

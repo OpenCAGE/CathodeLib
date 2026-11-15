@@ -116,6 +116,7 @@ namespace NanoRT
 
             options ??= new BVHBuildOptions();
 
+            _buildId = System.Threading.Interlocked.Increment(ref s_buildIds);
             _occlusionCache = null;
             _vertices = vertices;
             _faces = faces;
@@ -137,8 +138,8 @@ namespace NanoRT
                 _centroids[i] = (a + b + c) * (1.0f / 3.0f);
             }
 
-            // A binary tree over n leaves needs at most 2n-1 nodes; leaves hold >= 1 primitive.
-            _nodes = new Node[Math.Max(1, triCount * 2)];
+            // The tree is built into its own arrays below; this holds the empty one
+            _nodes = new Node[1];
             _nodeCount = 0;
             Statistics = new BVHBuildStatistics();
 
@@ -149,7 +150,12 @@ namespace NanoRT
                 return;
             }
 
-            BuildRecursive(0, triCount, 0, options);
+            SubBuild tree = BuildSplit(0, triCount, 0, options, 5);
+            _nodes = tree.Nodes;
+            _nodeCount = tree.Count;
+            Statistics.MaxTreeDepth = tree.MaxDepth;
+            Statistics.NumLeafNodes = tree.Leaves;
+            Statistics.NumBranchNodes = tree.Branches;
 
             // Scratch only needed during the build.
             _centroids = Array.Empty<Vector3>();
@@ -157,25 +163,85 @@ namespace NanoRT
             _triMax = Array.Empty<Vector3>();
         }
 
-        private int BuildRecursive(int first, int count, int depth, BVHBuildOptions options)
+        /// <summary>A subtree built on its own, its nodes numbered from 0 in the order the serial build numbers them.</summary>
+        private sealed class SubBuild
         {
-            int nodeIndex = _nodeCount++;
-            if (_nodeCount > _nodes.Length)
-                Array.Resize(ref _nodes, _nodes.Length * 2);
+            public Node[] Nodes = new Node[16];
+            public int Count, MaxDepth, Leaves, Branches;
+        }
 
-            ComputeBounds(first, count, out Vector3 bmin, out Vector3 bmax);
-
-            if (depth > Statistics.MaxTreeDepth)
-                Statistics.MaxTreeDepth = depth;
-
-            if (count <= options.MinLeafPrimitives || depth >= options.MaxTreeDepth)
+        /// <summary>
+        /// The tree over [first, first + count) as the serial build makes it. For the top <paramref name="forks"/> levels
+        /// of big ranges the two halves are built at once (each partitions only its own range of the index list) and
+        /// joined in the serial order: the left subtree straight after the node, the right after it, so only the right
+        /// child indices move.
+        /// </summary>
+        private SubBuild BuildSplit(int first, int count, int depth, BVHBuildOptions options, int forks)
+        {
+            if (forks <= 0 || count < 65536)
             {
-                _nodes[nodeIndex] = new Node { Min = bmin, Max = bmax, Data0 = first, Data1 = 0, PrimCount = count };
-                Statistics.NumLeafNodes++;
+                var whole = new SubBuild();
+                BuildInto(whole, first, count, depth, options);
+                return whole;
+            }
+            if (!SplitNode(first, count, depth, options, out Vector3 bmin, out Vector3 bmax, out int axis, out int mid))
+            {
+                var leaf = new SubBuild { Nodes = new Node[1], Count = 1, MaxDepth = depth, Leaves = 1 };
+                leaf.Nodes[0] = new Node { Min = bmin, Max = bmax, Data0 = first, Data1 = 0, PrimCount = count };
+                return leaf;
+            }
+            SubBuild left = null, right = null;
+            System.Threading.Tasks.Parallel.Invoke(
+                () => left = BuildSplit(first, mid - first, depth + 1, options, forks - 1),
+                () => right = BuildSplit(mid, first + count - mid, depth + 1, options, forks - 1));
+            var joined = new SubBuild { Nodes = new Node[1 + left.Count + right.Count], Count = 1 + left.Count + right.Count };
+            joined.Nodes[0] = new Node { Min = bmin, Max = bmax, Data0 = 1 + left.Count, Data1 = axis, PrimCount = 0 };
+            for (int i = 0; i < left.Count; i++)
+            {
+                Node n = left.Nodes[i];
+                if (n.PrimCount == 0) n.Data0 += 1;
+                joined.Nodes[1 + i] = n;
+            }
+            for (int i = 0; i < right.Count; i++)
+            {
+                Node n = right.Nodes[i];
+                if (n.PrimCount == 0) n.Data0 += 1 + left.Count;
+                joined.Nodes[1 + left.Count + i] = n;
+            }
+            joined.MaxDepth = Math.Max(depth, Math.Max(left.MaxDepth, right.MaxDepth));
+            joined.Leaves = left.Leaves + right.Leaves;
+            joined.Branches = 1 + left.Branches + right.Branches;
+            return joined;
+        }
+
+        private int BuildInto(SubBuild b, int first, int count, int depth, BVHBuildOptions options)
+        {
+            int nodeIndex = b.Count++;
+            if (b.Count > b.Nodes.Length)
+                Array.Resize(ref b.Nodes, b.Nodes.Length * 2);
+            if (depth > b.MaxDepth)
+                b.MaxDepth = depth;
+            if (!SplitNode(first, count, depth, options, out Vector3 bmin, out Vector3 bmax, out int axis, out int mid))
+            {
+                b.Nodes[nodeIndex] = new Node { Min = bmin, Max = bmax, Data0 = first, Data1 = 0, PrimCount = count };
+                b.Leaves++;
                 return nodeIndex;
             }
+            b.Branches++;
+            // Left child is emitted immediately after the parent so traversal only stores the right index.
+            BuildInto(b, first, mid - first, depth + 1, options);
+            int right = BuildInto(b, mid, first + count - mid, depth + 1, options);
+            b.Nodes[nodeIndex] = new Node { Min = bmin, Max = bmax, Data0 = right, Data1 = axis, PrimCount = 0 };
+            return nodeIndex;
+        }
 
-            int axis, mid;
+        /// <summary>The node's bounds, and where its range splits (false: it is a leaf), as the serial build decides.</summary>
+        private bool SplitNode(int first, int count, int depth, BVHBuildOptions options, out Vector3 bmin, out Vector3 bmax, out int axis, out int mid)
+        {
+            ComputeBounds(first, count, out bmin, out bmax);
+            axis = 0; mid = 0;
+            if (count <= options.MinLeafPrimitives || depth >= options.MaxTreeDepth)
+                return false;
             if (count <= options.ShallowDepth * options.MinLeafPrimitives)
             {
                 axis = LongestAxis(bmax - bmin);
@@ -188,22 +254,13 @@ namespace NanoRT
                 mid = first + count / 2;
                 PartitionByMedian(first, count, axis, mid);
             }
-
             if (mid <= first || mid >= first + count)
             {
                 axis = LongestAxis(bmax - bmin);
                 mid = first + count / 2;
                 PartitionByMedian(first, count, axis, mid);
             }
-
-            Statistics.NumBranchNodes++;
-
-            // Left child is emitted immediately after the parent so traversal only stores the right index.
-            BuildRecursive(first, mid - first, depth + 1, options);
-            int right = BuildRecursive(mid, first + count - mid, depth + 1, options);
-
-            _nodes[nodeIndex] = new Node { Min = bmin, Max = bmax, Data0 = right, Data1 = axis, PrimCount = 0 };
-            return nodeIndex;
+            return true;
         }
 
         private bool FindSahSplit(int first, int count, Vector3 bmin, Vector3 bmax, BVHBuildOptions options, out int bestAxis, out int bestMid)
@@ -533,6 +590,34 @@ namespace NanoRT
         /// Any-hit query. Cheaper than <see cref="Traverse"/> because it stops at the first
         /// intersection inside the ray's range.
         /// </summary>
+        // Each thread keeps the triangles that last blocked its rays, by slot, with their leaves' boxes, for one build of one hierarchy
+        private static int s_buildIds;
+        private int _buildId;
+        [ThreadStatic] private static BVHAccel _hintBvh;
+        [ThreadStatic] private static int _hintBuild, _hintCount;
+        [ThreadStatic] private static Hint[] _hints;
+        private const int HintCount = 8;
+
+        /// <summary>A triangle slot that blocked a ray, with its leaf's box.</summary>
+        private struct Hint
+        {
+            public Vector3 Min, Max;
+            public int Slot;
+        }
+
+        private void Remember(Vector3 min, Vector3 max, int slot)
+        {
+            if (_hintBvh != this || _hintBuild != _buildId || _hints == null)
+            {
+                _hints ??= new Hint[HintCount];
+                _hintBvh = this; _hintBuild = _buildId; _hintCount = 0;
+            }
+            int n = Math.Min(_hintCount, HintCount - 1);
+            for (int k = n; k > 0; k--) _hints[k] = _hints[k - 1];
+            _hints[0] = new Hint { Min = min, Max = max, Slot = slot };
+            _hintCount = n + 1;
+        }
+
         public unsafe bool Occluded(ref Ray ray)
         {
             if (_nodeCount == 0)
@@ -551,6 +636,30 @@ namespace NanoRT
             Vector3[] cache = _occlusionCache;
 
             const int stackSize = 64;
+
+            // The triangles that last blocked rays on this thread are tested first: neighbouring rays are mostly blocked by the
+            // same surfaces. The answer is unchanged. A node's box holds its children's, so a leaf whose own box test passes is
+            // one the traversal below reaches (the depth is under the stack's limit); a triangle of it hit in range is a hit
+            // the traversal would find too, or would stop at another one before it.
+            bool hints = Statistics.MaxTreeDepth + 2 < stackSize;
+            if (hints && _hintBvh == this && _hintBuild == _buildId)
+            {
+                for (int h = 0; h < _hintCount; h++)
+                {
+                    Hint hint = _hints[h];
+                    int hs = hint.Slot;
+                    if (IntersectAabb(hint.Min, hint.Max, origin, invDir, minT, maxT) &&
+                        (cache != null ? IntersectTriangle(cache[hs * 3], cache[hs * 3 + 1], cache[hs * 3 + 2], ref ray, maxT)
+                                       : IntersectTriangle(indices[hs], ref ray, maxT, out _, out _, out _)))
+                    {
+                        // To the front, so the latest stay
+                        for (int k = h; k > 0; k--) _hints[k] = _hints[k - 1];
+                        _hints[0] = hint;
+                        return true;
+                    }
+                }
+            }
+
             int* stack = stackalloc int[stackSize];
             int sp = 0;
             stack[sp++] = 0;
@@ -570,14 +679,20 @@ namespace NanoRT
                         for (int i = 0, c = node.Data0 * 3; i < node.PrimCount; i++, c += 3)
                         {
                             if (IntersectTriangle(cache[c], cache[c + 1], cache[c + 2], ref ray, maxT))
+                            {
+                                if (hints) Remember(node.Min, node.Max, node.Data0 + i);
                                 return true;
+                            }
                         }
                         continue;
                     }
                     for (int i = 0; i < node.PrimCount; i++)
                     {
                         if (IntersectTriangle(indices[node.Data0 + i], ref ray, maxT, out _, out _, out _))
+                        {
+                            if (hints) Remember(node.Min, node.Max, node.Data0 + i);
                             return true;
+                        }
                     }
                     continue;
                 }

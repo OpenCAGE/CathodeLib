@@ -357,7 +357,8 @@ namespace CathodeLib.Radiosity
 
                 int facing = 0, occluded = 0;
                 var candidates = new List<(int texel, float weight, float distance, float cosProduct)>();
-                foreach (int otherTexel in grid.Neighbours(probe.Position))
+                // The existence test can stop at any passing candidate, so it asks the nearest ones first
+                foreach (int otherTexel in existenceOnly ? grid.NeighboursOwnCellFirst(probe.Position) : grid.Neighbours(probe.Position))
                 {
                     if (otherTexel == probeTexel)
                         continue;
@@ -851,6 +852,27 @@ namespace CathodeLib.Radiosity
                         for (int x = -1; x <= 1; x++)
                         {
                             if (!_cells.TryGetValue((cx + x, cy + y, cz + z), out List<int> bucket))
+                                continue;
+                            foreach (int texel in bucket)
+                                yield return texel;
+                        }
+            }
+
+            /// <summary>
+            /// <see cref="Neighbours"/> with the position's own cell first, then the rest in the same order: for a search that
+            /// only asks whether any of them passes a test, where the nearest are the likeliest to.
+            /// </summary>
+            public IEnumerable<int> NeighboursOwnCellFirst(Vector3 position)
+            {
+                (int cx, int cy, int cz) = Key(position);
+                if (_cells.TryGetValue((cx, cy, cz), out List<int> own))
+                    foreach (int texel in own)
+                        yield return texel;
+                for (int z = -1; z <= 1; z++)
+                    for (int y = -1; y <= 1; y++)
+                        for (int x = -1; x <= 1; x++)
+                        {
+                            if ((x | y | z) == 0 || !_cells.TryGetValue((cx + x, cy + y, cz + z), out List<int> bucket))
                                 continue;
                             foreach (int texel in bucket)
                                 yield return texel;

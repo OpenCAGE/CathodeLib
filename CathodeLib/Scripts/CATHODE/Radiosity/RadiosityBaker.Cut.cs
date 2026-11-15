@@ -60,6 +60,29 @@ namespace CathodeLib.Radiosity
             foreach (Exception e in treeFailures)
                 if (e != null) ExceptionDispatchInfo.Capture(e).Throw();
 
+            // The box round each tree's top spheres: a receiver further than rmax from it is further than rmax from every top,
+            // so Add would turn each of them away and the tree can be passed over (a few cm spare for rounding)
+            var topMin = new Vector3[S]; var topMax = new Vector3[S];
+            for (int t = 0; t < S; t++)
+            {
+                Vector3 lo = new Vector3(float.MaxValue), hi = new Vector3(float.MinValue);
+                foreach (int top in trees[t].Tops)
+                {
+                    var n = trees[t].Nodes[top];
+                    lo = Vector3.Min(lo, n.C - new Vector3(n.Ext)); hi = Vector3.Max(hi, n.C + new Vector3(n.Ext));
+                }
+                topMin[t] = lo; topMax[t] = hi;
+            }
+            float reachSq = (rmax + 0.05f) * (rmax + 0.05f);
+            bool TopsInReach(int t, Vector3 at)
+            {
+                Vector3 lo = topMin[t], hi = topMax[t];
+                float dx = Math.Max(0, Math.Max(lo.X - at.X, at.X - hi.X));
+                float dy = Math.Max(0, Math.Max(lo.Y - at.Y, at.Y - hi.Y));
+                float dz = Math.Max(0, Math.Max(lo.Z - at.Z, at.Z - hi.Z));
+                return dx * dx + dy * dy + dz * dz <= reachSq;
+            }
+
             // input probe geometry per slice
             var ipos = new Vector3[S][]; var inrm = new Vector3[S][];
             for (int s = 0; s < S; s++)
@@ -156,7 +179,7 @@ namespace CathodeLib.Radiosity
                         if (v < theta && n.L >= 0 && n.R >= 0) { Add(t, n.L); Add(t, n.R); return; }   // peel
                         frontier.Add((t, id, v));
                     }
-                    foreach (int t in cand) foreach (int top in trees[t].Tops) Add(t, top);
+                    foreach (int t in cand) if (TopsInReach(t, P)) foreach (int top in trees[t].Tops) Add(t, top);
                     double Prio(int t, int id)
                     {
                         var n = trees[t].Nodes[id]; Vector3 dv = n.C - P; float d = Math.Max(0.1f, dv.Length());
@@ -223,7 +246,7 @@ namespace CathodeLib.Radiosity
                     if (recut)
                     {
                         useVis = true; frontier.Clear();
-                        foreach (int t in cand) foreach (int top in trees[t].Tops) Add(t, top);
+                        foreach (int t in cand) if (TopsInReach(t, P)) foreach (int top in trees[t].Tops) Add(t, top);
                         Refine();
                         Interlocked.Increment(ref hybridSwitched);
                     }
@@ -284,13 +307,18 @@ namespace CathodeLib.Radiosity
                 log?.Invoke("    retail cut, slice " + s + ": gain shift " + shift.ToString("0.0") + " bytes");
             }
 
-            // keep referenced clusters only, assign slots, positions, scatter (by input probe)
+            // keep referenced clusters only, assign slots, positions, scatter (by input probe). The references of every slice's
+            // clusters are counted in one pass over the rows, each slice's in the order they are first met, as the slot
+            // ranking below expects; the slices then build in parallel
             var slotOf = new Dictionary<int, int>[S];
-            for (int t = 0; t < S; t++)
+            var refCounts = new Dictionary<int, int>[S];
+            for (int t = 0; t < S; t++) refCounts[t] = new Dictionary<int, int>();
+            for (int s = 0; s < S; s++) foreach (var r in rows[s]) if (r != null) foreach (var x in r) { var d = refCounts[x.t]; d[x.node] = (d.TryGetValue(x.node, out var c) ? c : 0) + 1; }
+            var sliceLog = new string[S];
+            Parallel.For(0, S, t =>
             {
                 var sl = rt.Slices[t];
-                var refCount = new Dictionary<int, int>();
-                for (int s = 0; s < S; s++) foreach (var r in rows[s]) if (r != null) foreach (var x in r) if (x.t == t) refCount[x.node] = (refCount.TryGetValue(x.node, out var c) ? c : 0) + 1;
+                var refCount = refCounts[t];
                 int nc = sl.ClusterPositions.Count;
                 var free = new List<int>();
                 free.AddRange(CutFreeSlots(nc));
@@ -316,9 +344,10 @@ namespace CathodeLib.Radiosity
                 // scatter per input-probe tile; a cluster-ordered list rendered every rebuilt cluster stage dark.
                 scatter.Sort((a, b) => { int pa = a.A * 256 + a.B, pb = b.A * 256 + b.B; if (pa != pb) return pa.CompareTo(pb); return (a.G * 256 + a.R).CompareTo(b.G * 256 + b.R); });
                 sl.Scatter = scatter;
-                log?.Invoke("    retail cut, slice " + t + ": " + slotOf[t].Count + " referenced clusters kept of " + trees[t].Nodes.Count(n => n.Cluster) +
-                            (dropped > 0 ? " (" + dropped + " dropped: no free slot)" : "") + ", memberships/probe max " + maxPer + ", scatter " + scatter.Count);
-            }
+                sliceLog[t] = "    retail cut, slice " + t + ": " + slotOf[t].Count + " referenced clusters kept of " + trees[t].Nodes.Count(n => n.Cluster) +
+                              (dropped > 0 ? " (" + dropped + " dropped: no free slot)" : "") + ", memberships/probe max " + maxPer + ", scatter " + scatter.Count;
+            });
+            foreach (string line in sliceLog) log?.Invoke(line);
 
             // write rows: fixups first (slots 0..nFix-1), in-slice links after; rebuild the fixup list and ranges
             var fixByPair = new Dictionary<(int s, int o), List<RadiosityRuntime.RuntimeInfluenceFixup>>();

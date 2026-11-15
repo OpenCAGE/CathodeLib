@@ -162,6 +162,15 @@ namespace CATHODE
             SyncDerivedResourceParameters();
             RefreshEntryPointObjects();
 
+            Parallel.For(0, Entries.Count, i =>
+            {
+                Dictionary<ShortGuid, VariableEntity> pins = Entries[i].variables_dictionary;
+                List<VariableEntity> sorted = pins.Values.OrderBy(o => o.name.AsUInt32).ToList();
+                if (sorted.SequenceEqual(pins.Values)) return;
+                pins.Clear();
+                foreach (VariableEntity pin in sorted) pins.Add(pin.shortGUID, pin);
+            });
+
             //Fix (& verify) entity-attached resource info
             Parallel.For(0, Entries.Count, i =>
             {

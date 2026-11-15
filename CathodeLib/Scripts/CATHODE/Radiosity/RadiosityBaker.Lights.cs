@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using CATHODE;
 
 namespace CathodeLib.Radiosity
@@ -518,6 +519,81 @@ namespace CathodeLib.Radiosity
         }
 
         /// <summary>
+        /// Which of <paramref name="candidates"/> a point sees (<see cref="RadiosityGeometry.Visible"/> to each texel's ray
+        /// origin), in the candidates' order. Many are tested in parallel; every answer is the one a serial loop would get.
+        /// </summary>
+        private static bool[] VisibleFrom(RadiosityGeometry geometry, Vector3 from, List<int> candidates, SurfaceTexel[] texels)
+        {
+            var seen = new bool[candidates.Count];
+            if (candidates.Count < 64)
+            {
+                for (int i = 0; i < candidates.Count; i++)
+                    seen[i] = geometry.Visible(from, texels[candidates[i]].RayOrigin, RadiosityTuning.RayEpsilon);
+            }
+            else
+            {
+                Parallel.For(0, candidates.Count, i =>
+                    seen[i] = geometry.Visible(from, texels[candidates[i]].RayOrigin, RadiosityTuning.RayEpsilon));
+            }
+            return seen;
+        }
+
+        /// <summary>
+        /// Walk the candidates a point sees, nearest first, handing each to <paramref name="take"/> until it returns false:
+        /// what testing every candidate, sorting the visible ones by distance and walking that list gives, without testing
+        /// the ones past where the walk stops. That list's order is fixed by distance except between two VISIBLE candidates
+        /// the same distance away, where it is the sort's own; meeting such a pair, the walk calls <paramref name="reset"/>
+        /// (undo what take did) and does exactly that instead. Returns how many visible candidates were walked (0 means none
+        /// is visible: the walk only stops after taking one).
+        /// </summary>
+        private static int WalkNearestVisible(RadiosityGeometry geometry, Vector3 from, List<(int texel, float distanceSq)> candidates,
+                                              SurfaceTexel[] texels, Func<int, float, bool> take, Action reset)
+        {
+            var order = new List<(int texel, float distanceSq)>(candidates);
+            order.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
+            var known = new sbyte[order.Count];   // 0 untested, 1 visible, -1 not
+            bool Sees(int i) => geometry.Visible(from, texels[order[i].texel].RayOrigin, RadiosityTuning.RayEpsilon);
+            int walked = 0, batch = 8;
+            for (int i = 0; i < order.Count; i++)
+            {
+                if (known[i] == 0)
+                {
+                    // Untested from here on: test the next batch, growing, so a walk that stops at the first few costs a few
+                    // rays and a long one runs in parallel
+                    int end = Math.Min(order.Count, i + batch);
+                    batch = Math.Min(batch * 2, 512);
+                    if (end - i < 64) { for (int k = i; k < end; k++) if (known[k] == 0) known[k] = (sbyte)(Sees(k) ? 1 : -1); }
+                    else Parallel.For(i, end, k => { if (known[k] == 0) known[k] = (sbyte)(Sees(k) ? 1 : -1); });
+                }
+                if (known[i] < 0)
+                    continue;
+                // A visible candidate: the first of its distance (any before it at that distance were not visible, or the
+                // pair would have been met there). Another visible one at the same distance leaves the order to the sort.
+                int last = i;
+                while (last + 1 < order.Count && order[last + 1].distanceSq == order[i].distanceSq) last++;
+                for (int k = i + 1; k <= last; k++)
+                {
+                    if (known[k] == 0) known[k] = (sbyte)(Sees(k) ? 1 : -1);
+                    if (known[k] > 0)
+                    {
+                        reset();
+                        bool[] all = VisibleFrom(geometry, from, candidates.Select(c => c.texel).ToList(), texels);
+                        var visibleList = new List<(int texel, float distanceSq)>();
+                        for (int c = 0; c < candidates.Count; c++) if (all[c]) visibleList.Add(candidates[c]);
+                        visibleList.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
+                        int n = 0;
+                        foreach (var v in visibleList) { n++; if (!take(v.texel, v.distanceSq)) break; }
+                        return n;
+                    }
+                }
+                walked++;
+                if (!take(order[i].texel, order[i].distanceSq))
+                    return walked;
+            }
+            return walked;
+        }
+
+        /// <summary>
         /// Hold the slice's light table to the engine's limit, keeping the brightest emitters.
         /// </summary>
         private static void TrimLightSlices(RadiosityRuntime.RuntimeSurfaceLights lights, Action<string> log)
@@ -831,20 +907,36 @@ namespace CathodeLib.Radiosity
                     if (peak <= 0)
                         continue;
 
+                    float radiusSq = RadiosityTuning.EmitterSampleRadius * RadiosityTuning.EmitterSampleRadius;
+                    bool matchCount = prior != null;
+                    int wantProbes = matchCount
+                        ? Math.Max(1, Math.Min(MaxLightsPerEmitter, prior.Items))
+                        : RadiosityTuning.MinProbesPerEmitter;
+                    var chosen = new List<int>();
+                    var seen = new HashSet<int>();
+                    bool Take(int texel, float distanceSq)
+                    {
+                        bool needed = seen.Count < wantProbes;
+                        if (!needed && distanceSq > radiusSq)
+                            return false;
+                        if (seen.Count >= (matchCount ? wantProbes : MaxLightsPerEmitter))
+                            return false;
+                        if (seen.Add(inputProbeForTexel[texel]))
+                            chosen.Add(texel);
+                        return true;
+                    }
+
                     // Nearest distinct input probes, mirroring the texel pass's sampling. Probes
                     // the emitter cannot see are skipped - injection through a wall lights the
                     // wrong room regardless of the light's runtime state.
-                    var nearest = new List<(int texel, float distanceSq)>();
+                    var around = new List<(int texel, float distanceSq)>();
                     foreach (int texel in grid.Neighbours(centre))
-                    {
-                        if (!geometry.Visible(centre, texels[texel].RayOrigin, RadiosityTuning.RayEpsilon))
-                            continue;
-                        nearest.Add((texel, (texels[texel].Position - centre).LengthSquared()));
-                    }
-                    if (nearest.Count == 0)
+                        around.Add((texel, (texels[texel].Position - centre).LengthSquared()));
+                    if (WalkNearestVisible(geometry, centre, around, texels, Take, () => { chosen.Clear(); seen.Clear(); }) == 0)
                     {
                         // A centroid buried inside the fixture's shell fails every ray: fall back to the nearest probes
                         // without the ray test, tight enough (1.5 m) to stay on the fixture's own wall.
+                        var nearest = new List<(int texel, float distanceSq)>();
                         float blindSq = 1.5f * 1.5f;
                         foreach (int texel in grid.Neighbours(centre))
                         {
@@ -854,26 +946,10 @@ namespace CathodeLib.Radiosity
                         }
                         if (nearest.Count == 0)
                             continue;
-                    }
-                    nearest.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
-
-                    float radiusSq = RadiosityTuning.EmitterSampleRadius * RadiosityTuning.EmitterSampleRadius;
-                    bool matchCount = prior != null;
-                    int wantProbes = matchCount
-                        ? Math.Max(1, Math.Min(MaxLightsPerEmitter, prior.Items))
-                        : RadiosityTuning.MinProbesPerEmitter;
-                    var chosen = new List<int>();
-                    var seen = new HashSet<int>();
-                    foreach ((int texel, float distanceSq) in nearest)
-                    {
-                        bool needed = seen.Count < wantProbes;
-                        if (!needed && distanceSq > radiusSq)
-                            break;
-                        if (seen.Count >= (matchCount ? wantProbes : MaxLightsPerEmitter))
-                            break;
-                        if (!seen.Add(inputProbeForTexel[texel]))
-                            continue;
-                        chosen.Add(texel);
+                        nearest.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
+                        foreach ((int texel, float distanceSq) in nearest)
+                            if (!Take(texel, distanceSq))
+                                break;
                     }
                     if (chosen.Count == 0)
                         continue;
@@ -956,18 +1032,35 @@ namespace CathodeLib.Radiosity
                 if (nearestInstance == null || !sliceInstances.Contains(nearestInstance))
                 { skipElection++; continue; }
 
-                var nearest = new List<(int texel, float distanceSq)>();
-                foreach (int texel in grid.Neighbours(centre))
+                RetailLightPriors.Prior prior = lightPriors.Lookup(mover.Resource);
+                float radiusSq = RadiosityTuning.EmitterSampleRadius * RadiosityTuning.EmitterSampleRadius;
+                bool matchCount = prior != null;
+                int wantProbes = matchCount
+                    ? Math.Max(1, Math.Min(MaxLightsPerEmitter, prior.Items))
+                    : RadiosityTuning.MinProbesPerEmitter;
+                var chosen = new List<int>();
+                var seen = new HashSet<int>();
+                bool Take(int texel, float distanceSq)
                 {
-                    if (!geometry.Visible(centre, texels[texel].RayOrigin, RadiosityTuning.RayEpsilon))
-                        continue;
-                    nearest.Add((texel, (texels[texel].Position - centre).LengthSquared()));
+                    bool needed = seen.Count < wantProbes;
+                    if (!needed && distanceSq > radiusSq)
+                        return false;
+                    if (seen.Count >= (matchCount ? wantProbes : MaxLightsPerEmitter))
+                        return false;
+                    if (seen.Add(inputProbeForTexel[texel]))
+                        chosen.Add(texel);
+                    return true;
                 }
-                if (nearest.Count == 0)
+
+                var around = new List<(int texel, float distanceSq)>();
+                foreach (int texel in grid.Neighbours(centre))
+                    around.Add((texel, (texels[texel].Position - centre).LengthSquared()));
+                if (WalkNearestVisible(geometry, centre, around, texels, Take, () => { chosen.Clear(); seen.Clear(); }) == 0)
                 {
                     // A centroid buried inside the fixture's own shell fails every visibility ray. Retail lights these, so
                     // fall back to the nearest probes WITHOUT the ray test, kept tight so the blind injection stays on the
                     // fixture's own wall rather than lighting the next room through it.
+                    var nearest = new List<(int texel, float distanceSq)>();
                     float blindSq = 1.5f * 1.5f;
                     foreach (int texel in grid.Neighbours(centre))
                     {
@@ -977,27 +1070,10 @@ namespace CathodeLib.Radiosity
                     }
                     if (nearest.Count == 0)
                     { skipNoVisible++; continue; }
-                }
-                nearest.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
-
-                RetailLightPriors.Prior prior = lightPriors.Lookup(mover.Resource);
-                float radiusSq = RadiosityTuning.EmitterSampleRadius * RadiosityTuning.EmitterSampleRadius;
-                bool matchCount = prior != null;
-                int wantProbes = matchCount
-                    ? Math.Max(1, Math.Min(MaxLightsPerEmitter, prior.Items))
-                    : RadiosityTuning.MinProbesPerEmitter;
-                var chosen = new List<int>();
-                var seen = new HashSet<int>();
-                foreach ((int texel, float distanceSq) in nearest)
-                {
-                    bool needed = seen.Count < wantProbes;
-                    if (!needed && distanceSq > radiusSq)
-                        break;
-                    if (seen.Count >= (matchCount ? wantProbes : MaxLightsPerEmitter))
-                        break;
-                    if (!seen.Add(inputProbeForTexel[texel]))
-                        continue;
-                    chosen.Add(texel);
+                    nearest.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
+                    foreach ((int texel, float distanceSq) in nearest)
+                        if (!Take(texel, distanceSq))
+                            break;
                 }
                 if (chosen.Count == 0)
                     continue;
@@ -1144,38 +1220,40 @@ namespace CathodeLib.Radiosity
                 foreach (int texel in emissiveTexels) centre += texels[texel].Position;
                 centre /= Math.Max(1, emissiveTexels.Count);
 
-                var nearby = new List<(int texel, float distanceSq)>();
                 // Retail puts a big fixture's samples within ~1 m of it on as many distinct probes as it has items
                 // (Solace's Anesidora assemblies: 79 on 79, p90 1.0 m). The grid's 32 m cells reach far past that, so a
                 // count-matched emitter that is short takes the next-nearest visible probes below.
+                var around = new List<(int texel, float distanceSq)>();
                 foreach (int texel in grid.Neighbours(centre))
                 {
                     int probe = inputProbeForTexel[texel];
-                    if (probe < 0 || distinct.Contains(probe))
-                        continue;
-                    // No injection through walls: a sample injects the light's full energy with no runtime visibility
-                    // term, so a nearest-by-distance pick could light the next room through the wall the fixture hangs on.
-                    if (!geometry.Visible(centre, texels[texel].RayOrigin, RadiosityTuning.RayEpsilon))
-                        continue;
-                    nearby.Add((texel, (texels[texel].Position - centre).LengthSquared()));
+                    if (probe >= 0 && !distinct.Contains(probe))
+                        around.Add((texel, (texels[texel].Position - centre).LengthSquared()));
                 }
-                nearby.Sort((a, b) => a.distanceSq.CompareTo(b.distanceSq));
 
+                // No injection through walls: a sample injects the light's full energy with no runtime visibility
+                // term, so a nearest-by-distance pick could light the next room through the wall the fixture hangs on.
                 // No distance cap while a count-matched emitter is still short: it takes the next-nearest
                 // visible probe however far away (52 of BSP_Torrens' theatre panels' 73 samples sat in a
                 // vent shaft 20-30 m away, 23 Sep 2026). A hard cap was built and left off.
                 float radiusSq = RadiosityTuning.EmitterSampleRadius * RadiosityTuning.EmitterSampleRadius;
-                foreach ((int texel, float distanceSq) in nearby)
+                WalkNearestVisible(geometry, centre, around, texels, (texel, distanceSq) =>
                 {
                     bool needed = distinct.Count < wantProbes;
                     if (!needed && distanceSq > radiusSq)
-                        break;
+                        return false;
                     if (distinct.Count >= MaxLightsPerEmitter)
-                        break;
-                    if (!distinct.Add(inputProbeForTexel[texel]))
-                        continue;
-                    extra.Add(texel);
-                }
+                        return false;
+                    if (distinct.Add(inputProbeForTexel[texel]))
+                        extra.Add(texel);
+                    return true;
+                }, () =>
+                {
+                    extra.Clear();
+                    distinct.Clear();
+                    foreach (int texel in emissiveTexels)
+                        if (inputProbeForTexel[texel] >= 0) distinct.Add(inputProbeForTexel[texel]);
+                });
 
                 // The topped-up texels carry the emitter's radiance, not their own - they are
                 // standing in for the emitter at a probe it could not reach, and most of them are
