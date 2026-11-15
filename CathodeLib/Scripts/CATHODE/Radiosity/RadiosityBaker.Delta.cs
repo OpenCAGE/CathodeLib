@@ -276,9 +276,9 @@ namespace CathodeLib.Radiosity
         /// group is baked, with a donor shell of nearby non-delta geometry, into an appended slice (clusters, input probes,
         /// diets, scatter, surface lights) topped with a volume probe hash at
         /// <see cref="RadiosityTuning.DeltaVolumeProbeCellSize"/>. No mover gets a MODEL_PARAMS rect. The engine relights
-        /// only slices an island references, so each slice is scheduled through minted island ids, one per zone (in-range
-        /// ids no retail row uses); their rows are queued in <see cref="DeltaBakeState.PendingScheduleRows"/> for the
-        /// patcher to append after the lightmap delta. Movers whose pivot lies INSIDE the retail volume field are skipped.
+        /// only slices an island references, so each slice is queued in <see cref="DeltaBakeState.PendingProbeSchedules"/>
+        /// with one seed per zone, and <see cref="ScheduleProbeSlices"/> gives them island ids and rows once the converter
+        /// and the lightmap delta are done. Movers whose pivot lies INSIDE the retail volume field are skipped.
         /// MUST run BEFORE <see cref="DynamicRadiosityConverter"/>: geometry collection excludes dynamic-class movers.
         /// </summary>
         internal static int AppendProbeOnlySlice(
@@ -291,6 +291,8 @@ namespace CathodeLib.Radiosity
                 return 0;
             RadiosityRuntime runtime = level.RadiosityRuntime
                 ?? throw new InvalidOperationException("No runtime to append to.");
+            // Island ids from here on would be past the shipped count.
+            int idLimit = runtime.InstanceSliceIndices.Count;
 
             // Out-of-field census: pivots outside every retail volume hash AABB, with one
             // cell of margin so content at a hash edge keeps using retail's field.
@@ -520,8 +522,9 @@ namespace CathodeLib.Radiosity
                 // walk runs over INSTANCE MAP rows, not the raw island table (H4: a minted id with no row did nothing).
                 // Added content has no islands, so ids are minted: one PER ZONE (one per slice lit only some zones), each
                 // row bound to the first mover found in that zone (the walk seeds the region around the bound mover; H20:
-                // more seeds measured worse). The rows are added AFTER the lightmap delta's real rows, because rendering
-                // follows a resource's first row (H16: a seed row added first blackened a doorway).
+                // more seeds measured worse). ScheduleProbeSlices picks the ids and adds the rows after the converter and
+                // the lightmap delta: the converter's row drop frees the delta's own islands, and rendering follows a
+                // resource's first row (H16: a seed row added first blackened a doorway).
                 var zoneSeeds = new Dictionary<uint, List<Resources.Resource>>();
                 foreach (RadiosityGeometry.Instance inst in group)
                 {
@@ -542,33 +545,11 @@ namespace CathodeLib.Radiosity
                         if (r != null) seeds.Add(r);
                     }
                 }
-                var zoneSeed = new Dictionary<uint, Resources.Resource>();
+                var zoneSeed = new List<Resources.Resource>();
                 foreach (var kv in zoneSeeds)
-                    if (kv.Value.Count > 0) zoneSeed[kv.Key] = kv.Value[0];
-
-                // GAP IDS ONLY: InstanceSliceIndices entries past retail's count are never visited (see
-                // AppendDeltaSlices; H4/H9's appended ids did nothing or poisoned the walk). Retail leaves in-range ids no
-                // map row uses; take those. With no gap left, a zone stays unscheduled.
-                var mintUsed = new HashSet<int>();
-                if (level.RadiosityInstanceMap?.Entries != null)
-                    foreach (RadiosityInstanceMap.Entry e in level.RadiosityInstanceMap.Entries)
-                        mintUsed.Add(e.lightmap_transform);
-                var mintGaps = new Queue<int>();
-                for (int id = 0; id < runtime.InstanceSliceIndices.Count && mintGaps.Count < zoneSeed.Count; id++)
-                    if (!mintUsed.Contains(id)) mintGaps.Enqueue(id);
-
-                int mintedCount = 0;
-                foreach (Resources.Resource seed in zoneSeed.Values)
-                {
-                    if (mintGaps.Count == 0) break;
-                    int mintedIsland = mintGaps.Dequeue();
-                    runtime.InstanceSliceIndices[mintedIsland] = newSliceIndex;
-                    state.PendingScheduleRows.Add((mintedIsland, seed));
-                    mintedCount++;
-                }
-                log?.Invoke("    probe slice " + newSliceIndex + ": scheduled via " + mintedCount +
-                            " islands (per zone, rows deferred until after the lightmap delta)" +
-                            (mintedCount < zoneSeed.Count ? " - ID POOL EXHAUSTED for " + (zoneSeed.Count - mintedCount) + " zones" : ""));
+                    if (kv.Value.Count > 0) zoneSeed.Add(kv.Value[0]);
+                state.PendingProbeSchedules.Add((newSliceIndex, zoneSeed, idLimit));
+                log?.Invoke("    probe slice " + newSliceIndex + ": " + zoneSeed.Count + " zone(s) to schedule once the delta's map rows are final");
 
                 doorBakes.Add(bake);
                 lastHash = bake.Slice.VolumeProbeHash;
@@ -590,6 +571,142 @@ namespace CathodeLib.Radiosity
                         BakeSliceOptions.DeltaProbeOnly.VolumeProbeCellSize.ToString("0.0#") + "m cells" : "no hash") +
                         "; no mover rects written, scheduling rows deferred");
             return deltaInstances.Count;
+        }
+
+        /// <summary>
+        /// Give each probe-only slice in <see cref="DeltaBakeState.PendingProbeSchedules"/> one island id per zone and queue
+        /// its rows in <see cref="DeltaBakeState.PendingScheduleRows"/>. Runs after the converter and the lightmap delta, when
+        /// the map rows are final. Ids stay inside the shipped count, since the engine never visits ids past it: first ids
+        /// no map row uses (including islands the converter emptied), then ids freed by merging twin islands. A zone left
+        /// without an id stays unscheduled.
+        /// </summary>
+        internal static void ScheduleProbeSlices(Level level, DeltaBakeState state, Action<string> log = null)
+        {
+            if (state.PendingProbeSchedules.Count == 0)
+                return;
+            RadiosityRuntime runtime = level.RadiosityRuntime;
+            List<RadiosityInstanceMap.Entry> map = level.RadiosityInstanceMap?.Entries;
+            if (runtime == null || map == null)
+                return;
+
+            int idLimit = runtime.InstanceSliceIndices.Count;
+            int firstAppendedSlice = runtime.Slices.Count;
+            foreach ((int slice, List<Resources.Resource> _, int limit) in state.PendingProbeSchedules)
+            {
+                idLimit = Math.Min(idLimit, limit);
+                firstAppendedSlice = Math.Min(firstAppendedSlice, slice);
+            }
+
+            var used = new HashSet<int>();
+            foreach (RadiosityInstanceMap.Entry e in map)
+                used.Add(e.lightmap_transform);
+            foreach ((int island, Resources.Resource _) in state.PendingScheduleRows)
+                used.Add(island);
+            var free = new Queue<int>();
+            for (int id = 0; id < idLimit; id++)
+                if (!used.Contains(id)) free.Enqueue(id);
+
+            Queue<(int freeId, int keepId)> twins = null;
+            int NextId(out bool merged)
+            {
+                merged = false;
+                if (free.Count > 0)
+                    return free.Dequeue();
+                if (twins == null)
+                    twins = FindTwinIslands(level, map, runtime, idLimit, firstAppendedSlice);
+                if (twins.Count == 0)
+                    return -1;
+                (int freeId, int keepId) = twins.Dequeue();
+                foreach (RadiosityInstanceMap.Entry e in map)
+                    if (e.lightmap_transform == freeId)
+                        e.lightmap_transform = keepId;
+                merged = true;
+                return freeId;
+            }
+
+            foreach ((int slice, List<Resources.Resource> seeds, int _) in state.PendingProbeSchedules)
+            {
+                int scheduled = 0, fromMerge = 0;
+                foreach (Resources.Resource seed in seeds)
+                {
+                    int id = NextId(out bool merged);
+                    if (id < 0)
+                        break;
+                    runtime.InstanceSliceIndices[id] = slice;
+                    state.PendingScheduleRows.Add((id, seed));
+                    scheduled++;
+                    if (merged) fromMerge++;
+                }
+                log?.Invoke("    probe slice " + slice + ": scheduled via " + scheduled + " islands (per zone" +
+                            (fromMerge > 0 ? ", " + fromMerge + " freed by merging twin islands" : "") + ")" +
+                            (scheduled < seeds.Count ? " - ID POOL EXHAUSTED for " + (seeds.Count - scheduled) + " zones" : ""));
+            }
+        }
+
+        /// <summary>
+        /// Island ids that can be freed without changing what renders: two ids of one slice whose rows bind the same
+        /// entities of the same composite at identical transforms with identical rect sizes. A mover samples its own
+        /// MODEL_PARAMS rect in the slice its island selects, so moving one twin's rows onto the other changes nothing.
+        /// </summary>
+        private static Queue<(int freeId, int keepId)> FindTwinIslands(
+            Level level, List<RadiosityInstanceMap.Entry> map, RadiosityRuntime runtime, int idLimit, int sliceLimit)
+        {
+            var twins = new Queue<(int freeId, int keepId)>();
+            var keysById = new Dictionary<int, HashSet<ulong>>();
+            var unresolved = new HashSet<int>();
+            foreach (RadiosityInstanceMap.Entry e in map)
+            {
+                Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
+                if (r == null) { unresolved.Add(e.lightmap_transform); continue; }
+                if (!keysById.TryGetValue(e.lightmap_transform, out HashSet<ulong> ks))
+                    keysById[e.lightmap_transform] = ks = new HashSet<ulong>();
+                ks.Add(((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32);
+            }
+            var moverForKey = new Dictionary<ulong, Movers.MOVER_DESCRIPTOR>();
+            foreach (Movers.MOVER_DESCRIPTOR mv in level.Movers.Entries)
+            {
+                if (mv.Resource == null) continue;
+                ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
+                if (!moverForKey.ContainsKey(k)) moverForKey[k] = mv;
+            }
+
+            var bySignature = new Dictionary<string, List<int>>();
+            foreach (KeyValuePair<int, HashSet<ulong>> kv in keysById)
+            {
+                int id = kv.Key;
+                if (id < 0 || id >= idLimit || unresolved.Contains(id)) continue;
+                int slice = runtime.InstanceSliceIndices[id];
+                if (slice < 0 || slice >= sliceLimit) continue;
+                var parts = new List<string>();
+                bool ok = true;
+                foreach (ulong k in kv.Value)
+                {
+                    if (!moverForKey.TryGetValue(k, out Movers.MOVER_DESCRIPTOR mv) || mv.RenderConstants?.RawBytes == null || mv.RenderConstants.RawBytes.Length < 16)
+                    { ok = false; break; }
+                    System.Numerics.Matrix4x4 t = mv.Transform;
+                    byte[] rc = mv.RenderConstants.RawBytes;
+                    parts.Add((uint)k + "|" +
+                              (int)Math.Round(t.M41 * 100) + "," + (int)Math.Round(t.M42 * 100) + "," + (int)Math.Round(t.M43 * 100) + "|" +
+                              (int)Math.Round(t.M11 * 100) + "," + (int)Math.Round(t.M12 * 100) + "," + (int)Math.Round(t.M13 * 100) + "," +
+                              (int)Math.Round(t.M21 * 100) + "," + (int)Math.Round(t.M22 * 100) + "," + (int)Math.Round(t.M23 * 100) + "," +
+                              (int)Math.Round(t.M31 * 100) + "," + (int)Math.Round(t.M32 * 100) + "," + (int)Math.Round(t.M33 * 100) + "|" +
+                              BitConverter.ToSingle(rc, 0).ToString("R") + "x" + BitConverter.ToSingle(rc, 4).ToString("R"));
+                }
+                if (!ok || parts.Count == 0) continue;
+                parts.Sort(StringComparer.Ordinal);
+                string sig = slice + "#" + string.Join(";", parts);
+                if (!bySignature.TryGetValue(sig, out List<int> ids))
+                    bySignature[sig] = ids = new List<int>();
+                ids.Add(id);
+            }
+            foreach (List<int> group in bySignature.Values)
+            {
+                if (group.Count < 2) continue;
+                group.Sort();
+                for (int g = 1; g < group.Count; g++)
+                    twins.Enqueue((group[g], group[0]));
+            }
+            return twins;
         }
 
         /// <summary>Fold an appended slice bake's visibility grids into the runtime's shared 256-entry palette: match by
@@ -1049,13 +1166,15 @@ namespace CathodeLib.Radiosity
             for (int id = 0; id < runtime.InstanceSliceIndices.Count; id++)
                 if (!usedIds.Contains(id)) gapIds.Enqueue(id);
 
-            // HARVEST in-range ids from coincident-duplicate islands: a beyond-range id is BROKEN, because
-            // InstanceSliceIndices entries past retail's count are never visited (the cam7 stolen-id door: black with an
-            // appended id, fully lit with an in-range one). Two mapped islands whose movers sit at identical positions
-            // render identical pixels, so repointing one twin's rows onto the other (with its rect params) frees an id at
-            // no visual cost. Harvested lazily, only as needed.
-            var harvestable = new Queue<(int freeId, int keepId)>();
+            // HARVEST in-range ids from twin islands: a beyond-range id is BROKEN, because InstanceSliceIndices entries past
+            // retail's count are never visited (the cam7 stolen-id door: black with an appended id, fully lit with an
+            // in-range one). Twins (FindTwinIslands: one slice, the same entities at the same transforms, the same rect
+            // size) render identical pixels, and each mover samples its own rect in the slice its island selects, so
+            // repointing one twin's rows onto the other frees an id at no visual cost. Harvested lazily, only as needed.
             List<RadiosityInstanceMap.Entry> mapEntriesH = level.RadiosityInstanceMap?.Entries;
+            Queue<(int freeId, int keepId)> harvestable = mapEntriesH != null
+                ? FindTwinIslands(level, mapEntriesH, runtime, runtime.InstanceSliceIndices.Count, newSliceIndex)
+                : new Queue<(int freeId, int keepId)>();
             // Ids that must never be freed: anything a delta mover's own resource binds (the
             // reuse path may claim it), plus everything assigned during this bake.
             var usedIdsTaken = new HashSet<int>();
@@ -1069,86 +1188,16 @@ namespace CathodeLib.Radiosity
                     if (r == mv.Resource) usedIdsTaken.Add(e.lightmap_transform);
                 }
             }
-            if (mapEntriesH != null)
-            {
-                var moverForKeyH = new Dictionary<ulong, int>();
-                for (int m = 0; m < level.Movers.Entries.Count; m++)
-                {
-                    Movers.MOVER_DESCRIPTOR mv = level.Movers.Entries[m];
-                    if (mv.Resource == null) continue;
-                    ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
-                    if (!moverForKeyH.ContainsKey(k)) moverForKeyH[k] = m;
-                }
-                var islandKeysH = new Dictionary<int, List<ulong>>();
-                foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
-                {
-                    Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
-                    if (r == null) continue;
-                    ulong k = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
-                    if (!islandKeysH.TryGetValue(e.lightmap_transform, out List<ulong> ks))
-                        islandKeysH[e.lightmap_transform] = ks = new List<ulong>();
-                    if (!ks.Contains(k)) ks.Add(k);
-                }
-                var bySignature = new Dictionary<string, List<int>>();
-                foreach (KeyValuePair<int, List<ulong>> kv in islandKeysH)
-                {
-                    var parts = new List<string>();
-                    bool ok = true;
-                    foreach (ulong k in kv.Value)
-                    {
-                        if (!moverForKeyH.TryGetValue(k, out int m)) { ok = false; break; }
-                        System.Numerics.Matrix4x4 tr = level.Movers.Entries[m].Transform;
-                        parts.Add(((int)Math.Round(tr.M41 * 100)) + "," + ((int)Math.Round(tr.M42 * 100)) + "," + ((int)Math.Round(tr.M43 * 100)));
-                    }
-                    if (!ok || parts.Count == 0) continue;
-                    parts.Sort();
-                    string sig = parts.Count + "|" + string.Join(";", parts);
-                    if (!bySignature.TryGetValue(sig, out List<int> ids)) bySignature[sig] = ids = new List<int>();
-                    ids.Add(kv.Key);
-                }
-                foreach (List<int> group in bySignature.Values)
-                {
-                    if (group.Count < 2) continue;
-                    group.Sort();
-                    for (int g = 1; g < group.Count; g++)
-                        harvestable.Enqueue((group[g], group[0]));
-                }
-            }
             int HarvestId()
             {
                 while (harvestable.Count > 0)
                 {
                     (int freeId, int keepId) = harvestable.Dequeue();
                     if (!islandForKeyGuard(freeId) || !islandForKeyGuard(keepId)) continue;
-                    // Repoint every row of the freed island onto its twin, and copy the twin's
-                    // lightmap rect params onto the freed island's movers so they sample the
-                    // twin's rect (identical geometry, identical pixels).
-                    byte[] twinParams = null;
+                    // Repoint every row of the freed island onto its twin; its movers keep their own rects
                     foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
-                    {
-                        if (e.lightmap_transform != keepId) continue;
-                        Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
-                        if (r == null) continue;
-                        foreach (Movers.MOVER_DESCRIPTOR mv in level.Movers.Entries)
-                            if (mv.Resource == r && mv.RenderConstants?.RawBytes != null && mv.RenderConstants.RawBytes.Length >= 16)
-                            { twinParams = mv.RenderConstants.RawBytes; break; }
-                        if (twinParams != null) break;
-                    }
-                    foreach (RadiosityInstanceMap.Entry e in mapEntriesH)
-                    {
-                        if (e.lightmap_transform != freeId) continue;
-                        e.lightmap_transform = keepId;
-                        if (twinParams == null) continue;
-                        Resources.Resource r = e.Resource ?? level.Resources.GetAtWriteIndex(e.resource_index);
-                        if (r == null) continue;
-                        foreach (Movers.MOVER_DESCRIPTOR mv in level.Movers.Entries)
-                        {
-                            if (mv.Resource != r || mv.RenderConstants?.RawBytes == null || mv.RenderConstants.RawBytes.Length < 16) continue;
-                            byte[] raw = mv.RenderConstants.RawBytes;
-                            Array.Copy(twinParams, 0, raw, 0, 16);
-                            mv.RenderConstants.SetRawBytes(raw);
-                        }
-                    }
+                        if (e.lightmap_transform == freeId)
+                            e.lightmap_transform = keepId;
                     return freeId;
                 }
                 return -1;
@@ -1772,7 +1821,7 @@ namespace CathodeLib.Radiosity
 
                 // RELOCATIONS (any mover translated beyond 2 m) cannot graft: the island's retail light injection
                 // describes the OLD position; the appended path builds native lights at the destination instead.
-                // Stale-identity RetailTransforms entries (pristine at the exact origin, the CM9 FX family) are carries.
+                // Stale-origin RetailTransforms entries (RadiosityPatcher.IsStaleOriginCarry) are carries.
                 bool movedFar = false;
                 foreach (int m in instance.Movers)
                 {
@@ -1780,7 +1829,7 @@ namespace CathodeLib.Radiosity
                     if (mv.Resource == null) continue;
                     ulong k = ((ulong)mv.Resource.composite_instance_id.AsUInt32 << 32) | mv.Resource.resource_id.AsUInt32;
                     if (!state.RetailTransforms.TryGetValue(k, out System.Numerics.Matrix4x4 pristine)) continue;
-                    if (pristine.M41 == 0 && pristine.M42 == 0 && pristine.M43 == 0) continue;
+                    if (RadiosityPatcher.IsStaleOriginCarry(pristine, mv.Transform)) continue;
                     var d3 = new Vector3(mv.Transform.M41 - pristine.M41,
                                          mv.Transform.M42 - pristine.M42,
                                          mv.Transform.M43 - pristine.M43);

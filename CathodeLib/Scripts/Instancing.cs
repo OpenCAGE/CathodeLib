@@ -2920,6 +2920,9 @@ namespace CathodeLib
             //re-binds it the same way, so it needs them too.
             if (radiositySettings != null && (radiositySettings.PatchRetailRuntime || radiositySettings.KeepExisting) && level?.Movers?.Entries != null)
             {
+                //A level whose own radiosity is empty or fully regenerated starts from the shipped radiosity when the caller
+                //can supply it: the snapshots then come from the shipped files, not from the level as loaded
+                Radiosity.RadiosityPatcher.TryRestoreShipped(level, radiositySettings, Console.WriteLine);
                 if (radiositySettings.RetailModelParams == null)
                     radiositySettings.RetailModelParams = HarvestPristineModelParams(level);
                 if (radiositySettings.RetailTransforms == null)

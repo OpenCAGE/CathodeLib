@@ -793,8 +793,10 @@ namespace CathodeLib.Radiosity
             return Math.Max(0.15f, Math.Min(1.0f, coverage));
         }
 
+        // Only UVs outside [0,1] wrap: retail charts end at exactly 1.0
         private static Vector2 Wrap(Vector2 uv) =>
-            new Vector2(uv.X - (float)Math.Floor(uv.X), uv.Y - (float)Math.Floor(uv.Y));
+            new Vector2(uv.X < 0 || uv.X > 1 ? uv.X - (float)Math.Floor(uv.X) : uv.X,
+                        uv.Y < 0 || uv.Y > 1 ? uv.Y - (float)Math.Floor(uv.Y) : uv.Y);
 
         /// <summary>Rebuild the triangle -> instance table after instances have been filtered.</summary>
         private void ReindexTriangleInstances()

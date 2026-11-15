@@ -38,8 +38,9 @@ namespace CathodeLib.Radiosity
             // after the bakes), so the ORIGINAL resource ordering - the one the runtime's raw
             // EntityInstanceIndex values refer to - is recoverable regardless of what instancing
             // has done to the in-memory Resources since.
+            // A bake started from the shipped radiosity indexes the shipped RESOURCES.BIN instead (TryRestoreShipped).
             string resourcesPath = Path.Combine(level.Filepath, "WORLD", "RESOURCES.BIN");
-            var originalResources = new Resources(resourcesPath);
+            Resources originalResources = settings.ShippedResources ?? new Resources(resourcesPath);
 
             // Current resources by GUID pair, for re-binding original references onto the
             // regenerated collection. Instancing preserves matched GUIDs.
@@ -161,11 +162,7 @@ namespace CathodeLib.Radiosity
                     if (settings.RetailTransforms.TryGetValue(key, out System.Numerics.Matrix4x4 pristineT) &&
                         Differs(pristineT, mover.Transform))
                     {
-                        // Stale-identity carries: a few FX-family movers snapshot a pristine transform of EXACTLY the
-                        // origin while sitting far from it. They are not moves.
-                        bool staleIdentity = pristineT.M41 == 0 && pristineT.M42 == 0 && pristineT.M43 == 0 &&
-                            (mover.Transform.M41 != 0 || mover.Transform.M42 != 0 || mover.Transform.M43 != 0);
-                        if (!staleIdentity)
+                        if (!IsStaleOriginCarry(pristineT, mover.Transform))
                         {
                             deltaMovers.Add(i);
                             movedMovers++;
@@ -371,6 +368,7 @@ namespace CathodeLib.Radiosity
                 // Scheduling rows LAST: rendering follows a resource's FIRST map row, so they go after the lightmap
                 // delta's real rect rows (first, they hijacked their bound movers into dead-texel black: H16's doorway),
                 // and after the converter, whose row drop would remove them (their seeds are converted movers; H5).
+                RadiosityBaker.ScheduleProbeSlices(level, state, log);
                 if (state.PendingScheduleRows.Count > 0 && level.RadiosityInstanceMap?.Entries != null)
                 {
                     foreach ((int island, Resources.Resource resource) in state.PendingScheduleRows)
@@ -455,6 +453,124 @@ namespace CathodeLib.Radiosity
         }
 
         }
+
+        /// <summary>
+        /// Swap the shipped radiosity (<see cref="RadiosityBakeSettings.ShippedSource"/>) into a level whose own is empty or
+        /// was fully regenerated, before instancing takes its pristine snapshots: the runtime, instance map and collision map
+        /// become the shipped ones and the snapshots come from the shipped MVR, so the patch then bakes everything moved or
+        /// added since the game shipped, as it would on an untouched level. Changes nothing and returns false when it does
+        /// not apply or the shipped files are missing or unreadable.
+        /// </summary>
+        internal static bool TryRestoreShipped(Level level, RadiosityBakeSettings settings, Action<string> log)
+        {
+            if (settings?.ShippedSource == null || !settings.PatchRetailRuntime || settings.KeepExisting)
+                return false;
+            RadiosityRuntime current = level?.RadiosityRuntime;
+            if (current == null || level.RadiosityInstanceMap == null || level.Movers?.Entries == null || level.Resources == null)
+                return false;
+            bool empty = current.Slices == null || current.Slices.Count == 0;
+            if (!empty && !current.FullyRegenerated)
+                return false;
+
+            ShippedRadiosity shipped;
+            try { shipped = settings.ShippedSource(); }
+            catch (Exception e) { log?.Invoke("Radiosity: the shipped radiosity could not be read (" + e.Message + ") - regenerating instead"); return false; }
+            if (shipped?.Runtime == null || shipped.Runtime.Length == 0 || shipped.InstanceMap == null || shipped.Resources == null || shipped.Movers == null)
+                return false;
+
+            Resources resources;
+            RadiosityRuntime runtime;
+            var rows = new List<RadiosityInstanceMap.Entry>();
+            List<(System.Numerics.Matrix4x4 Transform, byte[] ModelParams, int ResourceIndex)> placements;
+            RadiosityCollisionMap collision = null;
+            try
+            {
+                resources = new Resources(shipped.Resources);
+                string runtimePath = current.Filepath ?? "";
+                if (runtimePath.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+                    runtimePath = runtimePath.Substring(0, runtimePath.Length - 3);
+                runtime = new RadiosityRuntime(shipped.Runtime, level.Resources, runtimePath);
+                foreach (string line in System.Text.Encoding.ASCII.GetString(shipped.InstanceMap).Split('\n'))
+                {
+                    string[] parts = line.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 2 && int.TryParse(parts[0], out int island) && int.TryParse(parts[1], out int resourceIndex))
+                        rows.Add(new RadiosityInstanceMap.Entry { lightmap_transform = island, resource_index = resourceIndex });
+                }
+                placements = Movers.ReadPlacements(shipped.Movers);
+                if (shipped.CollisionMap != null && shipped.CollisionMap.Length > 0)
+                    collision = new RadiosityCollisionMap(shipped.CollisionMap);
+            }
+            catch (Exception e)
+            {
+                log?.Invoke("Radiosity: the shipped radiosity could not be read (" + e.Message + ") - regenerating instead");
+                return false;
+            }
+            if (runtime.Slices.Count == 0 || rows.Count == 0)
+                return false;
+
+            // The pristine snapshots, from the shipped placements. A rect is kept for the movers the level places as
+            // environment, as Instancing's own harvest keeps them.
+            var environment = new HashSet<ulong>();
+            foreach (Movers.MOVER_DESCRIPTOR m in level.Movers.Entries)
+            {
+                if (m.Resource == null || m.RenderableElements == null || m.RenderableElements.Count == 0)
+                    continue;
+                RenderableInstanceType type;
+                try { type = m.GetRenderableType(); }
+                catch { continue; }
+                if (type == RenderableInstanceType.ENVIRONMENT || type == RenderableInstanceType.ENVIRONMENT_EXTRA || type == RenderableInstanceType.MISC)
+                    environment.Add(MoverKey(m));
+            }
+            var transforms = new Dictionary<ulong, System.Numerics.Matrix4x4>();
+            var modelParams = new Dictionary<ulong, byte[]>();
+            foreach ((System.Numerics.Matrix4x4 transform, byte[] rect, int resourceIndex) in placements)
+            {
+                Resources.Resource r = resources.GetAtWriteIndex(resourceIndex);
+                if (r == null)
+                    continue;
+                ulong key = ((ulong)r.composite_instance_id.AsUInt32 << 32) | r.resource_id.AsUInt32;
+                if (!transforms.ContainsKey(key))
+                    transforms[key] = transform;
+                if (environment.Contains(key) && !modelParams.ContainsKey(key))
+                    modelParams[key] = rect;
+            }
+
+            runtime.FullyRegenerated = false;
+            runtime.PendingDeltaMovers.Clear();
+            runtime.Compressed = current.Compressed;
+            level.RadiosityRuntime = runtime;
+            level.RadiosityInstanceMap.Entries.Clear();
+            level.RadiosityInstanceMap.Entries.AddRange(rows);
+            if (collision != null && level.RadiosityCollisionMap != null)
+            {
+                level.RadiosityCollisionMap.Entries.Clear();
+                level.RadiosityCollisionMap.Entries.AddRange(collision.Entries);
+            }
+            settings.ShippedResources = resources;
+            settings.RetailTransforms = transforms;
+            settings.RetailModelParams = modelParams;
+            log?.Invoke("Radiosity: the level's radiosity was " + (empty ? "empty" : "fully regenerated by an earlier bake") +
+                        " - starting from the shipped radiosity (" + runtime.Slices.Count + " slices, " + rows.Count +
+                        " map rows) and baking what changed since");
+            return true;
+
+            static ulong MoverKey(Movers.MOVER_DESCRIPTOR mover) =>
+                ((ulong)mover.Resource.composite_instance_id.AsUInt32 << 32) | mover.Resource.resource_id.AsUInt32;
+        }
+
+        /// <summary>
+        /// A pristine transform that is a composite-local leftover, not a placement: at the origin (the CM9 FX family) or
+        /// within half a metre of it while the mover now sits metres away (SCI_Hub's LED fittings, stored about 0.2 m from
+        /// the origin and placed 66 m up). Such a mover was not moved by an edit.
+        /// </summary>
+        internal static bool IsStaleOriginCarry(System.Numerics.Matrix4x4 pristine, System.Numerics.Matrix4x4 current)
+        {
+            var p = new System.Numerics.Vector3(pristine.M41, pristine.M42, pristine.M43);
+            var c = new System.Numerics.Vector3(current.M41, current.M42, current.M43);
+            if (p == System.Numerics.Vector3.Zero)
+                return c != System.Numerics.Vector3.Zero;
+            return p.Length() <= 0.5f && (c - p).Length() >= 2.0f;
+        }
     }
 
     /// <summary>
@@ -484,6 +600,13 @@ namespace CathodeLib.Radiosity
         /// </summary>
         public readonly List<(int island, Resources.Resource resource)> PendingScheduleRows =
             new List<(int island, Resources.Resource resource)>();
+
+        /// <summary>
+        /// Probe-only slices waiting for scheduling ids: the slice, one seed resource per zone it lights, and the island
+        /// count before the bake appended anything. RadiosityBaker.ScheduleProbeSlices turns them into PendingScheduleRows.
+        /// </summary>
+        public readonly List<(int slice, List<Resources.Resource> seeds, int idLimit)> PendingProbeSchedules =
+            new List<(int slice, List<Resources.Resource> seeds, int idLimit)>();
 
         public DeltaBakeState(Dictionary<ulong, byte[]> retailModelParams,
                               Dictionary<ulong, System.Numerics.Matrix4x4> retailTransforms)

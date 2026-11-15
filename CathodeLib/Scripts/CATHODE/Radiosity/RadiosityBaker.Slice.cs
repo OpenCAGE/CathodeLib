@@ -1735,10 +1735,11 @@ namespace CathodeLib.Radiosity
 
         private static Vector2 ToRect(Vector2 uv, RadiosityGeometry.Instance instance)
         {
-            // Matches the MODEL_PARAMS transform: origin + uv * rectSize.
-            float u = uv.X - (float)Math.Floor(uv.X);
-            float v = uv.Y - (float)Math.Floor(uv.Y);
-            return new Vector2(instance.AtlasX + u * instance.AtlasWidth, instance.AtlasY + v * instance.AtlasHeight);
+            // Matches the MODEL_PARAMS transform the game samples with: origin + uv * (rectSize - 0.5). Retail charts end at
+            // exactly 1.0, so only UVs outside [0,1] wrap (1.0 wrapping to 0 stretched a triangle across the whole rect).
+            float u = uv.X < 0 || uv.X > 1 ? uv.X - (float)Math.Floor(uv.X) : uv.X;
+            float v = uv.Y < 0 || uv.Y > 1 ? uv.Y - (float)Math.Floor(uv.Y) : uv.Y;
+            return new Vector2(instance.AtlasX + u * (instance.AtlasWidth - 0.5f), instance.AtlasY + v * (instance.AtlasHeight - 0.5f));
         }
 
         #endregion

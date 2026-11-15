@@ -151,6 +151,42 @@ namespace CATHODE
             return true;
         }
 
+        /// <summary>
+        /// Every mover's placement in an MVR held in memory, without the files a full load needs: its transform, the first
+        /// 16 bytes of its render constants (the lightmap rect) and its RESOURCES.BIN index. Reads the rows as LoadInternal does.
+        /// </summary>
+        public static List<(Matrix4x4 Transform, byte[] ModelParams, int ResourceIndex)> ReadPlacements(byte[] mvr)
+        {
+            var result = new List<(Matrix4x4, byte[], int)>();
+            MemoryStream stream = new MemoryStream(mvr);
+            if (mvr.Length > 2 && mvr[0] == 0x1F && mvr[1] == 0x8B)
+                stream = Utilities.GZIPDecompress(stream);
+            using (BinaryReader reader = new BinaryReader(stream))
+            {
+                reader.BaseStream.Position += 4;
+                int entryCount = reader.ReadInt32();
+                reader.BaseStream.Position += 24;
+                for (int i = 0; i < entryCount; i++)
+                {
+                    Matrix4x4 transform = Utilities.Consume<Matrix4x4>(reader);
+                    Utilities.Consume<MOVER_DESCRIPTOR.GPU_CONSTANTS>(reader);
+                    MOVER_DESCRIPTOR.RENDER_CONSTANTS renderConstants = Utilities.Consume<MOVER_DESCRIPTOR.RENDER_CONSTANTS>(reader);
+                    reader.BaseStream.Position += 8;                    //REDS index and count
+                    int resourceIndex = reader.ReadInt32();
+                    reader.BaseStream.Position += 12 + 4;               //runtime refs, cull flags
+                    Utilities.Consume<EntityHandle>(reader);
+                    reader.BaseStream.Position += 4 + 4 + 8 + 8 + 4 + 2;  //runtime index, emissive, multipliers, zones, lighting master, padding
+                    Utilities.Consume<MoverFlag>(reader);
+                    reader.BaseStream.Position += 8;
+
+                    byte[] modelParams = new byte[16];
+                    Array.Copy(renderConstants.RawBytes, modelParams, 16);
+                    result.Add((transform, modelParams, resourceIndex));
+                }
+            }
+            return result;
+        }
+
         /// <summary>Whether any of the mover's materials samples the mover's cubemap (EnvironmentMapIndex 255 = none).</summary>
         private static bool SamplesEnvironmentMap(MOVER_DESCRIPTOR mover)
         {

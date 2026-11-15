@@ -137,6 +137,11 @@ namespace CathodeLib
             if (level?.Materials == null || mapping == null || material == null || string.IsNullOrEmpty(material.Name))
                 return material;
 
+            //A material with no slot ("X", not "X->X") keeps its own material: a mapping is never
+            //applied to one through an entry keyed on "X->X".
+            if (SlotOf(material.Name) == null)
+                return material;
+
             if (TryFindMappingTarget(mapping, material.Name, out string targetName))
             {
                 Materials.Material remapped = FindMaterialByName(level.Materials, targetName, material, level.Models);
