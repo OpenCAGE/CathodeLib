@@ -148,13 +148,8 @@ namespace CathodeLib
                 return TakeRemap(remapped, material);
             }
 
-            MaterialMappings.MaterialMapping.Mapping reverseEntry = FindMappingEntryByTarget(mapping, material.Name);
-            if (reverseEntry != null && TryFindMappingTarget(mapping, reverseEntry.from, out string refreshedTargetName))
-            {
-                Materials.Material remapped = FindMaterialByName(level.Materials, refreshedTargetName, material, level.Models);
-                return TakeRemap(remapped, material);
-            }
-
+            //No entry answers to it: keep it, even when it is a slot twin of one of the mapping's targets
+            //("MATERIAL #01->X->X" against a target "X->X"). Twins can differ in physical material.
             return material;
         }
 
@@ -221,11 +216,13 @@ namespace CathodeLib
             // A material's name is "<slot>-><assignment>": the slot is the material the MODEL was
             // authored against, and the assignment is what the level swapped into it. The parameter
             // can only re-assign within its own slot, so an override naming a slot this renderable
-            // does not use is not for it - retail leaves every such mover alone. Only enforced when
-            // both names carry a slot; a bare name is a whole-material assignment and still applies.
+            // does not use is not for it - retail leaves every such mover alone. A renderable with no
+            // slot is in none, so a slotted override never reaches it (ENG_ReactorCore's
+            // "..._WET_REFL" walkway edges). A bare override name is a whole-material assignment and
+            // still applies.
             string overrideSlot = SlotOf(materialName);
             string currentSlot = SlotOf(renderables[0]?.Material?.Name);
-            if (overrideSlot != null && currentSlot != null &&
+            if (overrideSlot != null &&
                 !string.Equals(overrideSlot, currentSlot, StringComparison.OrdinalIgnoreCase))
                 return renderables;
 
@@ -301,43 +298,6 @@ namespace CathodeLib
                         continue;
 
                     if (NormalizeMaterialNameForLookup(entry.from) == strippedMaterialName)
-                        return entry;
-                }
-            }
-
-            return null;
-        }
-
-        private static MaterialMappings.MaterialMapping.Mapping FindMappingEntryByTarget(MaterialMappings.MaterialMapping mapping, string targetMaterialName)
-        {
-            if (mapping?.Mappings == null || string.IsNullOrEmpty(targetMaterialName))
-                return null;
-
-            MaterialMappings.MaterialMapping.Mapping remap = mapping.Mappings.FirstOrDefault(entry => entry.to == targetMaterialName);
-            if (remap != null)
-                return remap;
-
-            string normalizedTargetName = NormalizeMaterialNameForLookup(targetMaterialName);
-            for (int i = 0; i < mapping.Mappings.Count; i++)
-            {
-                MaterialMappings.MaterialMapping.Mapping entry = mapping.Mappings[i];
-                if (entry == null || string.IsNullOrEmpty(entry.to))
-                    continue;
-
-                if (NormalizeMaterialNameForLookup(entry.to) == normalizedTargetName)
-                    return entry;
-            }
-
-            string strippedTargetName = NormalizeMaterialNameForLookup(StripAuthoringSlot(targetMaterialName));
-            if (strippedTargetName != normalizedTargetName)
-            {
-                for (int i = 0; i < mapping.Mappings.Count; i++)
-                {
-                    MaterialMappings.MaterialMapping.Mapping entry = mapping.Mappings[i];
-                    if (entry == null || string.IsNullOrEmpty(entry.to))
-                        continue;
-
-                    if (NormalizeMaterialNameForLookup(entry.to) == strippedTargetName)
                         return entry;
                 }
             }

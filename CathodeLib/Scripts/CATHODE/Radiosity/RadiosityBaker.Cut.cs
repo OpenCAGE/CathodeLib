@@ -24,7 +24,7 @@ namespace CathodeLib.Radiosity
         /// <item>hybrid visibility: a probe whose occluded share of W/d^2 gain lies between RadiosityTuning.CutHybridLeak
         /// and CutHybridLeakMax is cut again with the visibility test;</item>
         /// <item>CutForcedOpenings (8) openings of the highest-priority patch, the weakest links dropping;</item>
-        /// <item>bytes by the retail law, distance floored at CutByteNearFloor (2 m), then the gain envelope over the
+        /// <item>bytes by the retail law (distance floored at CutByteNearFloor, 0 by default), then the gain envelope over the
         /// whole row (fixups included);</item>
         /// <item>only referenced clusters are kept, then slots, scatter (by input probe) and the fixup list and ranges
         /// are rewritten.</item>

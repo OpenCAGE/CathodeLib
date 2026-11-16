@@ -318,9 +318,10 @@ namespace CathodeLib.Radiosity
         /// single-probe links put 23% of members behind it and 13% below -0.2 (recessed lamps above a ceiling).</summary>
         public const float CutReceiverTolerance = 0.1f;
 
-        /// <summary>Distance floor (m) of the byte law only: a nearer link gets the byte of a link at this distance, so a
-        /// cut's many near single-probe links do not put most of a probe's gain on the adjacent surfaces.</summary>
-        public const float CutByteNearFloor = 2.0f;
+        /// <summary>Distance floor (m) of the byte law only: a nearer link gets the byte of a link at this distance. 0 keeps
+        /// retail's law, whose near links carry about a fifth of a probe's gain; any floor moves that gain to far patches
+        /// and lights shafts and enclosed corners.</summary>
+        public const float CutByteNearFloor = 0f;
 
         /// <summary>After the trim to 32 links, the highest-priority patch is opened this many times (its children replace
         /// it, the weakest links drop): a partial step toward retail's finer near field.</summary>
