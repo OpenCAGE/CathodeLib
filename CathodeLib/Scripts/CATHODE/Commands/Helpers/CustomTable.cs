@@ -265,6 +265,9 @@ namespace CathodeLib
                             case CustomTableType.BRUSHES:
                                 ((BrushTable)toWrite[tableType]).Write(writer);
                                 break;
+                            case CustomTableType.COMPOSITE_MARKUP:
+                                ((CompositeMarkupTable)toWrite[tableType]).Write(writer);
+                                break;
                         }
 #if DEBUG
                         if (tableType == table)
@@ -384,6 +387,9 @@ namespace CathodeLib
                         break;
                     case CustomTableType.BRUSHES:
                         data = new BrushTable(reader);
+                        break;
+                    case CustomTableType.COMPOSITE_MARKUP:
+                        data = new CompositeMarkupTable(reader);
                         break;
                 }
             }
@@ -2273,6 +2279,147 @@ namespace CathodeLib
                     if (!string.IsNullOrEmpty(entity.Value))
                         rows.Add(new Brush() { composite = composite.Key, entity = entity.Key, definition = entity.Value });
             return rows;
+        }
+    }
+
+    /// <summary>
+    /// Editor-only markup: shapes an editor draws at every instance of a composite to show what it is (where a job stands,
+    /// how far from a wall a melee context goes). By composite, each piece's shape, placement in the composite's space, size
+    /// and colour. Never written into the composites themselves; the game never reads it.
+    /// </summary>
+    public class CompositeMarkupTable : CustomTable.Table
+    {
+        public CompositeMarkupTable(BinaryReader reader = null) : base(reader)
+        {
+            type = CustomTableType.COMPOSITE_MARKUP;
+        }
+
+        /// <summary>Stored as a number: only ever append.</summary>
+        public enum Shape
+        {
+            Box,        //size = width, height, depth; stands on its origin
+            Cylinder,   //size = diameter (x, z), height (y); stands on its origin
+            Sphere,     //size = diameters; rests on its origin
+            Cone,       //size = base diameter (x, z), height (y); stands on its origin
+            Arrow,      //flat on the floor from its origin along +Z: size = width, thickness, length
+            Ring,       //flat on the floor round its origin: size = outer diameter (x, z), thickness (y)
+            FrontLabel, //the word FRONT standing on the floor, readable from -Z: size scales it
+            Mesh,       //vertices / indices in its own space: size scales it
+        }
+
+        public class Markup
+        {
+            public string name = "";
+            public Shape shape = Shape.Box;
+            public float[] position = new float[3];
+            public float[] rotation = new float[3]; //degrees
+            public float[] size = new float[] { 1, 1, 1 };
+            public float[] colour = new float[] { 1, 1, 1 }; //r, g, b (0-1)
+            public float[] vertices = null; //Mesh only: x, y, z after one another
+            public int[] indices = null; //Mesh only: triangles
+
+            public Markup Clone()
+            {
+                return new Markup()
+                {
+                    name = name,
+                    shape = shape,
+                    position = (float[])position.Clone(),
+                    rotation = (float[])rotation.Clone(),
+                    size = (float[])size.Clone(),
+                    colour = (float[])colour.Clone(),
+                    vertices = (float[])vertices?.Clone(),
+                    indices = (int[])indices?.Clone(),
+                };
+            }
+        }
+
+        public Dictionary<ShortGuid, List<Markup>> markup = new Dictionary<ShortGuid, List<Markup>>();
+
+        private const int _version = 1;
+
+        public override void Read(BinaryReader reader)
+        {
+            markup.Clear();
+
+            if (reader == null)
+                return;
+
+            int version = reader.ReadInt32();
+            if (version != _version)
+                return;
+
+            int compositeCount = reader.ReadInt32();
+            for (int i = 0; i < compositeCount; i++)
+            {
+                ShortGuid composite = Utilities.Consume<ShortGuid>(reader);
+                int count = reader.ReadInt32();
+                List<Markup> pieces = new List<Markup>(count);
+                for (int x = 0; x < count; x++)
+                {
+                    Markup piece = new Markup();
+                    piece.name = reader.ReadString();
+                    piece.shape = (Shape)reader.ReadInt32();
+                    piece.position = ReadFloats(reader, 3);
+                    piece.rotation = ReadFloats(reader, 3);
+                    piece.size = ReadFloats(reader, 3);
+                    piece.colour = ReadFloats(reader, 3);
+                    int vertexFloats = reader.ReadInt32();
+                    piece.vertices = vertexFloats == 0 ? null : ReadFloats(reader, vertexFloats);
+                    int indexCount = reader.ReadInt32();
+                    if (indexCount != 0)
+                    {
+                        piece.indices = new int[indexCount];
+                        for (int n = 0; n < indexCount; n++)
+                            piece.indices[n] = reader.ReadInt32();
+                    }
+                    pieces.Add(piece);
+                }
+                if (pieces.Count != 0)
+                    markup[composite] = pieces;
+            }
+        }
+
+        public override void Write(BinaryWriter writer)
+        {
+            writer.Write(_version);
+            List<KeyValuePair<ShortGuid, List<Markup>>> rows = markup.Where(o => o.Value != null && o.Value.Count != 0).ToList();
+            writer.Write(rows.Count);
+            foreach (KeyValuePair<ShortGuid, List<Markup>> row in rows)
+            {
+                Utilities.Write<ShortGuid>(writer, row.Key);
+                writer.Write(row.Value.Count);
+                foreach (Markup piece in row.Value)
+                {
+                    writer.Write(piece.name ?? "");
+                    writer.Write((int)piece.shape);
+                    WriteFloats(writer, piece.position, 3);
+                    WriteFloats(writer, piece.rotation, 3);
+                    WriteFloats(writer, piece.size, 3);
+                    WriteFloats(writer, piece.colour, 3);
+                    int vertexFloats = piece.vertices == null ? 0 : piece.vertices.Length;
+                    writer.Write(vertexFloats);
+                    WriteFloats(writer, piece.vertices, vertexFloats);
+                    int indexCount = piece.indices == null ? 0 : piece.indices.Length;
+                    writer.Write(indexCount);
+                    for (int n = 0; n < indexCount; n++)
+                        writer.Write(piece.indices[n]);
+                }
+            }
+        }
+
+        private static float[] ReadFloats(BinaryReader reader, int count)
+        {
+            float[] values = new float[count];
+            for (int i = 0; i < count; i++)
+                values[i] = reader.ReadSingle();
+            return values;
+        }
+
+        private static void WriteFloats(BinaryWriter writer, float[] values, int count)
+        {
+            for (int i = 0; i < count; i++)
+                writer.Write(values != null && i < values.Length ? values[i] : 0f);
         }
     }
 }

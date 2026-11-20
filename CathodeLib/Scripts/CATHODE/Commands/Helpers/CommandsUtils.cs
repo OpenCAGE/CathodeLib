@@ -42,6 +42,7 @@ namespace CATHODE.Scripting
         private CompositePinInfoTable _pinInfo = new CompositePinInfoTable();
         private ColourParameterTable _colourParameters = new ColourParameterTable();
         private BrushTable _brushes = new BrushTable();
+        private CompositeMarkupTable _markup = new CompositeMarkupTable();
 
         public FlagTable Flags => _flagTable;
         private FlagTable _flagTable = new FlagTable();
@@ -2430,6 +2431,39 @@ namespace CATHODE.Scripting
         }
         #endregion
 
+        #region Composite Markup
+        /// <summary>The level's own markup pieces for a composite (editor-only shapes drawn at its instances); empty when it has none.</summary>
+        public List<CompositeMarkupTable.Markup> GetCompositeMarkup(ShortGuid composite)
+        {
+            if (_markup.markup.TryGetValue(composite, out List<CompositeMarkupTable.Markup> pieces))
+                return pieces.Select(o => o.Clone()).ToList();
+            return new List<CompositeMarkupTable.Markup>();
+        }
+
+        /// <summary>Replace a composite's markup pieces; null or empty removes them.</summary>
+        public void SetCompositeMarkup(ShortGuid composite, IEnumerable<CompositeMarkupTable.Markup> pieces)
+        {
+            List<CompositeMarkupTable.Markup> copy = pieces?.Where(o => o != null).Select(o => o.Clone()).ToList();
+            if (copy == null || copy.Count == 0)
+                _markup.markup.Remove(composite);
+            else
+                _markup.markup[composite] = copy;
+        }
+
+        /// <summary>Every composite that has markup pieces of the level's own.</summary>
+        public List<ShortGuid> GetCompositesWithMarkup() => _markup.markup.Where(o => o.Value != null && o.Value.Count != 0).Select(o => o.Key).ToList();
+
+        /// <summary>The table as it is saved: without rows for composites that are gone.</summary>
+        private CompositeMarkupTable PrunedCompositeMarkup()
+        {
+            CompositeMarkupTable pruned = new CompositeMarkupTable();
+            foreach (KeyValuePair<ShortGuid, List<CompositeMarkupTable.Markup>> row in _markup.markup)
+                if (row.Value != null && row.Value.Count != 0 && _commands.GetComposite(row.Key) != null)
+                    pruned.markup.Add(row.Key, row.Value);
+            return pruned;
+        }
+        #endregion
+
         #region Table Management
         /// <summary>
         /// Tell ShortGuidUtils about every id this script graph already uses, so a newly generated
@@ -2518,6 +2552,12 @@ namespace CATHODE.Scripting
                 _brushes = new BrushTable();
             else
                 Console.WriteLine("Loaded " + _brushes.All().Count + " brushes!");
+
+            _markup = (CompositeMarkupTable)CustomTable.ReadTable(filepath, CustomTableType.COMPOSITE_MARKUP);
+            if (_markup == null)
+                _markup = new CompositeMarkupTable();
+            else
+                Console.WriteLine("Loaded markup for " + _markup.markup.Count + " composites!");
 
             _flagTable = (FlagTable)CustomTable.ReadTable(filepath, CustomTableType.FLAGS);
             if (_flagTable == null) _flagTable = new FlagTable();
@@ -2723,6 +2763,10 @@ namespace CATHODE.Scripting
             BrushTable brushes = PrunedBrushes();
             CustomTable.WriteTable(filepath, CustomTableType.BRUSHES, brushes);
             Console.WriteLine("Saved " + brushes.All().Count + " brushes!");
+
+            CompositeMarkupTable markup = PrunedCompositeMarkup();
+            CustomTable.WriteTable(filepath, CustomTableType.COMPOSITE_MARKUP, markup);
+            Console.WriteLine("Saved markup for " + markup.markup.Count + " composites!");
 
             CustomTable.WriteTable(filepath, CustomTableType.FLAGS, _flagTable);
         }
