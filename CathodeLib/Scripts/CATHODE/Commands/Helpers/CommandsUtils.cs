@@ -522,6 +522,16 @@ namespace CATHODE.Scripting
                 return false;
             }
 
+            PurgeStarting?.Invoke(composite);
+            try { return PurgeComposite(composite); }
+            finally { PurgeFinished?.Invoke(composite); }
+        }
+
+        /// <summary>Raised around each purge that goes ahead (<see cref="PurgeDeadLinks"/>): before it changes the composite, then after.</summary>
+        public event Action<Composite> PurgeStarting, PurgeFinished;
+
+        private bool PurgeComposite(Composite composite)
+        {
             int originalUnknownCount = 0;
             int originalAliasCount = 0;
             int newTriggerCount = 0;
@@ -896,10 +906,14 @@ namespace CATHODE.Scripting
                     functionType = GetInheritedFunction(functionType.Value);
                     if (functionType == null) break;
                 }
+                //Null for an instance of a composite the level doesn't have (IsMissingCompositeInstance)
                 Composite compositeInstance = _commands.GetComposite((baseEntity).function);
-                foreach (VariableEntity variable in compositeInstance.variables)
+                if (compositeInstance != null)
                 {
-                    ApplyDefaultVariable(variable, targetEntity, compositeInstance, variants, overwrite);
+                    foreach (VariableEntity variable in compositeInstance.variables)
+                    {
+                        ApplyDefaultVariable(variable, targetEntity, compositeInstance, variants, overwrite);
+                    }
                 }
             }
         }
@@ -1147,9 +1161,11 @@ namespace CATHODE.Scripting
         private static List<(ShortGuid, ParameterVariant, DataType)> ReadAllParameters(FunctionType function)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
+            //Not a function type: e.g. the ID of a composite the level doesn't have
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets.TryGetValue(function, out Dictionary<ParameterVariant, int> offsets))
+                return parameters;
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
             {
-                Dictionary<ParameterVariant, int> offsets = CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function];
                 foreach (KeyValuePair<ParameterVariant, int> entry in offsets)
                 {
                     reader.BaseStream.Position = entry.Value;
