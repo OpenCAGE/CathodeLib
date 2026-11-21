@@ -32,14 +32,14 @@ namespace CathodeLib
         public GlobalAnimClipDB ClipIndex;
 
         /// <summary>One per character: the clips it owns and the sections holding them.</summary>
-        public List<AnimClipDB> ClipDatabases { get { EnsureContents(); return _clipDatabases; } }
+        public List<AnimClipDB> ClipDatabases { get { EnsureCatalogue(); return _clipDatabases; } }
 
         /// <summary>The loadable chunks of animation - Havok clips plus their metadata.</summary>
         public List<AnimClipDBSec> Sections { get { EnsureContents(); return _sections; } }
 
         /// <summary>The animation trees that decide which clip plays when. These name themselves out
         /// of the debug string table rather than the plain one.</summary>
-        public List<AnimTreeDB> Trees { get { EnsureContents(); return _trees; } }
+        public List<AnimTreeDB> Trees { get { EnsureCatalogue(); return _trees; } }
 
         private readonly List<AnimClipDB> _clipDatabases = new List<AnimClipDB>();
         private readonly List<AnimClipDBSec> _sections = new List<AnimClipDBSec>();
@@ -111,13 +111,51 @@ namespace CathodeLib
             return true;
         }
 
-        private bool _contentsLoaded;
+        private bool _catalogueLoaded, _contentsLoaded;
 
         /// <summary>
-        /// Whether everything the index doesn't cover (trees, clips, skeletons...) has been parsed yet - without parsing it,
+        /// Whether the clip databases, trees and skeleton definitions have been parsed yet - without parsing them, as touching
+        /// <see cref="ClipDatabases"/>, <see cref="Trees"/>, <see cref="SkeletonDefs"/> or <see cref="CompiledSkeletonDefs"/> does.
+        /// </summary>
+        public bool CatalogueLoaded { get { return _catalogueLoaded; } }
+
+        /// <summary>
+        /// Whether the rest the index doesn't cover (clip sections, skeletons, sets...) has been parsed yet - without parsing it,
         /// as touching any of those properties does.
         /// </summary>
         public bool ContentsLoaded { get { return _contentsLoaded; } }
+
+        /// <summary>
+        /// Parse the clip databases, trees and skeleton definitions, once. They are a few hundred small files against the
+        /// 23,000 clip sections, and name every set, clip and tree, so listing what the PAK holds needs nothing more.
+        /// </summary>
+        private void EnsureCatalogue()
+        {
+            if (_catalogueLoaded || !_loaded) return;
+            _catalogueLoaded = true;
+
+            HashSet<string> compiled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (PAK2.File file in _pak.Entries)
+            {
+                string name = (file.Filename ?? "").ToUpperInvariant();
+                if (name.StartsWith(@"DATA\ANIM_SYS\SKELE\DEFS"))
+                {
+                    //Named by the hash of the skeleton's name; a 64 bit copy names the same one
+                    string id = Path.GetFileNameWithoutExtension(name);
+                    string skeleton = uint.TryParse(id, out uint hash) ? Strings.GetString(hash) : id;
+                    if (compiled.Add(skeleton)) _compiledSkeletonDefs.Add(skeleton);
+                    continue;
+                }
+                if (file.Content == null || name.Contains("ANIM_CLIP_DB_SEC_")) continue;
+
+                if (name.EndsWith("_ANIM_CLIP_DB.BIN"))
+                    Add(_clipDatabases, file, x => new AnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
+                else if (name.EndsWith("_ANIM_TREE_DB.BIN"))
+                    Add(_trees, file, x => new AnimTreeDB(x.Content, StringsDebug, x.Filename));
+            }
+
+            ReadSkeletonDefs();
+        }
 
         /// <summary>
         /// Parse everything the index doesn't cover, once. Everything in here works on the backing
@@ -126,19 +164,14 @@ namespace CathodeLib
         private void EnsureContents()
         {
             if (_contentsLoaded || !_loaded) return;
+            EnsureCatalogue();
             _contentsLoaded = true;
 
             foreach (PAK2.File file in _pak.Entries)
             {
-                string name = (file.Filename ?? "").ToUpperInvariant();
                 if (file.Content == null) continue;
-
-                if (name.Contains("ANIM_CLIP_DB_SEC_"))
+                if ((file.Filename ?? "").ToUpperInvariant().Contains("ANIM_CLIP_DB_SEC_"))
                     Add(_sections, file, x => new AnimClipDBSec(x.Content, Strings, x.Filename, StringsDebug));
-                else if (name.EndsWith("_ANIM_CLIP_DB.BIN"))
-                    Add(_clipDatabases, file, x => new AnimClipDB(x.Content, Strings, x.Filename, StringsDebug));
-                else if (name.EndsWith("_ANIM_TREE_DB.BIN"))
-                    Add(_trees, file, x => new AnimTreeDB(x.Content, StringsDebug, x.Filename));
             }
 
             LoadPaired(@"SKELE\SK\", @"SKELE\SK64\", _skeletons,
@@ -583,10 +616,17 @@ namespace CathodeLib
         public List<AnimationSet> Sets { get { EnsureContents(); return _sets; } }
 
         /// <summary>The skeleton definitions from DATA/SKELETONDEFS, keyed by skeleton name.</summary>
-        public Dictionary<string, SkeletonDef> SkeletonDefs { get { EnsureContents(); return _skeletonDefs; } }
+        public Dictionary<string, SkeletonDef> SkeletonDefs { get { EnsureCatalogue(); return _skeletonDefs; } }
+
+        /// <summary>
+        /// The names of the compiled skeleton definitions in ANIM_SYS/SKELE/DEFS: every skeleton a character can be given.
+        /// Some, like ANDROID_HEAVY, borrow another's rig, so have no entry in <see cref="SkeletonIndex"/>.
+        /// </summary>
+        public List<string> CompiledSkeletonDefs { get { EnsureCatalogue(); return _compiledSkeletonDefs; } }
 
         private readonly List<AnimationSet> _sets = new List<AnimationSet>();
         private readonly Dictionary<string, SkeletonDef> _skeletonDefs = new Dictionary<string, SkeletonDef>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> _compiledSkeletonDefs = new List<string>();
 
         /// <summary>Look a set up by name, e.g. "MALE" or "DOORS_DOOR_SHOPPING".</summary>
         public AnimationSet GetSet(string name)
@@ -639,8 +679,6 @@ namespace CathodeLib
             if (ClipIndex != null)
                 foreach (GlobalAnimClipDB.ClipDbSection entry in ClipIndex.ClipDbSections)
                     _sectionOfClip[entry.Name] = entry;
-
-            ReadSkeletonDefs();
 
             foreach (AnimClipDB database in ClipDatabases)
             {
