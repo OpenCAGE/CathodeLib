@@ -6464,7 +6464,9 @@ namespace CathodeLib
                                         Flags = flags,
                                         CollisionProxy = shell ? null : template.CollisionProxy,
                                         CollisionInstance = shell ? null : AllocateHavokCompoundInstance(entity, template.CollisionProxy, flags),
-                                        ResourceGUID = template.ResourceGUID != ShortGuid.Invalid ? template.ResourceGUID : GetResourceID(entity),
+                                        //Retail keys a placed row by the entity's resource id, not the template row's: the game finds a
+                                        //physics body's collision by it (the body's name), and the two can differ
+                                        ResourceGUID = GetResourceID(entity),
                                         Entity = entity.Handle,
                                         Material = template.Material, // note - this is a physics material, not the renderable one. it's only stored in the template collision mapping!
                                         MaterialMapping = mapping, //todo - if this has no renderable maybe we discard the remapping? i guess it doesn't matter.

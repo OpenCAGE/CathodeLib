@@ -1340,7 +1340,9 @@ namespace CATHODE.Scripting
         }
         public (ParameterVariant?, DataType?, FunctionType?) GetParameterMetadata(FunctionType function, ShortGuid parameter)
         {
-            Dictionary<ParameterVariant, int> offsets = CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function];
+            //Not a function type (a composite the level doesn't have): no metadata
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets.TryGetValue(function, out Dictionary<ParameterVariant, int> offsets))
+                return (null, null, null);
             foreach (KeyValuePair<ParameterVariant, int> entry in offsets)
             {
                 (ParameterVariant?, DataType?, FunctionType?) data = GetParameterMetadata(function, parameter, entry.Key);
@@ -1352,9 +1354,12 @@ namespace CATHODE.Scripting
         public (ParameterVariant?, DataType?, FunctionType?) GetParameterMetadata(FunctionType function, ShortGuid parameter, ParameterVariant variant)
         {
             List<(ShortGuid, ParameterVariant, DataType)> parameters = new List<(ShortGuid, ParameterVariant, DataType)>();
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets.TryGetValue(function, out Dictionary<ParameterVariant, int> offsets) ||
+                !offsets.TryGetValue(variant, out int offset))
+                return (null, null, null);
             using (BinaryReader reader = new BinaryReader(new MemoryStream(CustomTable.Vanilla.CathodeEntities.content)))
             {
-                reader.BaseStream.Position = CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function][variant];
+                reader.BaseStream.Position = offset;
                 int paramCount = reader.ReadInt32();
                 for (int i = 0; i < paramCount; i++)
                 {
@@ -1562,7 +1567,8 @@ namespace CATHODE.Scripting
         public ParameterData CreateDefaultParameterData(FunctionType function, ShortGuid parameter)
         {
             ParameterData data = null;
-            Dictionary<ParameterVariant, int> offsets = CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function];
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets.TryGetValue(function, out Dictionary<ParameterVariant, int> offsets))
+                return null;
             foreach (KeyValuePair<ParameterVariant, int> entry in offsets)
             {
                 data = CreateDefaultParameterData(function, parameter, entry.Key);
@@ -1572,7 +1578,8 @@ namespace CATHODE.Scripting
         }
         public ParameterData CreateDefaultParameterData(FunctionType function, ShortGuid parameter, ParameterVariant variant)
         {
-            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets[function].TryGetValue(variant, out int offset))
+            if (!CustomTable.Vanilla.CathodeEntities.FunctionVariantOffsets.TryGetValue(function, out Dictionary<ParameterVariant, int> offsets) ||
+                !offsets.TryGetValue(variant, out int offset))
                 return null;
 
             /* Where the scan below stops for a parameter, and what it reads there, is the same on every call - so each block

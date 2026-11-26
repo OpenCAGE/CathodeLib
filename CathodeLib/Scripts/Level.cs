@@ -342,7 +342,10 @@ namespace CathodeLib
                         for (int x = 0; x < textDBsGlobal[i].ChildNodes.Count; x++)
                             if (textDBsGlobal[i].ChildNodes[x].Attributes?["name"]?.Value != null)
                                 globalDBs.Add(textDBsGlobal[i].ChildNodes[x].Attributes["name"].Value);
-                List<string> textList = Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>();
+                //A copy of the game can be without the TEXT folder: nothing to read then
+                List<string> textList = Directory.Exists(pathDATA + "/TEXT/")
+                    ? Directory.GetFiles(pathDATA + "/TEXT/", "*.TXT", SearchOption.AllDirectories).ToList<string>()
+                    : new List<string>();
                 HashSet<string> levelDBs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 if (File.Exists(_filepath + "/TEXT/TEXT_DB_LIST.TXT"))
                 {
