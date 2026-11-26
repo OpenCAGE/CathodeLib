@@ -5329,6 +5329,26 @@ namespace CathodeLib
         private Materials.Material _fogSphereTemplate;
         private bool _fogSphereTemplateLooked;
 
+        private static void GiveFogEntityItsRun(FunctionEntity fog, List<RenderableElements.Element> run)
+        {
+            if (fog == null || run == null || run.Count == 0) return;
+            lock (fog)
+            {
+                ResourceReference resource = fog.GetResource(ResourceType.RENDERABLE_INSTANCE, true);
+                if (resource != null && resource.RenderableInstance != null && resource.RenderableInstance.Count != 0) return;
+                if (resource == null)
+                    resource = fog.GetParameter(ShortGuids.resource)?.content is cResource parameter
+                        ? parameter.AddResource(ResourceType.RENDERABLE_INSTANCE)
+                        : fog.AddResource(ResourceType.RENDERABLE_INSTANCE);
+                resource.RenderableInstance = run;
+                if (fog.GetParameter(ShortGuids.position)?.content is cTransform transform)
+                {
+                    resource.position = transform.position;
+                    resource.rotation = transform.rotation;
+                }
+            }
+        }
+
         private List<RenderableElements.Element> ApplyShaderFeatureMaterial(List<RenderableElements.Element> reds, InstancedEntity entity, long features)
         {
             if (_materialFactory == null || reds == null || reds.Count != 1 || reds[0]?.Material?.Shader == null)
@@ -5937,6 +5957,7 @@ namespace CathodeLib
                         reds = UseRequiredModel(reds, type == FOG_BOX_TYPE.BOX
                             ? RequiredModels.Model.REQUIRED_MODEL_FOGBOX
                             : RequiredModels.Model.REQUIRED_MODEL_FOGPLANE);
+                        GiveFogEntityItsRun((FunctionEntity)entity.Entity, reds);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                         {
                             switch (reds[0].Material.Shader.Ubershader)
@@ -6055,6 +6076,7 @@ namespace CathodeLib
                         }
                         reds = ApplyShaderFeatureMaterial(reds, entity, features);
                         reds = UseRequiredModel(reds, RequiredModels.Model.REQUIRED_MODEL_FOGSPHERE);
+                        GiveFogEntityItsRun((FunctionEntity)entity.Entity, reds);
                         if (reds != null && reds.Count > 0 && reds[0].Material != null && reds[0].Material.Shader != null)
                         {
                             switch (reds[0].Material.Shader.Ubershader)
